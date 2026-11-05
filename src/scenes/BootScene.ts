@@ -19,6 +19,7 @@ export interface CharacterInfo {
   frameCount: number;
   runFrames: number[];
   jumpFrame: number;
+  idleFrame: number;
   frameWidth: number;
   frameHeight: number;
   scale: number;
@@ -79,6 +80,7 @@ export class BootScene extends Phaser.Scene {
         frameCount: count,
         runFrames: run.length ? run : [0],
         jumpFrame: CHARACTER_ASSET.jumpFrame < count ? CHARACTER_ASSET.jumpFrame : 0,
+        idleFrame: CHARACTER_ASSET.idleFrame < count ? CHARACTER_ASSET.idleFrame : 0,
         frameWidth: fw,
         frameHeight: fh,
         scale: CHARACTER_ASSET.displayHeight / fh,
@@ -92,9 +94,10 @@ export class BootScene extends Phaser.Scene {
       frameCount: count,
       runFrames: [0, 1],
       jumpFrame: 2,
+      idleFrame: 0,
       frameWidth: fw,
       frameHeight: fh,
-      scale: CHARACTER_ASSET.displayHeight / fh,
+      scale: 1, // 기본 캐릭터는 원래 크기(24px) 그대로
       custom: false,
     };
   }

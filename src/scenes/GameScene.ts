@@ -264,6 +264,7 @@ export class GameScene extends Phaser.Scene {
     this.state = 'paused';
     this.tweens.pauseAll();
     this.player.anims.pause();
+    this.player.setFrame(this.char.idleFrame); // 쉬는 동안은 대기 포즈
     sound.stopMusic();
     bus.emit(EV.pause);
   }
@@ -273,6 +274,7 @@ export class GameScene extends Phaser.Scene {
     this.state = 'playing';
     this.tweens.resumeAll();
     this.player.anims.resume();
+    if (this.player.anims.currentFrame) this.player.setFrame(this.player.anims.currentFrame.frame.name);
     sound.startMusic();
     bus.emit(EV.resume);
   }
@@ -548,8 +550,8 @@ export class GameScene extends Phaser.Scene {
 
   /** 플레이어 충돌 박스 (땅 기준 높이 좌표계) */
   private playerBox(): { left: number; right: number; bottom: number; top: number } {
-    const w = this.char.frameWidth * this.char.scale * 0.55;
-    const h = this.char.frameHeight * this.char.scale * 0.78;
+    const w = PLAYER.hitboxWidth;
+    const h = PLAYER.hitboxHeight;
     return {
       left: VIEW.playerX - w / 2,
       right: VIEW.playerX + w / 2,

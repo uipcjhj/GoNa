@@ -40,6 +40,9 @@ export const PLAYER = {
   maxHearts: 3,
   /** 피격 후 무적 시간(ms) */
   invincibleMs: 1300,
+  /** 충돌 박스 크기 (논리 px). 캐릭터 그림 크기와 상관없이 난이도가 같도록 고정 */
+  hitboxWidth: 11,
+  hitboxHeight: 19,
 };
 
 export type SnackKind = 'strawberry' | 'banana' | 'cookie';
@@ -62,25 +65,30 @@ export const STORAGE_KEYS = {
  * 파일이 없으면 코드로 그린 기본 도트 캐릭터가 나옵니다.
  *
  * 이미지 형식: 프레임을 가로로 나란히 이어 붙인 PNG (크기 자유, 배경 투명)
- *   [달리기1][달리기2][점프]   ← frameCount: 3
  *   한 장짜리 이미지도 OK      ← frameCount: 1 (달릴 때 통통 튀는 효과로 대체)
+ *
+ * 현재 dino.png 는 tools/build_dino_sheet.py 가 원본(art-src/baby-dino)에서 만든
+ * 27×34px 프레임 9장짜리 시트입니다:
+ *   0 대기 · 1~4 달리기 · 5 점프 · 6 눈 감기(대기) · 7 기쁨 · 8 놀람
  */
 export const CHARACTER_ASSET = {
   /** public 폴더 기준 경로. 빈 문자열이면 기본 캐릭터만 사용 */
   url: 'assets/character/dino.png',
   /** 시트에 가로로 들어 있는 프레임 수 */
-  frameCount: 3,
+  frameCount: 9,
   /** 달리기 애니메이션에 쓸 프레임 번호 (없는 번호는 자동으로 무시) */
-  runFrames: [0, 1],
+  runFrames: [1, 2, 3, 4],
   /** 점프 프레임 번호 (없으면 0번 사용) */
-  jumpFrame: 2,
-  runFps: 9,
+  jumpFrame: 5,
+  /** 대기 프레임 번호 (타이틀·일시정지) */
+  idleFrame: 0,
+  runFps: 10,
   /** 타이틀 화면에서 보여줄 프레임 번호 */
   titleFrame: 0,
   /** 눈 깜빡임 프레임 번호 (-1 이면 사용 안 함, 통통 뛰는 효과만) */
-  blinkFrame: -1,
+  blinkFrame: 6,
   /** 화면에 표시할 캐릭터 높이(px, 논리 해상도 기준). 큰 이미지도 이 크기로 맞춰집니다. */
-  displayHeight: 24,
+  displayHeight: 34,
 };
 
 /**
@@ -110,5 +118,5 @@ export const TITLE_LAYOUT = {
   /** 캐릭터 발이 닿는 높이 (배경 그림의 땅 위치에 맞춰 조절) */
   characterGroundY: 0.83,
   /** 캐릭터 키 (배경 높이 대비) */
-  characterHeight: 0.27,
+  characterHeight: 0.3,
 };

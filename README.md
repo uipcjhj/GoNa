@@ -61,6 +61,10 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
    - `displayHeight` 화면에서의 캐릭터 높이(px)
    - `titleFrame` 타이틀에서 보여줄 프레임, `blinkFrame` 눈 감은 프레임 (-1 이면 깜빡임 없음)
 
+현재는 직접 제작한 아기 공룡 도트(`art-src/baby-dino/`)를 `tools/build_dino_sheet.py` 로
+1:1 도트 시트로 변환해 `public/assets/character/dino.png` 에 넣어 두었습니다
+(대기·달리기 4프레임·점프·눈 감기·기쁨·놀람). 원본을 고쳤다면 `python3 tools/build_dino_sheet.py` 로 다시 만드세요.
+
 파일이 없으면 코드로 그린 기본 캐릭터(물방울 모양 갈색 머리, 동그란 얼굴, 연두색 공룡 옷)가 나옵니다.
 기본 캐릭터 도트는 `src/art/sprites.ts` 의 `DINO_FRAMES` 에서 글자 단위로 직접 고칠 수도 있어요.
 
