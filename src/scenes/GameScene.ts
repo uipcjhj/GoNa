@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CHARACTER_ASSET, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
-import { GROUND_TILE_H, TEX } from '../art/textures';
+import { FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type GameOverInfo } from '../events';
 import { sound } from '../audio';
 import { storage } from '../storage';
@@ -45,8 +45,10 @@ export class GameScene extends Phaser.Scene {
   private deepDirt!: Phaser.GameObjects.Graphics;
   private sun!: Phaser.GameObjects.Image;
   private clouds: { img: Phaser.GameObjects.Image; x: number; yRatio: number; speed: number }[] = [];
-  private hills!: Phaser.GameObjects.TileSprite;
-  private trees!: Phaser.GameObjects.TileSprite;
+  private far!: Phaser.GameObjects.TileSprite;
+  private mid!: Phaser.GameObjects.TileSprite;
+  private near!: Phaser.GameObjects.TileSprite;
+  private waterfallTimer = 0;
   private ground!: Phaser.GameObjects.TileSprite;
 
   // 플레이어
@@ -115,8 +117,10 @@ export class GameScene extends Phaser.Scene {
       const img = this.add.image(0, 0, TEX.cloud).setAlpha(0.95);
       this.clouds.push({ img, x: 40 + i * 110 + Math.random() * 40, yRatio: 0.12 + Math.random() * 0.5, speed: 4 + Math.random() * 5 });
     }
-    this.hills = this.add.tileSprite(0, 0, 10, 56, TEX.hills).setOrigin(0, 1);
-    this.trees = this.add.tileSprite(0, 0, 10, 52, TEX.trees).setOrigin(0, 1);
+    // 패럴랙스 배경: 먼 바위산·폭포 → 중간 나무·버섯 → 가까운 풀숲 (모두 캐릭터·간식·장애물 뒤)
+    this.far = this.add.tileSprite(0, 0, 10, FAR_H, TEX.far).setOrigin(0, 1);
+    this.mid = this.add.tileSprite(0, 0, 10, MID_H, TEX.mid).setOrigin(0, 1);
+    this.near = this.add.tileSprite(0, 0, 10, NEAR_H, TEX.near).setOrigin(0, 1);
     this.deepDirt = this.add.graphics();
     this.ground = this.add.tileSprite(0, 0, 10, GROUND_TILE_H, TEX.ground).setOrigin(0, 0);
 
@@ -205,8 +209,9 @@ export class GameScene extends Phaser.Scene {
 
     this.drawSky();
     this.sun.setPosition(this.W - 46, Math.max(28, Math.round(this.groundY * 0.22)));
-    this.hills.setPosition(0, this.groundY + 2).setSize(this.W, 56);
-    this.trees.setPosition(0, this.groundY + 2).setSize(this.W, 52);
+    this.far.setPosition(0, this.groundY + 2).setSize(this.W, FAR_H);
+    this.mid.setPosition(0, this.groundY + 2).setSize(this.W, MID_H);
+    this.near.setPosition(0, this.groundY + 1).setSize(this.W, NEAR_H);
     this.ground.setPosition(0, this.groundY).setSize(this.W, GROUND_TILE_H);
 
     this.deepDirt.clear();
@@ -362,8 +367,15 @@ export class GameScene extends Phaser.Scene {
 
   private scrollBackground(dt: number): void {
     this.ground.tilePositionX = Math.round(this.distance);
-    this.trees.tilePositionX = Math.round(this.distance * 0.35);
-    this.hills.tilePositionX = Math.round(this.distance * 0.12);
+    this.near.tilePositionX = Math.round(this.distance * 0.7);
+    this.mid.tilePositionX = Math.round(this.distance * 0.35);
+    this.far.tilePositionX = Math.round(this.distance * 0.1);
+    // 폭포 물 흐름 (2프레임 교대)
+    this.waterfallTimer += dt;
+    if (this.waterfallTimer > 0.22) {
+      this.waterfallTimer = 0;
+      this.far.setTexture(this.far.texture.key === TEX.far ? TEX.far2 : TEX.far);
+    }
     for (const c of this.clouds) {
       c.x -= (c.speed + this.speed * 0.04) * dt;
       if (c.x < -24) {

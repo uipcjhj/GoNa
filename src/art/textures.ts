@@ -4,6 +4,9 @@
  */
 import Phaser from 'phaser';
 import { PixelCanvas, mapToCanvas, seededRandom } from './PixelCanvas';
+import { buildGameBackground, FAR_H, MID_H, NEAR_H } from './gameBg';
+
+export { FAR_H, MID_H, NEAR_H };
 import {
   BANANA,
   COOKIE,
@@ -31,8 +34,13 @@ export const TEX = {
   sparkle: 'fx-sparkle',
   dust: 'fx-dust',
   ground: 'ground',
-  hills: 'bg-hills',
-  trees: 'bg-trees',
+  /** 먼 바위산 + 폭포 (2프레임) */
+  far: 'bg-far-0',
+  far2: 'bg-far-1',
+  /** 중간: 선사시대 나무 · 큰 버섯 · 고인돌 */
+  mid: 'bg-mid',
+  /** 가까운: 풀숲 · 작은 버섯 · 꽃 · 발자국 돌 */
+  near: 'bg-near',
   cloud: 'bg-cloud',
   sun: 'bg-sun',
 } as const;
@@ -138,81 +146,6 @@ function buildGround(): HTMLCanvasElement {
   return pc.canvas;
 }
 
-/** 먼 언덕 (가로 반복) */
-function buildHills(): HTMLCanvasElement {
-  const W = 192;
-  const H = 56;
-  const pc = new PixelCanvas(W, H);
-  const far = '#b5d98f';
-  const farTop = '#cfe9a8';
-  const near = '#94c56c';
-  const nearTop = '#b2da86';
-  const TAU = Math.PI * 2;
-  for (let x = 0; x < W; x++) {
-    const t = x / W;
-    const h1 = 30 + Math.sin(t * TAU) * 9 + Math.sin(t * TAU * 3 + 1) * 4;
-    const y1 = Math.round(H - h1);
-    pc.rect(x, y1, 1, H - y1, far);
-    pc.px(x, y1, farTop);
-    const h2 = 16 + Math.sin(t * TAU * 2 + 2) * 6 + Math.sin(t * TAU * 5) * 2;
-    const y2 = Math.round(H - h2);
-    pc.rect(x, y2, 1, H - y2, near);
-    pc.px(x, y2, nearTop);
-    pc.px(x, y2 + 1, nearTop);
-  }
-  return pc.canvas;
-}
-
-/** 중간 거리 나무/덤불 (가로 반복) */
-function buildTrees(): HTMLCanvasElement {
-  const W = 224;
-  const H = 52;
-  const pc = new PixelCanvas(W, H);
-  const rnd = seededRandom(42);
-  const trunk = '#8a5a3a';
-  const trunkDark = '#6b442b';
-  const leafDark = '#4f8f3c';
-  const leaf = '#6fb04a';
-  const leafLight = '#9bd36a';
-  const fruit = '#f26b5b';
-
-  const trees = [
-    { x: 20, r: 12 },
-    { x: 78, r: 15 },
-    { x: 150, r: 11 },
-    { x: 196, r: 13 },
-  ];
-  // 덤불 띠
-  for (let x = 0; x < W; x++) {
-    const h = 7 + Math.round(Math.sin((x / W) * Math.PI * 2 * 7) * 2 + Math.sin((x / W) * Math.PI * 2 * 3) * 2);
-    pc.rect(x, H - h, 1, h, leafDark);
-    pc.px(x, H - h, leaf);
-  }
-  for (const t of trees) {
-    const baseY = H - 4;
-    const top = baseY - t.r * 2 - 10;
-    // 줄기
-    for (let y = top + t.r; y < baseY; y++) {
-      pc.pxWrap(t.x - 1, y, trunk);
-      pc.pxWrap(t.x, y, trunk);
-      pc.pxWrap(t.x + 1, y, trunkDark);
-    }
-    const cy = top + t.r;
-    pc.disc(t.x, cy, t.r, leafDark, true);
-    pc.disc(t.x - 1, cy - 1, t.r - 2, leaf, true);
-    pc.disc(t.x - Math.floor(t.r / 3), cy - Math.floor(t.r / 3), Math.floor(t.r / 3), leafLight, true);
-    for (let i = 0; i < 4; i++) {
-      const fx = t.x + Math.floor((rnd() - 0.5) * t.r * 1.2);
-      const fy = cy + Math.floor((rnd() - 0.3) * t.r * 0.9);
-      pc.pxWrap(fx, fy, fruit);
-      pc.pxWrap(fx + 1, fy, fruit);
-      pc.pxWrap(fx, fy + 1, '#c94a3e');
-      pc.pxWrap(fx + 1, fy + 1, '#c94a3e');
-    }
-  }
-  return pc.canvas;
-}
-
 function buildCloud(): HTMLCanvasElement {
   const pc = new PixelCanvas(34, 14);
   const white = '#fffaf0';
@@ -249,8 +182,11 @@ export function buildAllTextures(scene: Phaser.Scene): void {
   addCanvas(scene, TEX.sparkle, mapToCanvas(SPARKLE_ROWS, SPARKLE_PALETTE));
   addCanvas(scene, TEX.dust, mapToCanvas(DUST_ROWS, DUST_PALETTE));
   addCanvas(scene, TEX.ground, buildGround());
-  addCanvas(scene, TEX.hills, buildHills());
-  addCanvas(scene, TEX.trees, buildTrees());
+  const bg = buildGameBackground();
+  addCanvas(scene, TEX.far, bg.far[0]);
+  addCanvas(scene, TEX.far2, bg.far[1]);
+  addCanvas(scene, TEX.mid, bg.mid);
+  addCanvas(scene, TEX.near, bg.near);
   addCanvas(scene, TEX.cloud, buildCloud());
   addCanvas(scene, TEX.sun, buildSun());
 }
