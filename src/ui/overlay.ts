@@ -34,6 +34,7 @@ const ICON_PAUSE = ['kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 
 
 export class Overlay {
   private pause: HTMLElement;
+  private hint: HTMLElement;
   private over: HTMLElement;
   private buttons: HTMLElement;
   private soundBtn: HTMLButtonElement;
@@ -67,7 +68,11 @@ export class Overlay {
     this.buttons.append(this.pauseBtn, this.soundBtn);
     this.refreshSoundIcon();
 
-    root.append(this.pause, this.over, this.buttons);
+    // 세로 화면 하단의 작은 조작 안내 (게임 중에만)
+    this.hint = el('p', 'touch-hint hidden');
+    this.hint.innerHTML = '탭 <b>점프</b> · 공중에서 탭 <b>더블 점프</b>';
+
+    root.append(this.hint, this.pause, this.over, this.buttons);
     this.bind();
   }
 
@@ -89,6 +94,7 @@ export class Overlay {
       this.over.classList.add('hidden');
       this.pause.classList.add('hidden');
       this.pauseBtn.classList.remove('hidden');
+      this.hint.classList.remove('hidden');
     });
     bus.on(EV.pause, () => this.pause.classList.remove('hidden'));
     bus.on(EV.resume, () => this.pause.classList.add('hidden'));
@@ -124,6 +130,7 @@ export class Overlay {
 
   private showGameOver(info: GameOverInfo): void {
     this.pauseBtn.classList.add('hidden');
+    this.hint.classList.add('hidden');
     this.overScore.textContent = `${info.score}점`;
     this.overSnacks.textContent = `먹은 간식 ${info.snacks}개`;
     this.overBest.textContent = `최고 점수 ${info.best}점`;

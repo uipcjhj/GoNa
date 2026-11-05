@@ -9,16 +9,22 @@ export const GAME_TITLE = 'GONA’s Food Adventure';
 export const VIEW = {
   /** 가로 모드 기준 높이 */
   baseHeight: 160,
-  /** 세로 모드 기준 너비 */
-  baseWidth: 200,
+  /** 세로 모드 기준 너비 (작을수록 화면이 더 확대됨) */
+  baseWidth: 168,
   minWidth: 200,
   maxWidth: 360,
   minHeight: 160,
   maxHeight: 380,
   /** 화면 아래에서 땅 윗면까지의 높이 */
   groundHeight: 30,
-  /** 공룡의 화면상 x 위치 */
+  /** 공룡의 화면상 x 위치 (가로 화면) */
   playerX: 52,
+  /** 세로 화면: 폭이 좁은 만큼 공룡을 왼쪽으로 붙여 앞이 더 보이게 */
+  portraitPlayerX: 36,
+  /** 세로 화면: 지면 높이 (화면 위에서부터의 비율, 0.72 = 72%) */
+  portraitGroundRatio: 0.72,
+  /** 세로 화면: 더블 점프 최고점 위로 남겨 둘 여백 (점수·하트 자리) */
+  portraitTopMargin: 24,
   /**
    * 내부 렌더링 배율. 논리 해상도(위 값들)를 이 배수로 그려서
    * 캐릭터를 1.2배처럼 정수가 아닌 배율로 키우거나 회전·찌그러뜨려도 도트가 빠지지 않게 합니다.

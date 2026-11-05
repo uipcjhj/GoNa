@@ -38,6 +38,7 @@ export class GameScene extends Phaser.Scene {
   private W = 0;
   private H = 0;
   private groundY = 0;
+  private playerX = VIEW.playerX;
 
   // 배경
   private sky!: Phaser.GameObjects.Graphics;
@@ -75,7 +76,6 @@ export class GameScene extends Phaser.Scene {
   // HUD
   private heartIcons: Phaser.GameObjects.Image[] = [];
   private scoreText!: Phaser.GameObjects.Text;
-  private hintText!: Phaser.GameObjects.Text;
   private dustEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   private sparkleEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
@@ -143,23 +143,13 @@ export class GameScene extends Phaser.Scene {
 
     // HUD
     for (let i = 0; i < PLAYER.maxHearts; i++) {
-      this.heartIcons.push(this.add.image(0, 0, TEX.heartFull).setOrigin(0, 0).setDepth(20));
+      this.heartIcons.push(this.add.image(0, 0, TEX.heartFull).setOrigin(0, 0).setDepth(20).setScrollFactor(0));
     }
     this.scoreText = this.add
       .text(0, 0, '', { fontFamily: FONT, fontSize: '12px', color: '#fff8e6', stroke: '#5a3a22', strokeThickness: 3 })
       .setOrigin(0.5, 0)
-      .setDepth(20);
-    this.hintText = this.add
-      .text(0, 0, '화면 아무 곳이나 터치!\n공중에서 한 번 더 = 더블 점프', {
-        fontFamily: FONT,
-        fontSize: '12px',
-        color: '#fbe3bd',
-        align: 'center',
-        lineSpacing: 4,
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.75)
-      .setDepth(1);
+      .setDepth(20)
+      .setScrollFactor(0);
     this.updateHud();
 
     this.layout();
@@ -197,12 +187,21 @@ export class GameScene extends Phaser.Scene {
   private layout(): void {
     // 캔버스는 논리 해상도 × renderScale 로 그리고, 카메라 확대로 논리 좌표를 그대로 사용
     const k = VIEW.renderScale;
-    this.cameras.main.setOrigin(0, 0).setZoom(k);
+    this.cameras.main.setOrigin(0, 0).setZoom(k).setScroll(0, 0);
     this.W = Math.round(this.scale.width / k);
     this.H = Math.round(this.scale.height / k);
     // 세로 화면에서는 땅을 조금 위로 올려 엄지가 닿는 아래쪽은 흙으로 채움
-    const extra = Math.max(0, this.H - VIEW.baseHeight);
-    this.groundY = Math.round(this.H - VIEW.groundHeight - extra * 0.45);
+    const portrait = this.H > VIEW.baseHeight;
+    if (portrait) {
+      // 세로 화면: 지면을 화면 약 72% 높이에. 더블 점프 최고점(약 90px + 캐릭터 키)이
+      // 점수·하트 아래에서 잘리지 않고, 아래 흙은 최소 groundHeight 는 남도록
+      const peakRoom = VIEW.portraitTopMargin + 92 + 44;
+      this.groundY = Phaser.Math.Clamp(Math.round(this.H * VIEW.portraitGroundRatio), peakRoom, this.H - VIEW.groundHeight);
+      this.playerX = VIEW.portraitPlayerX;
+    } else {
+      this.groundY = this.H - VIEW.groundHeight;
+      this.playerX = VIEW.playerX;
+    }
 
     this.drawSky();
     this.sun.setPosition(this.W - 46, Math.max(28, Math.round(this.groundY * 0.22)));
@@ -221,10 +220,6 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // 세로 화면: 아래쪽 흙 영역에 조작 안내
-    const dirtSpace = this.H - dirtTop;
-    this.hintText.setVisible(dirtSpace > 44).setPosition(Math.round(this.W / 2), Math.round(dirtTop + dirtSpace / 2));
-
     this.heartIcons.forEach((h, i) => h.setPosition(6 + i * 11, 6));
     this.scoreText.setPosition(Math.round(this.W / 2), 3);
   }
@@ -239,7 +234,9 @@ export class GameScene extends Phaser.Scene {
     const bandH = Math.ceil((bottom - top) / colors.length);
     colors.forEach((c, i) => {
       g.fillStyle(c, 1);
-      g.fillRect(0, top + i * bandH, this.W, bandH + 1);
+      // 첫 띠는 화면 위쪽 바깥까지 칠해 둠 (높은 점프 때 카메라가 살짝 올라가도 빈 곳이 안 보이게)
+      const extraTop = i === 0 ? 40 : 0;
+      g.fillRect(0, top + i * bandH - extraTop, this.W, bandH + 1 + extraTop);
     });
     // 띠 경계 디더링
     for (let i = 1; i < colors.length; i++) {
@@ -416,17 +413,22 @@ export class GameScene extends Phaser.Scene {
     const halfH = (this.char.frameHeight * sy) / 2;
     // 발 = (땅 - 높이). 렌더 픽셀 격자에 맞춰 반올림해서 서 있을 때 발이 정확히 지면에 닿게
     const feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
-    this.player.setPosition(VIEW.playerX, feetY - halfH);
+    this.player.setPosition(this.playerX, feetY - halfH);
+
+    // 아주 높은 더블 점프로 머리가 화면 위로 나가면, 그만큼만 카메라를 살짝 올림 (물리·판정은 그대로)
+    const headTop = feetY - this.char.frameHeight * sy;
+    const lift = Math.min(0, Math.round((headTop - 2) * k) / k);
+    this.cameras.main.scrollY = lift;
 
     const shadowScale = Math.max(0.35, 1 - this.alt / 110);
-    this.shadow.setPosition(VIEW.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.char.scale), 1);
+    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.char.scale), 1);
 
     // 무적 깜빡임
     if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 80) % 2 ? 0.35 : 1);
     else this.player.setAlpha(1);
 
     if (this.grounded && this.state === 'playing' && Math.random() < dt * 6) {
-      this.dustEmitter.explode(1, VIEW.playerX - 6, this.groundY);
+      this.dustEmitter.explode(1, this.playerX - 6, this.groundY);
     }
   }
 
@@ -577,8 +579,8 @@ export class GameScene extends Phaser.Scene {
     const w = PLAYER.hitboxWidth;
     const h = PLAYER.hitboxHeight;
     return {
-      left: VIEW.playerX - w / 2,
-      right: VIEW.playerX + w / 2,
+      left: this.playerX - w / 2,
+      right: this.playerX + w / 2,
       bottom: this.alt + 1,
       top: this.alt + h,
     };
@@ -658,6 +660,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private die(): void {
+    this.cameras.main.scrollY = 0;
     this.state = 'dead';
     sound.stopMusic();
     sound.gameOver();

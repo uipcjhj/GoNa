@@ -782,3 +782,30 @@ h2 {
     opacity: 0;
   }
 }
+
+/* 세로 화면 하단 조작 안내: 작고 간결하게 */
+.touch-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
+  color: #fbe3bd;
+  opacity: 0.8;
+  pointer-events: none;
+  text-shadow: 0 1px 0 #5a3a22;
+}
+
+.touch-hint b {
+  font-weight: normal;
+  color: #d8f5a2;
+}
+
+@media (orientation: landscape) {
+  .touch-hint {
+    display: none;
+  }
+}

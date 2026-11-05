@@ -31,7 +31,7 @@ async function run(label, device, { noImages = false } = {}) {
   // 간식 획득 + 점수
   for (const [kind, pts] of [['strawberry', 10], ['banana', 20], ['cookie', 30]]) {
     const before = await frame();
-    await ev((sc, k) => sc.addSnack(k, 52 + 22, 4), kind);
+    await ev((sc, k) => sc.addSnack(k, sc.playerX + 22, 4), kind);
     let s; for (let i = 0; i < 40; i++) { s = await frame(); if (s.score !== before.score) break; await page.waitForTimeout(15); }
     check(`${label}: ${kind} +${pts}`, s.score - before.score === pts, `score ${before.score}->${s.score}`);
     await page.waitForTimeout(150);
@@ -48,7 +48,7 @@ async function run(label, device, { noImages = false } = {}) {
   }
 
   // 기쁨 표정 중 점프 / 더블 점프
-  await ev((sc) => sc.addSnack('banana', 52 + 22, 4));
+  await ev((sc) => sc.addSnack('banana', sc.playerX + 22, 4));
   await page.waitForTimeout(260);
   const vp = page.viewportSize();
   await page.touchscreen.tap(vp.width / 2, vp.height / 2); await page.waitForTimeout(120);
@@ -65,7 +65,7 @@ async function run(label, device, { noImages = false } = {}) {
 
   // 바위 충돌 + 무적 시간
   const h0 = (await frame()).hearts;
-  await ev((sc) => sc.addRock(52 + 22));
+  await ev((sc) => sc.addRock(sc.playerX + 22));
   let r; for (let i = 0; i < 40; i++) { r = await frame(); if (r.hearts !== h0) break; await page.waitForTimeout(15); }
   check(`${label}: rock hit -1 heart`, r.hearts === h0 - 1, `hearts ${h0}->${r.hearts}`);
   check(`${label}: invincible after hit`, r.inv > 1100, `inv ${Math.round(r.inv)}ms`);
@@ -74,7 +74,7 @@ async function run(label, device, { noImages = false } = {}) {
   if (info.custom) { check(`${label}: surprised face on hit`, sface.f === 8 || sface.f === '8', `frame ${sface.f}`); await page.screenshot({ path: `${S}/t5-${label}-surprised.png` }); }
   // 무적 중 다시 충돌 → 하트 유지
   for (let i = 0; i < 60; i++) { if ((await frame()).grounded) break; await page.waitForTimeout(20); }
-  await ev((sc) => sc.addRock(52 + 18));
+  await ev((sc) => sc.addRock(sc.playerX + 18));
   await page.waitForTimeout(450);
   const r2 = await frame();
   check(`${label}: no damage while invincible`, r2.hearts === h0 - 1, `hearts ${r2.hearts} inv ${Math.round(r2.inv)}`);
@@ -95,7 +95,7 @@ async function run(label, device, { noImages = false } = {}) {
   for (let k = 0; k < 3; k++) {
     for (let i = 0; i < 100; i++) { const f = await frame(); if (f.inv <= 0 && f.grounded) break; await page.waitForTimeout(30); }
     const hb = (await frame()).hearts; if (hb <= 0) break;
-    await ev((sc) => sc.addRock(52 + 22));
+    await ev((sc) => sc.addRock(sc.playerX + 22));
     await page.waitForTimeout(450);
     const ha = await ev((sc) => sc.hearts);
     check(`${label}: hit after invincibility ends`, ha === hb - 1, `hearts ${hb}->${ha}`);
