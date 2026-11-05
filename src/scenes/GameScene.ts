@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
+import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type GameOverInfo } from '../events';
 import { sound } from '../audio';
@@ -49,6 +49,10 @@ export class GameScene extends Phaser.Scene {
   private mid!: Phaser.GameObjects.TileSprite;
   private near!: Phaser.GameObjects.TileSprite;
   private waterfallTimer = 0;
+  /** 이미지 배경 (있을 때만) */
+  private bgImage: Phaser.GameObjects.TileSprite | null = null;
+  private bgHaze: Phaser.GameObjects.Graphics | null = null;
+  private bgScale = 1;
   private ground!: Phaser.GameObjects.TileSprite;
 
   // 플레이어
@@ -121,8 +125,15 @@ export class GameScene extends Phaser.Scene {
     this.far = this.add.tileSprite(0, 0, 10, FAR_H, TEX.far).setOrigin(0, 1);
     this.mid = this.add.tileSprite(0, 0, 10, MID_H, TEX.mid).setOrigin(0, 1);
     this.near = this.add.tileSprite(0, 0, 10, NEAR_H, TEX.near).setOrigin(0, 1);
+    // 배경 이미지가 있으면: 코드 배경(해·구름·산·나무·풀숲) 대신 이미지 한 장을 반복 스크롤
+    if (this.textures.exists(TEX.bgImage)) {
+      this.bgImage = this.add.tileSprite(0, 0, 10, 10, TEX.bgImage).setOrigin(0, 0);
+      this.bgHaze = this.add.graphics();
+      for (const o of [this.sun, this.far, this.mid, this.near, ...this.clouds.map((c) => c.img)]) o.setVisible(false);
+    }
     this.deepDirt = this.add.graphics();
-    this.ground = this.add.tileSprite(0, 0, 10, GROUND_TILE_H, TEX.ground).setOrigin(0, 0);
+    const groundTex = this.bgImage && this.textures.exists(TEX.groundImg) ? TEX.groundImg : TEX.ground;
+    this.ground = this.add.tileSprite(0, 0, 10, GROUND_TILE_H, groundTex).setOrigin(0, 0);
 
     this.shadow = this.add.ellipse(0, 0, 14, 3, 0x3d2b22, 0.25);
     this.player = this.add.sprite(0, 0, TEX.dino, this.char.runFrames[0]).setDepth(10);
@@ -212,6 +223,16 @@ export class GameScene extends Phaser.Scene {
     this.far.setPosition(0, this.groundY + 2).setSize(this.W, FAR_H);
     this.mid.setPosition(0, this.groundY + 2).setSize(this.W, MID_H);
     this.near.setPosition(0, this.groundY + 1).setSize(this.W, NEAR_H);
+    if (this.bgImage) {
+      // 원본의 groundRow 줄이 게임 땅 윗면에 오도록 확대 (위쪽은 화면 맨 위부터)
+      const src = this.textures.get(TEX.bgImage).getSourceImage() as HTMLImageElement;
+      this.bgScale = this.groundY / GAME_BG.groundRow;
+      this.bgImage
+        .setPosition(0, 0)
+        .setSize(this.W, Math.ceil(src.height * this.bgScale))
+        .setTileScale(this.bgScale, this.bgScale);
+      this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -20, this.W, this.groundY + 20);
+    }
     this.ground.setPosition(0, this.groundY).setSize(this.W, GROUND_TILE_H);
 
     this.deepDirt.clear();
@@ -370,6 +391,7 @@ export class GameScene extends Phaser.Scene {
     this.near.tilePositionX = Math.round(this.distance * 0.7);
     this.mid.tilePositionX = Math.round(this.distance * 0.35);
     this.far.tilePositionX = Math.round(this.distance * 0.1);
+    if (this.bgImage) this.bgImage.tilePositionX = (this.distance * GAME_BG.scroll) / this.bgScale;
     // 폭포 물 흐름 (2프레임 교대)
     this.waterfallTimer += dt;
     if (this.waterfallTimer > 0.22) {

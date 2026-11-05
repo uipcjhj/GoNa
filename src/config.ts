@@ -76,6 +76,22 @@ export const SNACK_ASSETS: Record<SnackKind, string> = {
   cookie: 'assets/snacks/cookie.png',
 };
 
+/**
+ * 게임 플레이 배경 이미지 (없으면 코드로 그린 버섯숲 배경 사용).
+ * game-bg-loop.png 는 tools/build_game_bg.py 가 원본 16:9 배경을
+ * [원본][좌우 반전] 으로 이어 붙여 경계선 없이 반복되게 만든 것입니다.
+ */
+export const GAME_BG = {
+  url: 'assets/game/game-bg-loop.png',
+  /** 원본 이미지에서 게임 지면과 맞닿을 줄(px, 위에서부터). 이 줄이 게임 땅 윗면에 오도록 크기를 맞춤 */
+  groundRow: 300,
+  /** 땅 대비 배경 이동 속도 (패럴랙스) */
+  scroll: 0.3,
+  /** 공룡·간식이 묻히지 않도록 배경 위에 얹는 옅은 안개 (0 = 없음) */
+  haze: 0.3,
+  hazeColor: 0xeef6ec,
+};
+
 export const STORAGE_KEYS = {
   best: 'dino-snack-adventure.best',
   muted: 'dino-snack-adventure.muted',

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, SNACK_ASSETS, type SnackKind } from '../config';
-import { addSheet, buildAllTextures, buildDefaultDinoSheet, snackCanvas, TEX } from '../art/textures';
+import { CHARACTER_ASSET, GAME_BG, SNACK_ASSETS, type SnackKind } from '../config';
+import { addCanvas, addSheet, buildAllTextures, buildDefaultDinoSheet, buildGround, snackCanvas, TEX } from '../art/textures';
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { bus, EV } from '../events';
@@ -46,11 +46,13 @@ export class BootScene extends Phaser.Scene {
       this.load.image(CUSTOM_KEY, CHARACTER_ASSET.url);
     }
     for (const k of SNACK_KINDS) if (SNACK_ASSETS[k]) this.load.image(snackSrcKey(k), SNACK_ASSETS[k]);
+    if (GAME_BG.url) this.load.image(TEX.bgImage, GAME_BG.url);
   }
 
   create(): void {
     buildAllTextures(this);
     const snackIcons = this.setupSnacks();
+    this.setupBackgroundGround();
     const info = this.setupCharacter();
     this.registry.set('character', info);
 
@@ -77,6 +79,45 @@ export class BootScene extends Phaser.Scene {
     };
     bus.emit(EV.ready, preview);
     this.scene.start('Game');
+  }
+
+  /** 배경 이미지가 있으면 그 풀밭 색으로 땅 풀 색을 맞춘 땅 텍스처를 따로 만듦 */
+  private setupBackgroundGround(): void {
+    if (!this.textures.exists(TEX.bgImage)) return;
+    const img = this.textures.get(TEX.bgImage).getSourceImage() as HTMLImageElement;
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    // 지면과 맞닿는 줄 바로 위 풀밭(가운데 쪽)에서 초록 계열 색의 중앙값
+    const y0 = Math.max(0, GAME_BG.groundRow - 14);
+    const data = ctx.getImageData(Math.floor(img.width * 0.15), y0, Math.floor(img.width * 0.7), 14).data;
+    const rs: number[] = [];
+    const gs: number[] = [];
+    const bs: number[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+      if (g > b + 50 && g >= r * 0.85 && g > 120) {
+        rs.push(r);
+        gs.push(g);
+        bs.push(b);
+      }
+    }
+    if (rs.length < 50) return;
+    const med = (a: number[]): number => a.sort((x, y) => x - y)[Math.floor(a.length / 2)];
+    const base = [med(rs), med(gs), med(bs)];
+    const toHex = (v: number[]): string => `#${v.map((n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0')).join('')}`;
+    addCanvas(
+      this,
+      TEX.groundImg,
+      buildGround({
+        grass: toHex(base),
+        grassDark: toHex(base.map((n) => n * 0.72)),
+        grassLight: toHex(base.map((n) => n + (255 - n) * 0.35)),
+      }),
+    );
   }
 
   /** 간식 이미지가 있으면 기본 도트 간식 텍스처를 이미지로 교체 */

@@ -41,6 +41,9 @@ export const TEX = {
   mid: 'bg-mid',
   /** 가까운: 풀숲 · 작은 버섯 · 꽃 · 발자국 돌 */
   near: 'bg-near',
+  /** 이미지 배경 (있을 때) + 그 색에 맞춘 땅 */
+  bgImage: 'bg-image',
+  groundImg: 'ground-img',
   cloud: 'bg-cloud',
   sun: 'bg-sun',
 } as const;
@@ -81,7 +84,7 @@ export function addSheet(
   return n;
 }
 
-function addCanvas(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): void {
+export function addCanvas(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement): void {
   if (scene.textures.exists(key)) scene.textures.remove(key);
   scene.textures.addCanvas(key, canvas);
 }
@@ -96,7 +99,13 @@ export function snackCanvas(kind: 'strawberry' | 'banana' | 'cookie'): HTMLCanva
 }
 
 /** 땅: 위쪽 풀 + 아래쪽 흙 (가로로 이어지는 타일) */
-function buildGround(): HTMLCanvasElement {
+export interface GrassColors {
+  grass: string;
+  grassDark: string;
+  grassLight: string;
+}
+
+export function buildGround(colors?: GrassColors): HTMLCanvasElement {
   const W = 64;
   const H = GROUND_TILE_H;
   const pc = new PixelCanvas(W, H);
@@ -104,9 +113,9 @@ function buildGround(): HTMLCanvasElement {
   const dirt = '#c48a55';
   const dirtDark = '#a06c3e';
   const dirtLight = '#dcaa72';
-  const grass = '#8fcf5a';
-  const grassDark = '#5f9e3c';
-  const grassLight = '#c2ea88';
+  const grass = colors?.grass ?? '#8fcf5a';
+  const grassDark = colors?.grassDark ?? '#5f9e3c';
+  const grassLight = colors?.grassLight ?? '#c2ea88';
 
   pc.rect(0, 0, W, H, dirt);
   // 흙 무늬 (가로 줄무늬 + 자갈)
