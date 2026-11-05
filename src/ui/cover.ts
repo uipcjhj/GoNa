@@ -60,12 +60,17 @@ export class CoverScreen {
   private shown = false;
   private blinkTimer = 0;
   private fallTimer = 0;
+  private hopTimer = 0;
+  private cam: HTMLElement;
+  private clouds: HTMLElement;
+  private gonaEl!: HTMLElement;
+  private sheet: GonaSheetPlayer | null = null;
   /** 소리 테스트 화면 열기 (main 에서 연결) */
   onAudioTest: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
-    private onStart: (fromCover: boolean) => void,
+    private onStart: () => void,
   ) {
     this.root = el('section', 'cover hidden');
     this.root.setAttribute('aria-label', GAME_TITLE);
@@ -95,8 +100,20 @@ export class CoverScreen {
     }
 
     this.clip.append(this.scene);
-    this.stage.append(this.sky, this.ground, this.clip, ...this.corners, this.logoTop);
+    // 천천히 흘러가는 구름 (하늘 띠 안에서 왼쪽 → 오른쪽)
+    this.clouds = el('div', 'cv-clouds');
+    for (let i = 0; i < 4; i++) {
+      const c = new Image();
+      c.src = cloudCanvas(i).toDataURL();
+      c.className = 'cv-cloud';
+      c.style.animationDuration = `${70 + i * 18}s`;
+      c.style.animationDelay = `${-i * 23}s`;
+      c.style.top = `${[8, 44, 22, 62][i]}%`;
+      this.clouds.append(c);
+    }
+    this.stage.append(this.sky, this.ground, this.clip, this.clouds, ...this.corners, this.logoTop);
     this.buildFireflies();
+    this.buildLeaves();
 
     this.btn = el('button', 'start-btn cover-btn');
     this.btn.type = 'button';
@@ -110,7 +127,15 @@ export class CoverScreen {
     test.type = 'button';
     test.addEventListener('click', () => this.onAudioTest?.());
 
-    this.root.append(...this.sides, this.stage, this.ui, test);
+    // 오프닝 다시 보기
+    const replay = el('button', 'ap-open cover-replay', '↺ 오프닝');
+    replay.type = 'button';
+    replay.addEventListener('click', () => this.onReplay?.());
+
+    // 사이드·무대를 한 번에 확대/축소하는 '카메라' 묶음 (알 부화 장면에서 물러나며 등장)
+    this.cam = el('div', 'cv-cam');
+    this.cam.append(...this.sides, this.stage);
+    this.root.append(this.cam, this.ui, test, replay);
     parent.append(this.root);
 
     this.btn.addEventListener('click', () => this.start());
@@ -123,6 +148,9 @@ export class CoverScreen {
     window.addEventListener('resize', () => this.layout());
     void this.load();
   }
+
+  /** 오프닝 다시 보기 (main 에서 연결) */
+  onReplay: (() => void) | null = null;
 
   get isVisible(): boolean {
     return this.shown && !this.started;
@@ -159,6 +187,7 @@ export class CoverScreen {
 
     // 고나: 몸 + 눈 감은 패치 + 머리카락 (한 묶음으로 숨쉬기)
     const g = el('div', 'cv-gona');
+    this.gonaEl = g;
     const gr = L.gona;
     place(g, gr);
     g.style.transformOrigin = `50% 100%`;
@@ -189,26 +218,97 @@ export class CoverScreen {
 
   private async load(): Promise<void> {
     const base = await tryLoadImage(DIR + 'base.webp');
-    if (!base) {
-      // 대표 그림 레이어가 없으면 예전처럼 바로 알 부화 컷신
-      this.started = true;
-      this.onStart(false);
-      return;
+    if (base) {
+      this.sky.style.backgroundImage = `url(${DIR}sky-ext.webp)`;
+      this.ground.style.backgroundImage = `url(${DIR}ground-ext.webp)`;
+    } else {
+      this.root.classList.add('no-art');
     }
-    this.sky.style.backgroundImage = `url(${DIR}sky-ext.webp)`;
-    this.ground.style.backgroundImage = `url(${DIR}ground-ext.webp)`;
-    this.root.classList.remove('hidden');
+    // 고나 스프라이트 시트가 있으면 프레임 애니메이션으로 교체
+    const sheet = await tryLoadImage(GONA_SHEET.url);
+    if (sheet && base) this.sheet = new GonaSheetPlayer(this.gonaEl, sheet);
+  }
+
+  /**
+   * 알 부화 장면이 끝나면 호출: 카메라가 고나 쪽에서 물러나며 대표 타이틀 등장, 로고가 내려오고 버튼이 나타남.
+   * instant: 건너뛰기 — 바로 표시
+   */
+  reveal(instant: boolean): void {
+    this.started = false;
+    this.root.classList.remove('hidden', 'leaving', 'revealed', 'instant');
+    this.btn.classList.remove('pressed');
     this.shown = true;
     this.layout();
-    this.scheduleBlink();
-    // 폭포: 4프레임 순환
-    let k = 0;
-    const frames = this.scene.querySelectorAll<HTMLElement>('.cv-fall-f');
-    this.fallTimer = window.setInterval(() => {
-      frames[k].classList.add('off');
-      k = (k + 1) % frames.length;
-      frames[k].classList.remove('off');
-    }, 140);
+    if (instant) {
+      this.root.classList.add('revealed', 'instant');
+    } else {
+      // 고나 위치를 중심으로 크게 확대된 상태에서 시작 → 1.8초 동안 물러남
+      this.cam.style.transform = 'none'; // 확대 전 위치로 고나 좌표 측정
+      const r = this.gonaEl.getBoundingClientRect();
+      this.cam.style.transform = '';
+      this.cam.style.transformOrigin = `${r.left + r.width / 2}px ${r.top + r.height * 0.6}px`;
+      void this.root.offsetWidth;
+      requestAnimationFrame(() => this.root.classList.add('revealed'));
+    }
+    if (!this.blinkTimer) this.scheduleBlink();
+    if (!this.fallTimer) {
+      let k = 0;
+      const frames = this.scene.querySelectorAll<HTMLElement>('.cv-fall-f');
+      this.fallTimer = window.setInterval(() => {
+        frames[k].classList.add('off');
+        k = (k + 1) % frames.length;
+        frames[k].classList.remove('off');
+      }, 140);
+    }
+    if (!this.hopTimer) this.scheduleHop();
+    this.sheet?.start();
+  }
+
+  /** 오프닝 다시 보기: 잠시 숨김 */
+  hide(): void {
+    this.root.classList.add('hidden');
+    this.shown = false;
+  }
+
+  /** 고나: 가끔 통통 뛰기 (스프라이트 시트가 있으면 시트의 걷기·점프 동작이 대신) */
+  private scheduleHop(): void {
+    this.hopTimer = window.setTimeout(() => {
+      if (!this.sheet && this.isVisible) {
+        this.gonaEl.classList.remove('hop');
+        void this.gonaEl.offsetWidth;
+        this.gonaEl.classList.add('hop');
+        window.setTimeout(() => this.puff(), 760);
+        window.setTimeout(() => this.gonaEl.classList.remove('hop'), 1000);
+      }
+      this.scheduleHop();
+    }, 4200 + Math.random() * 2600);
+  }
+
+  /** 착지 흙먼지 */
+  private puff(): void {
+    const gr = L.gona;
+    for (let i = 0; i < 6; i++) {
+      const d = el('span', 'cv-dust');
+      d.style.left = `${gr.x + gr.w * (0.25 + Math.random() * 0.5)}px`;
+      d.style.top = `${gr.y + gr.h - 18}px`;
+      d.style.setProperty('--dx', `${(i % 2 ? 1 : -1) * (20 + Math.random() * 40)}px`);
+      this.scene.append(d);
+      window.setTimeout(() => d.remove(), 700);
+    }
+  }
+
+  private buildLeaves(): void {
+    const box = el('div', 'cv-leaves');
+    const cols = ['#ffc8d8', '#9fd36a', '#ffe08a', '#f7a6b8', '#7fbf4a'];
+    for (let i = 0; i < 9; i++) {
+      const l = el('span', 'cv-leaf');
+      l.style.left = `${Math.random() * 100}%`;
+      l.style.background = cols[i % cols.length];
+      l.style.animationDuration = `${9 + Math.random() * 7}s`;
+      l.style.animationDelay = `${-Math.random() * 14}s`;
+      box.append(l);
+    }
+    this.stage.append(box);
   }
 
   private scheduleBlink(): void {
@@ -281,6 +381,8 @@ export class CoverScreen {
     this.stage.style.background = 'rgb(150,190,238)';
     // 풀밭: 장면 아래로 (윗줄 색 = 장면 아랫줄 색)
     Object.assign(this.ground.style, { display: '', left: `${extX}px`, top: `${groundTop - 1}px`, width: `${P.w}px`, height: `${Math.max(P.groundH, Hs - groundTop + 2)}px` });
+    // 구름 띠: 로고 아래 ~ 고나 머리 위
+    Object.assign(this.clouds.style, { display: '', left: '0px', top: `${safeTop + logoH * 0.85}px`, width: `${unitsW}px`, height: `${Math.max(60, sceneTop + hairTop - (safeTop + logoH * 0.85) - 10)}px` });
     // 위쪽 모서리 장식
     const [cl, cr] = this.corners;
     for (const c of this.corners) c.style.display = '';
@@ -308,6 +410,8 @@ export class CoverScreen {
     this.scene.style.transform = '';
     this.sky.style.display = 'none';
     this.ground.style.display = 'none';
+    // 구름 띠: 로고 아래 하늘 (양옆 큰 버섯 사이)
+    Object.assign(this.clouds.style, { display: '', left: '440px', top: '440px', width: '760px', height: '90px' });
     for (const c of this.corners) c.style.display = 'none';
     this.logoTop.style.display = 'none';
     this.sceneLogo.style.display = '';
@@ -340,11 +444,113 @@ export class CoverScreen {
     sound.startMusic('title');
     this.btn.classList.add('pressed');
     this.root.classList.add('leaving');
-    window.setTimeout(() => this.onStart(true), 350);
+    window.setTimeout(() => this.onStart(), 350);
     window.setTimeout(() => {
       this.root.classList.add('hidden');
-      clearTimeout(this.blinkTimer);
-      clearInterval(this.fallTimer);
+      this.shown = false;
     }, 900);
+  }
+}
+
+// ───────────────────────── 구름 도트 ─────────────────────────
+
+function cloudCanvas(seed: number): HTMLCanvasElement {
+  const w = 30 + (seed % 2) * 8;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = 12;
+  const g = c.getContext('2d');
+  if (!g) return c;
+  const blob = (cx: number, cy: number, r: number, col: string): void => {
+    g.fillStyle = col;
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r + r) g.fillRect(cx + x, cy + y, 1, 1);
+  };
+  const parts = [
+    [6, 7, 4],
+    [13, 5, 5],
+    [21, 6, 4],
+    [w - 7, 7, 3],
+  ];
+  for (const [x, y, r] of parts) blob(x, y + 1, r, '#d9d3ee');
+  for (const [x, y, r] of parts) blob(x, y, r, '#f6f3ff');
+  return c;
+}
+
+// ───────────────────────── 고나 스프라이트 시트 (선택) ─────────────────────────
+
+/**
+ * 대표 타이틀용 고나 프레임 애니메이션. public/assets/title/gona-title-sheet.png 가 있으면 사용.
+ * 형식: 같은 크기 프레임을 가로로 이어 붙인 투명 PNG (원본 그림과 같은 크기 비율, 프레임 ≈ 380×470px)
+ */
+export const GONA_SHEET = {
+  url: 'assets/title/gona-title-sheet.png',
+  frameCount: 18,
+  /** 동작별 프레임 번호와 속도(ms) */
+  idle: { frames: [0, 1, 2, 3], ms: 320 },
+  blink: { frames: [4], ms: 150 },
+  lookLeft: { frames: [5], ms: 900 },
+  lookRight: { frames: [6], ms: 900 },
+  walk: { frames: [7, 8, 9, 10, 11, 12], ms: 110 },
+  hop: { frames: [13, 14, 15, 16, 17], ms: 110 },
+};
+
+class GonaSheetPlayer {
+  private el: HTMLElement;
+  private timer = 0;
+  private fw: number;
+
+  constructor(
+    private host: HTMLElement,
+    img: HTMLImageElement,
+  ) {
+    this.fw = img.naturalWidth / GONA_SHEET.frameCount;
+    this.el = el('div', 'cv-gona-sheet');
+    Object.assign(this.el.style, {
+      backgroundImage: `url(${img.src})`,
+      backgroundSize: `${GONA_SHEET.frameCount * 100}% 100%`,
+      aspectRatio: `${this.fw} / ${img.naturalHeight}`,
+    });
+    // 원본 몸·눈·머리카락 레이어 대신 시트 사용 (바탕의 고나는 시트 첫 프레임이 덮음)
+    host.querySelectorAll<HTMLElement>('.cv-px').forEach((e) => (e.style.visibility = 'hidden'));
+    host.classList.add('has-sheet');
+    host.append(this.el);
+  }
+
+  private show(f: number): void {
+    this.el.style.backgroundPosition = `${(f / (GONA_SHEET.frameCount - 1)) * 100}% 0`;
+  }
+
+  private play(seq: { frames: number[]; ms: number }, loops: number, done: () => void): void {
+    let i = 0;
+    const total = seq.frames.length * loops;
+    const step = (): void => {
+      this.show(seq.frames[i % seq.frames.length]);
+      i++;
+      if (i >= total) this.timer = window.setTimeout(done, seq.ms);
+      else this.timer = window.setTimeout(step, seq.ms);
+    };
+    step();
+  }
+
+  /** 대기(숨쉬기) 사이사이에 깜빡임·두리번·두세 걸음 걷기·통통 뛰기를 섞어 반복 */
+  start(): void {
+    clearTimeout(this.timer);
+    const acts = ['blink', 'idle', 'lookLeft', 'blink', 'walk', 'idle', 'lookRight', 'hop', 'idle'] as const;
+    let k = 0;
+    const next = (): void => {
+      const a = acts[k++ % acts.length];
+      if (a === 'walk') {
+        // 두세 걸음 앞으로 갔다가 돌아오기
+        this.host.style.transition = 'translate 1.3s linear';
+        this.host.style.translate = '-40px 0';
+        this.play(GONA_SHEET.walk, 2, () => {
+          this.host.style.translate = '0 0';
+          this.play(GONA_SHEET.walk, 2, next);
+        });
+        return;
+      }
+      this.play(GONA_SHEET[a], a === 'idle' ? 3 : 1, next);
+    };
+    next();
   }
 }

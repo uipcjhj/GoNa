@@ -115,6 +115,8 @@ export class BootScene extends Phaser.Scene {
     };
     bus.emit(EV.ready, preview);
     this.scene.start('Game');
+    // 게임을 처음 열면 알 부화 시네마틱부터 (게임 장면 위에 겹쳐 그림)
+    this.scene.launch('Opening');
   }
 
   /** 텍스처의 프레임 하나를 캔버스로 */

@@ -3,8 +3,9 @@ import './style.css';
 import { VIEW } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
+import { OpeningScene } from './scenes/OpeningScene';
+import { el } from './ui/dom';
 import { Overlay } from './ui/overlay';
-import { TitleScreen } from './ui/title';
 import { CoverScreen } from './ui/cover';
 import { AudioPanel } from './ui/audioPanel';
 import { bus, EV } from './events';
@@ -36,9 +37,31 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
-  const title = new TitleScreen(ui);
-  // 대표 타이틀 → (게임 시작) → 알 부화 컷신 → 1단계
-  const cover = new CoverScreen(ui, (fromCover) => title.beginIntro(fromCover));
+  // 흐름: 알 부화 시네마틱(Phaser) → 카메라가 물러나며 대표 타이틀(움직임) → 게임 시작 → 1단계
+  const cover = new CoverScreen(ui, () => bus.emit(EV.requestStart));
+  // 시네마틱 중 화면 위 작은 UI: 건너뛰기 · 소리 안내
+  let openingActive = false;
+  const opUi = el('div', 'opening-ui hidden');
+  const skipBtn = el('button', 'ap-open op-skip', '건너뛰기 ▶▶');
+  skipBtn.type = 'button';
+  skipBtn.addEventListener('click', () => bus.emit(EV.skipOpening));
+  const soundHint = el('p', 'op-hint', '🔊 화면을 터치하면 소리가 켜져요');
+  opUi.append(soundHint, skipBtn);
+  ui.append(opUi);
+  bus.on(EV.openingStart, () => {
+    openingActive = true;
+    opUi.classList.remove('hidden');
+    soundHint.classList.toggle('hidden', sound.ready);
+  });
+  bus.on(EV.openingDone, (info: { instant: boolean }) => {
+    openingActive = false;
+    opUi.classList.add('hidden');
+    cover.reveal(info.instant);
+  });
+  cover.onReplay = () => {
+    cover.hide();
+    game.scene.start('Opening');
+  };
   const overlay = new Overlay(ui);
   const audioPanel = new AudioPanel(ui);
   cover.onAudioTest = () => audioPanel.open();
@@ -58,7 +81,7 @@ async function boot(): Promise<void> {
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
     input: { keyboard: false, mouse: false, touch: false },
-    scene: [BootScene, GameScene],
+    scene: [BootScene, GameScene, OpeningScene],
   });
 
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
@@ -89,12 +112,13 @@ async function boot(): Promise<void> {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     sound.unlock();
-    // 타이틀: 컷신 중 터치 = 건너뛰기, 컷신 후 터치 = 게임 시작 (시작 버튼도 그대로)
-    if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
-    if (title.isVisible) {
-      title.handleTap();
+    // 시네마틱 중 터치: 소리만 켬 (건너뛰기는 버튼으로)
+    if (openingActive) {
+      sound.startMusic('title');
+      soundHint.classList.add('hidden');
       return;
     }
+    if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
     if (overlay.isGameOverVisible) return;
     bus.emit(EV.tap);
   };
@@ -106,8 +130,8 @@ async function boot(): Promise<void> {
     if (ev.code === 'Space' || ev.code === 'ArrowUp' || ev.code === 'KeyW') {
       ev.preventDefault();
       sound.unlock();
-      if (cover.isVisible) cover.start();
-      else if (title.isVisible) title.handleTap();
+      if (openingActive) bus.emit(EV.skipOpening);
+      else if (cover.isVisible) cover.start();
       else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);
     } else if (ev.code === 'KeyP' || ev.code === 'Escape') {

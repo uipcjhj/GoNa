@@ -24,6 +24,11 @@ export const EV = {
   evolveStart: 'evolveStart',
   evolve: 'evolve',
   evolveEnd: 'evolveEnd',
+  /** 오프닝 시네마틱: 시작 / 끝(→대표 타이틀, { instant }) / 건너뛰기 요청 / 다시 보기 요청 */
+  openingStart: 'openingStart',
+  openingDone: 'openingDone',
+  skipOpening: 'skipOpening',
+  replayOpening: 'replayOpening',
   /** 화면 터치 */
   tap: 'tap',
 } as const;

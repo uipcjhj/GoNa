@@ -9,10 +9,10 @@ const { chromium, devices } = require('playwright');
 const S = process.argv[2] || require('os').tmpdir();
 const URL = process.env.GAME_URL || 'http://localhost:4173/';
 const results = [];
-/** 대표 타이틀의 '게임 시작' → 알 부화 컷신 → (자동) 1단계 시작까지 */
+/** 알 부화 시네마틱 → 대표 타이틀 등장 → '게임 시작' → 1단계 시작까지 */
 async function startFromTitle(page) {
-  await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 });
-  await page.waitForTimeout(700);
+  await page.waitForSelector('.cover.revealed', { timeout: 15000 });
+  await page.waitForTimeout(2600); // 카메라 물러남 + 버튼 나타남
   const box = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.state === 'playing', null, { timeout: 12000 });
@@ -208,31 +208,36 @@ async function introTests(label, device) {
   const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', e => errs.push(e.message));
-  await page.addInitScript(() => {
-    window.__seq = [];
-    new MutationObserver((ms) => { for (const m of ms) { const c = m.target.className || ''; if (typeof c !== 'string') continue;
-      if (/egg-hair peek/.test(c)) window.__seq.push('hair'); if (/t-baby pop/.test(c)) window.__seq.push('hatch'); } })
-      .observe(document, { attributes: true, subtree: true, attributeFilter: ['class'] });
-  });
   await page.goto(URL + '?test');
-  await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 });
-  // 첫 화면: 버튼 누르기 전까지 대기 (컷신·게임 시작 안 함), 버튼 아닌 곳 터치해도 그대로
+  await page.waitForFunction(() => window.__gona?.scene.isActive('Opening'), null, { timeout: 8000 });
+  // 시네마틱 진행 기록: 머리카락이 나온 시각, 아기가 나온 시각
+  await page.evaluate(() => {
+    window.__tl = {}; const t0 = performance.now();
+    const iv = setInterval(() => { const o = window.__gona.scene.getScene('Opening'); if (!o || !o.hair) return;
+      if (!window.__tl.hair && Math.abs(o.hair.y - o.hair.getData('upY')) < 2) window.__tl.hair = performance.now() - t0;
+      if (!window.__tl.baby && o.baby.visible) window.__tl.baby = performance.now() - t0;
+      if (!window.__tl.zoom && o.cameras.main.zoom > 0) window.__tl.zoom0 = o.cameras.main.zoom;
+      if (window.__tl.baby) clearInterval(iv); }, 20);
+  });
+  const st0 = await page.evaluate(() => ({ cover: document.querySelector('.cover').classList.contains('hidden'), game: window.__gona.scene.getScene('Game').state }));
+  check(`${label}: starts with egg cinematic (title hidden)`, st0.cover && st0.game === 'ready', JSON.stringify(st0));
   const vp = page.viewportSize();
-  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3);
-  await page.waitForTimeout(5000);
-  const w = await page.evaluate(() => ({ cover: !document.querySelector('.cover').classList.contains('hidden'), seq: window.__seq.length, wobble: !!document.querySelector('.t-egg.wobble'), state: window.__gona.scene.getScene('Game').state }));
-  check(`${label}: cover waits until start button`, w.cover && w.seq === 0 && !w.wobble && w.state === 'ready', JSON.stringify(w));
-  const audio1 = await page.evaluate(() => window.__sound.ready);
-  check(`${label}: first touch unlocks audio`, audio1 === true);
-  // 시작 버튼 → 알 부화 → 1단계 자동 시작
+  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.5); // 시네마틱 중 터치 = 소리만 켬
+  await page.waitForTimeout(300);
+  const t1 = await page.evaluate(() => ({ audio: window.__sound.ready, game: window.__gona.scene.getScene('Game').state, op: window.__gona.scene.isActive('Opening') }));
+  check(`${label}: tap during cinematic unlocks audio only`, t1.audio && t1.game === 'ready' && t1.op, JSON.stringify(t1));
+  await page.waitForSelector('.cover.revealed', { timeout: 15000 });
+  const tl = await page.evaluate(() => window.__tl);
+  check(`${label}: hair peeks before hatch`, tl.hair > 0 && tl.baby > tl.hair, JSON.stringify(tl));
+  await page.waitForTimeout(2600);
+  const st1 = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity }));
+  check(`${label}: title revealed after cinematic`, !st1.op && st1.btn === '1', JSON.stringify(st1));
   const box = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 12000 });
-  const seq = [...new Set(await page.evaluate(() => window.__seq))];
-  check(`${label}: cover → hair peek → hatch → game`, seq.join(',') === 'hair,hatch', seq.join(','));
-  const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { stage: s.growth.stageIndex, nest: s.nestBack.visible, cover: document.querySelector('.cover').classList.contains('hidden') }; });
-  check(`${label}: starts stage 1 in nest`, st.stage === 0 && st.nest && st.cover, JSON.stringify(st));
-  // 배경음악: 파일(<audio>)이 실제로 재생 중인지 + 효과음(Web Audio) 출력 레벨
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 5000 });
+  const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { stage: s.growth.stageIndex, nest: s.nestBack.visible, op: window.__gona.scene.isActive('Opening') }; });
+  check(`${label}: start → stage 1 nest, no egg replay`, st.stage === 0 && st.nest && !st.op, JSON.stringify(st));
+  // 배경음악 파일 재생 + 효과음 레벨
   const ms = await page.evaluate(() => window.__sound.status());
   check(`${label}: game music file playing`, ms.musicMode === 'game' && ms.musicSource === 'file' && ms.musicPlaying && ms.errors.length === 0, `${ms.musicFile} ${ms.errors.join('|')}`);
   const level = await page.evaluate(() => new Promise((res) => { const s = window.__sound; const an = s.ctx.createAnalyser(); s.master.connect(an);
@@ -240,16 +245,21 @@ async function introTests(label, device) {
     const buf = new Float32Array(2048); let peak = 0; const t0 = performance.now();
     const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); if (performance.now() - t0 > 600) { clearInterval(iv); res(peak); } }, 20); }));
   check(`${label}: sfx audible (web audio level)`, level > 0.2, `peak ${level.toFixed(3)}`);
-  // 컷신 건너뛰기: 컷신 중 터치 → 바로 1단계
-  await page.reload(); await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 }); await page.waitForTimeout(600);
-  const box2 = await page.locator('.cover-btn').boundingBox();
-  await page.touchscreen.tap(box2.x + box2.width / 2, box2.y + box2.height / 2);
-  await page.waitForTimeout(1200);
-  await page.touchscreen.tap(vp.width / 2, vp.height * 0.4);
-  const t0 = Date.now();
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 8000 });
-  check(`${label}: tap skips cutscene`, Date.now() - t0 < 3500, `${Date.now() - t0}ms`);
-  check(`${label}: no page errors (intro)`, errs.length === 0, errs.join(' | '));
+  // 건너뛰기
+  await page.reload();
+  await page.waitForFunction(() => window.__gona?.scene.isActive('Opening'), null, { timeout: 8000 });
+  await page.waitForTimeout(800);
+  await page.locator('.op-skip').click();
+  await page.waitForTimeout(400);
+  const sk = await page.evaluate(() => ({ cover: document.querySelector('.cover').className, op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity }));
+  check(`${label}: skip button → title immediately`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1', JSON.stringify(sk));
+  // 오프닝 다시 보기
+  await page.locator('.cover-replay').click();
+  await page.waitForTimeout(400);
+  const rp = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), hidden: document.querySelector('.cover').classList.contains('hidden') }));
+  check(`${label}: replay opening`, rp.op && rp.hidden, JSON.stringify(rp));
+  await page.waitForSelector('.cover.revealed', { timeout: 15000 });
+  check(`${label}: no page errors (opening)`, errs.length === 0, errs.join(' | '));
   await b.close();
 }
 
