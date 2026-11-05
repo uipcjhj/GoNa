@@ -56,6 +56,10 @@ export const DINO_FRAMES: readonly (readonly string[])[] = [
   [...DINO_TOP, '...kGGk....kGGk.....', '...kkk.....kkk......'],
 ];
 
+/** 타이틀용 눈 감은 프레임 (눈 픽셀을 눈꺼풀 색으로) */
+export const DINO_BLINK: readonly string[] = DINO_FRAMES[0].map((row, y) => (y === 11 ? row.replace(/e/g, 'c') : row));
+export const DINO_BLINK_PALETTE: Palette = { ...DINO_PALETTE, c: '#d9a98a' };
+
 // ───────────────────────── 간식 ─────────────────────────
 
 export const STRAWBERRY = {

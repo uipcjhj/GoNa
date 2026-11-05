@@ -1,10 +1,18 @@
 import Phaser from 'phaser';
 import { CHARACTER_ASSET } from '../config';
 import { addSheet, buildAllTextures, buildDefaultDinoSheet, TEX } from '../art/textures';
-import { DINO_FRAMES } from '../art/sprites';
+import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
+import { mapToCanvas } from '../art/PixelCanvas';
 import { bus, EV } from '../events';
 
 const CUSTOM_KEY = 'dino-custom-src';
+
+/** 타이틀 화면에 보낼 캐릭터 그림 */
+export interface CharacterPreview {
+  idle: HTMLCanvasElement;
+  /** 눈 감은 프레임 (없으면 깜빡임 생략) */
+  blink: HTMLCanvasElement | null;
+}
 
 /** 캐릭터 프레임 정보 (GameScene 에서 사용) */
 export interface CharacterInfo {
@@ -47,7 +55,15 @@ export class BootScene extends Phaser.Scene {
       frameRate: 1,
     });
 
-    bus.emit(EV.ready, this.previewCanvas(info));
+    const preview: CharacterPreview = {
+      idle: this.frameCanvas(info, Math.min(Math.max(0, CHARACTER_ASSET.titleFrame), info.frameCount - 1)),
+      blink: info.custom
+        ? CHARACTER_ASSET.blinkFrame >= 0 && CHARACTER_ASSET.blinkFrame < info.frameCount
+          ? this.frameCanvas(info, CHARACTER_ASSET.blinkFrame)
+          : null
+        : mapToCanvas(DINO_BLINK, DINO_BLINK_PALETTE),
+    };
+    bus.emit(EV.ready, preview);
     this.scene.start('Game');
   }
 
@@ -83,8 +99,8 @@ export class BootScene extends Phaser.Scene {
     };
   }
 
-  /** 타이틀 화면용 캐릭터 미리보기 (첫 프레임) */
-  private previewCanvas(info: CharacterInfo): HTMLCanvasElement {
+  /** 시트에서 프레임 하나를 잘라 캔버스로 (타이틀 화면용) */
+  private frameCanvas(info: CharacterInfo, frame: number): HTMLCanvasElement {
     const src = this.textures.get(TEX.dino).getSourceImage() as HTMLImageElement | HTMLCanvasElement;
     const c = document.createElement('canvas');
     c.width = info.frameWidth;
@@ -92,7 +108,10 @@ export class BootScene extends Phaser.Scene {
     const ctx = c.getContext('2d');
     if (ctx) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(src, 0, 0, info.frameWidth, info.frameHeight, 0, 0, info.frameWidth, info.frameHeight);
+      const cols = Math.max(1, Math.floor(src.width / info.frameWidth));
+      const sx = (frame % cols) * info.frameWidth;
+      const sy = Math.floor(frame / cols) * info.frameHeight;
+      ctx.drawImage(src, sx, sy, info.frameWidth, info.frameHeight, 0, 0, info.frameWidth, info.frameHeight);
     }
     return c;
   }

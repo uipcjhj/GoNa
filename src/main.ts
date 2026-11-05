@@ -4,6 +4,7 @@ import { VIEW } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { Overlay } from './ui/overlay';
+import { TitleScreen } from './ui/title';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -33,6 +34,7 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
+  const title = new TitleScreen(ui);
   const overlay = new Overlay(ui);
 
   const size = computeSize();
@@ -72,7 +74,8 @@ async function boot(): Promise<void> {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     sound.unlock();
-    if (overlay.isGameOverVisible) return;
+    // 타이틀에서는 '게임 시작' 버튼으로만 시작
+    if (title.isVisible || overlay.isGameOverVisible) return;
     bus.emit(EV.tap);
   };
   document.addEventListener('pointerdown', onPointer, { passive: false });
@@ -83,7 +86,8 @@ async function boot(): Promise<void> {
     if (ev.code === 'Space' || ev.code === 'ArrowUp' || ev.code === 'KeyW') {
       ev.preventDefault();
       sound.unlock();
-      if (overlay.isGameOverVisible) overlay.tryRetry();
+      if (title.isVisible) title.begin();
+      else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);
     } else if (ev.code === 'KeyP' || ev.code === 'Escape') {
       bus.emit(overlay.isPaused ? EV.requestResume : EV.requestPause);

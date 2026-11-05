@@ -4,8 +4,10 @@ import Phaser from 'phaser';
 export const bus = new Phaser.Events.EventEmitter();
 
 export const EV = {
-  /** 텍스처 준비 완료: (previewCanvas: HTMLCanvasElement) */
+  /** 텍스처 준비 완료: (preview: CharacterPreview) */
   ready: 'ready',
+  /** 타이틀 → 게임 시작 요청 */
+  requestStart: 'requestStart',
   /** 게임 시작 */
   start: 'start',
   /** 게임 오버: ({ score, best, isNewBest }) */

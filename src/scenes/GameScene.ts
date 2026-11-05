@@ -163,6 +163,9 @@ export class GameScene extends Phaser.Scene {
     const onTap = (): void => this.handleTap();
     const onPause = (): void => this.pauseGame();
     const onResume = (): void => this.resumeGame();
+    const onRequestStart = (): void => {
+      if (this.state === 'ready') this.startGame();
+    };
     const onRestart = (): void => {
       this.scene.restart({ autoStart: true });
     };
@@ -170,11 +173,13 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.requestPause, onPause);
     bus.on(EV.requestResume, onResume);
     bus.on(EV.restart, onRestart);
+    bus.on(EV.requestStart, onRequestStart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off(EV.tap, onTap);
       bus.off(EV.requestPause, onPause);
       bus.off(EV.requestResume, onResume);
       bus.off(EV.restart, onRestart);
+      bus.off(EV.requestStart, onRequestStart);
       this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
     });
 

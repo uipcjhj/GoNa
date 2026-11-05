@@ -3,7 +3,7 @@
  * 숫자만 바꿔도 난이도/느낌을 쉽게 조절할 수 있습니다.
  */
 
-export const GAME_TITLE = '우리애기 공룡의 간식 대모험';
+export const GAME_TITLE = 'GONA’s Food Adventure';
 
 /** 화면(논리 해상도). 픽셀이 큼직하게 보이도록 낮은 해상도로 그린 뒤 확대합니다. */
 export const VIEW = {
@@ -75,6 +75,40 @@ export const CHARACTER_ASSET = {
   /** 점프 프레임 번호 (없으면 0번 사용) */
   jumpFrame: 2,
   runFps: 9,
+  /** 타이틀 화면에서 보여줄 프레임 번호 */
+  titleFrame: 0,
+  /** 눈 깜빡임 프레임 번호 (-1 이면 사용 안 함, 통통 뛰는 효과만) */
+  blinkFrame: -1,
   /** 화면에 표시할 캐릭터 높이(px, 논리 해상도 기준). 큰 이미지도 이 크기로 맞춰집니다. */
   displayHeight: 24,
+};
+
+/**
+ * ───────────── 타이틀(오프닝) 화면 이미지 교체 설정 ─────────────
+ *
+ * 레이어 구성 (아래 → 위):
+ *   1. 배경        public/assets/title/title-bg.png  (없으면 코드로 그린 버섯숲)
+ *   2. 앞 장식     public/assets/title/title-fg.png  (선택, 투명 PNG · 살랑살랑 흔들림)
+ *   3. 캐릭터      public/assets/character/dino.png (없으면 기본 공룡)
+ *   4. 제목 로고   public/assets/title/logo.png     (선택, 없으면 글자 로고)
+ *   5. 시작 버튼   HTML 버튼
+ *
+ * 배경 그림은 화면 비율과 상관없이 잘리지 않도록 전체가 보이게 맞추고,
+ * 남는 여백은 그림 위/아래 가장자리 색으로 자연스럽게 채웁니다.
+ * title-fg.png 는 title-bg.png 와 같은 크기로 만들어 주세요.
+ */
+export const TITLE_ASSETS = {
+  background: 'assets/title/title-bg.png',
+  foreground: 'assets/title/title-fg.png',
+  logo: 'assets/title/logo.png',
+};
+
+/** 타이틀 배경 위 캐릭터 위치 (배경 그림 크기에 대한 비율, 0~1) */
+export const TITLE_LAYOUT = {
+  /** 캐릭터 가로 중심 */
+  characterX: 0.5,
+  /** 캐릭터 발이 닿는 높이 (배경 그림의 땅 위치에 맞춰 조절) */
+  characterGroundY: 0.83,
+  /** 캐릭터 키 (배경 높이 대비) */
+  characterHeight: 0.27,
 };

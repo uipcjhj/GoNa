@@ -49,6 +49,21 @@ export class PixelCanvas {
     }
   }
 
+  /** 그려진 모양 바깥쪽 둘레에 1px 외곽선 (스타듀풍 테두리) */
+  outline(color: string): void {
+    const { width: w, height: h } = this;
+    const data = this.ctx.getImageData(0, 0, w, h).data;
+    const solid = (x: number, y: number): boolean =>
+      x >= 0 && y >= 0 && x < w && y < h && data[(y * w + x) * 4 + 3] > 0;
+    this.ctx.fillStyle = color;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (solid(x, y)) continue;
+        if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) this.ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
   /** 문자열 도트맵 그리기. '.' 과 ' ' 는 투명. */
   map(rows: readonly string[], palette: Palette, ox = 0, oy = 0): void {
     rows.forEach((row, y) => {

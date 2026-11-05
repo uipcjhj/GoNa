@@ -105,6 +105,11 @@ class Sound {
   gameOver(): void {
     [NOTE.G4, NOTE.E4, NOTE.C4, NOTE.G3].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.16, i * 0.18));
   }
+  /** 타이틀에서 게임 시작 버튼 */
+  start(): void {
+    [NOTE.C5, NOTE.E5, NOTE.G5].forEach((f, i) => this.tone(f, 0.1, 'square', 0.08, i * 0.07));
+    this.tone(NOTE.C5 * 2, 0.22, 'triangle', 0.1, 0.21);
+  }
   newRecord(): void {
     [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C5 * 2].forEach((f, i) => this.tone(f, 0.14, 'square', 0.08, i * 0.1));
   }
