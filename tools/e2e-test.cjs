@@ -11,7 +11,7 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
 const results = [];
 /** 대표 타이틀의 '게임 시작' → 알 부화 컷신 → (자동) 1단계 시작까지 */
 async function startFromTitle(page) {
-  await page.waitForSelector('.cover-img', { timeout: 8000 });
+  await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 });
   await page.waitForTimeout(700);
   const box = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
@@ -116,7 +116,7 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   const scoreTxt = await page.locator('.score-big').textContent();
   check(`${label}: game over screen`, over, scoreTxt);
   await page.screenshot({ path: `${S}/t5-${label}-over.png` });
-  await page.locator('.pixel-btn').click(); await page.waitForTimeout(800);
+  await page.locator('.over-screen .pixel-btn').click(); await page.waitForTimeout(800);
   const rs = await ev((sc) => ({ state: sc.state, hearts: sc.hearts, score: sc.score }));
   check(`${label}: retry`, rs.state === 'playing' && rs.hearts === 3 && rs.score === 0, JSON.stringify(rs));
   await page.waitForTimeout(1200);
@@ -194,7 +194,7 @@ async function growthTests(label, device) {
   await page.waitForTimeout(2000);
   const overText = await page.locator('.growth-line').textContent();
   check(`${label}: game over shows growth`, overText.includes('4/4') && overText.includes('빅베이비'), overText);
-  await page.locator('.pixel-btn').click(); await page.waitForTimeout(800);
+  await page.locator('.over-screen .pixel-btn').click(); await page.waitForTimeout(800);
   const rs = await g();
   check(`${label}: retry restarts as newborn (rule)`, rs.stage === 0 && rs.gauge === 0 && rs.vis === 'newborn', JSON.stringify(rs));
   const bestStage = await page.evaluate(() => localStorage.getItem('dino-snack-adventure.bestStage'));
@@ -215,7 +215,7 @@ async function introTests(label, device) {
       .observe(document, { attributes: true, subtree: true, attributeFilter: ['class'] });
   });
   await page.goto(URL + '?test');
-  await page.waitForSelector('.cover-img', { timeout: 8000 });
+  await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 });
   // 첫 화면: 버튼 누르기 전까지 대기 (컷신·게임 시작 안 함), 버튼 아닌 곳 터치해도 그대로
   const vp = page.viewportSize();
   await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3);
@@ -232,13 +232,16 @@ async function introTests(label, device) {
   check(`${label}: cover → hair peek → hatch → game`, seq.join(',') === 'hair,hatch', seq.join(','));
   const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { stage: s.growth.stageIndex, nest: s.nestBack.visible, cover: document.querySelector('.cover').classList.contains('hidden') }; });
   check(`${label}: starts stage 1 in nest`, st.stage === 0 && st.nest && st.cover, JSON.stringify(st));
-  // 실제 출력 레벨 (음악 + 효과음)
+  // 배경음악: 파일(<audio>)이 실제로 재생 중인지 + 효과음(Web Audio) 출력 레벨
+  const ms = await page.evaluate(() => window.__sound.status());
+  check(`${label}: game music file playing`, ms.musicMode === 'game' && ms.musicSource === 'file' && ms.musicPlaying && ms.errors.length === 0, `${ms.musicFile} ${ms.errors.join('|')}`);
   const level = await page.evaluate(() => new Promise((res) => { const s = window.__sound; const an = s.ctx.createAnalyser(); s.master.connect(an);
+    s.pickup(30);
     const buf = new Float32Array(2048); let peak = 0; const t0 = performance.now();
-    const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); if (performance.now() - t0 > 900) { clearInterval(iv); res(peak); } }, 30); }));
-  check(`${label}: music audible in game`, level > 0.05, `peak ${level.toFixed(3)}`);
+    const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); if (performance.now() - t0 > 600) { clearInterval(iv); res(peak); } }, 20); }));
+  check(`${label}: sfx audible (web audio level)`, level > 0.2, `peak ${level.toFixed(3)}`);
   // 컷신 건너뛰기: 컷신 중 터치 → 바로 1단계
-  await page.reload(); await page.waitForSelector('.cover-img', { timeout: 8000 }); await page.waitForTimeout(600);
+  await page.reload(); await page.waitForSelector('.cover:not(.hidden) .cv-base', { timeout: 8000 }); await page.waitForTimeout(600);
   const box2 = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box2.x + box2.width / 2, box2.y + box2.height / 2);
   await page.waitForTimeout(1200);

@@ -6,6 +6,7 @@ import { GameScene } from './scenes/GameScene';
 import { Overlay } from './ui/overlay';
 import { TitleScreen } from './ui/title';
 import { CoverScreen } from './ui/cover';
+import { AudioPanel } from './ui/audioPanel';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -39,6 +40,9 @@ async function boot(): Promise<void> {
   // 대표 타이틀 → (게임 시작) → 알 부화 컷신 → 1단계
   const cover = new CoverScreen(ui, (fromCover) => title.beginIntro(fromCover));
   const overlay = new Overlay(ui);
+  const audioPanel = new AudioPanel(ui);
+  cover.onAudioTest = () => audioPanel.open();
+  overlay.onAudioTest = () => audioPanel.open();
 
   const size = computeSize();
   const game = new Phaser.Game({
@@ -81,7 +85,7 @@ async function boot(): Promise<void> {
   // ── 터치 입력: 화면 어디를 눌러도 점프 (버튼 제외)
   const onPointer = (ev: PointerEvent): void => {
     const target = ev.target as HTMLElement | null;
-    if (target?.closest('button')) return;
+    if (target?.closest('button') || target?.closest('.audio-panel')) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     sound.unlock();

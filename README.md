@@ -77,10 +77,17 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 
 ## 시작 흐름
 
-1. **대표 타이틀** (`public/assets/title/cover.webp`, 원본 `art-src/title/`) — 그림 위 '게임 시작' 버튼, 누를 때까지 대기
+1. **대표 타이틀** (원본 `art-src/title/gona-cover-original.png` → `python3 tools/build_cover_layers.py` → `public/assets/title/cover/`)
+   - 세로: 모바일 전용 구도(위 로고 · 가운데 고나와 버섯숲 · 아래 풀밭 위 시작 버튼), 남는 위아래는 원본 색으로 새로 그린 도트 하늘·풀밭
+   - 가로: 원본 16:9 구도, 양옆은 원본 가장자리를 거울처럼 이어 어둡게
+   - 움직임: 고나 숨쉬기·눈 깜빡임·머리카락 살랑, 버섯·덩굴 살랑, 폭포 흐름, 반딧불, 시작 버튼 반짝임
 2. 버튼 → **알 부화 컷신** → 3. 자동으로 **1단계 둥지 이동** 시작 (컷신 중 터치 = 건너뛰기)
 
 ## 사운드
+
+- 배경음악·효과음 파일: `public/assets/audio/*.mp3` (`node tools/render_audio.cjs` 로 게임의 합성 코드에서 녹음, ffmpeg 필요)
+- 배경음악은 HTML `<audio>` 로 재생 (아이폰 무음 스위치와 무관), 효과음은 Web Audio 합성(안 되면 파일로 대체)
+- **소리 테스트 화면**: 대표 타이틀 왼쪽 위 / 일시정지 화면 / 주소 끝 `?audiotest`
 
 - 모든 효과음·BGM 은 Web Audio 로 즉석 합성 (`src/audio.ts`). iPhone: 첫 터치/클릭 때 오디오 시작 + 무음 버퍼로 깨우기 + `audioSession = playback`
 - BGM 'Dream Nest' (오리지널): 대표 타이틀·컷신은 느리고 몽환적(패드·글로켄·메아리), 게임은 같은 테마에 가벼운 킥·셰이커·베이스 추가

@@ -1172,3 +1172,344 @@ h2 {
 .cover.side .cover-btn {
   font-size: calc(var(--b) * 4.4);
 }
+
+/* ═════════════════ 대표 타이틀 v2: 레이어로 움직이는 오프닝 ═════════════════ */
+.cover {
+  background: #96beee;
+}
+
+.cv-stage {
+  position: absolute;
+  transform-origin: 0 0;
+  overflow: hidden;
+}
+
+.cv-px,
+.cv-sway,
+.cv-sky,
+.cv-ground,
+.cv-corner,
+.cv-side {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.cv-px {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+.cv-px.off {
+  visibility: hidden;
+}
+
+.cv-clip {
+  position: absolute;
+  overflow: hidden;
+}
+
+.cv-scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.cv-sky,
+.cv-ground {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.cv-ground {
+  background-size: 100% auto;
+  background-repeat: repeat-y;
+}
+
+/* 큰 버섯·덩굴: 가장자리가 부드럽게 사라지는 영역 안에서 살랑 (흐림 아님 — 테두리만 투명하게) */
+.cv-sway {
+  position: absolute;
+  background-repeat: no-repeat;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 52%, transparent 74%);
+  mask-image: radial-gradient(ellipse at center, #000 52%, transparent 74%);
+}
+
+.cv-sway.from-bottom {
+  transform-origin: 50% 100%;
+  animation: cv-sway-mush 5.2s ease-in-out infinite;
+}
+
+.cv-sway.from-top {
+  transform-origin: 50% 0%;
+  animation: cv-sway-vine 4.2s ease-in-out infinite;
+}
+
+@keyframes cv-sway-mush {
+  0%,
+  100% {
+    transform: skewX(-0.7deg);
+  }
+  50% {
+    transform: skewX(0.7deg);
+  }
+}
+
+@keyframes cv-sway-vine {
+  0%,
+  100% {
+    transform: rotate(-1.4deg);
+  }
+  50% {
+    transform: rotate(1.4deg);
+  }
+}
+
+.cv-fall {
+  position: absolute;
+}
+
+/* 고나: 작게 숨쉬기 */
+.cv-gona {
+  position: absolute;
+  animation: cv-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes cv-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.008, 1.022);
+  }
+}
+
+/* 물방울 머리카락: 살랑 */
+.cv-hair {
+  animation: cv-hair 2.6s ease-in-out infinite;
+}
+
+@keyframes cv-hair {
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+.cv-logo-top {
+  animation: logo-float 4s ease-in-out infinite;
+}
+
+/* 세로 구도 위 모서리: 원본의 큰 버섯·덩굴 모서리, 안쪽으로 부드럽게 사라짐 */
+.cv-corner {
+  position: absolute;
+  background-repeat: no-repeat;
+  animation: cv-sway-vine 6s ease-in-out infinite;
+  transform-origin: 50% 0;
+}
+
+.cv-corner-l {
+  -webkit-mask-image: radial-gradient(ellipse at 0% 0%, #000 55%, transparent 80%);
+  mask-image: radial-gradient(ellipse at 0% 0%, #000 55%, transparent 80%);
+}
+
+.cv-corner-r {
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, #000 55%, transparent 80%);
+  mask-image: radial-gradient(ellipse at 100% 0%, #000 55%, transparent 80%);
+  animation-delay: -2s;
+}
+
+/* 가로 구도 양옆: 원본 가장자리를 거울처럼 (살짝 어둡게) */
+.cv-side {
+  position: absolute;
+  background-repeat: no-repeat;
+  transform: scaleX(-1);
+  filter: brightness(0.62) saturate(0.85);
+}
+
+/* 반딧불 · 빛 입자 */
+.cv-flies {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cv-fly {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #fff6c4;
+  box-shadow: 0 0 10px 4px rgba(255, 240, 160, 0.55);
+  animation: cv-fly-move 9s ease-in-out infinite, cv-fly-glow 2s ease-in-out infinite;
+  opacity: 0;
+}
+
+.cv-fly.big {
+  width: 9px;
+  height: 9px;
+  background: #e9ffd0;
+  box-shadow: 0 0 14px 6px rgba(210, 255, 170, 0.45);
+}
+
+@keyframes cv-fly-move {
+  0% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(26px, -40px);
+  }
+  66% {
+    transform: translate(-18px, -70px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes cv-fly-glow {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+.cover.portrait .cover-btn {
+  font-size: calc(var(--b) * 5.6);
+}
+
+/* ═════════════════ 소리 테스트 화면 ═════════════════ */
+.audio-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
+  background: rgba(40, 26, 18, 0.55);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.ap-box {
+  width: min(94vw, 460px);
+  max-height: 100%;
+  overflow-y: auto;
+  text-align: left;
+  font-size: 13px;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.ap-box h2 {
+  font-size: 22px;
+  text-align: center;
+}
+
+.ap-box h3 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.ap-how {
+  margin: 0 0 8px;
+  color: #7a5236;
+  line-height: 1.4;
+}
+
+.ap-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ap-btn,
+.ap-open {
+  pointer-events: auto;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #4a2a14;
+  background: #fff3d6;
+  border: 2px solid #4a2a14;
+  border-radius: 4px;
+  box-shadow: 0 2px 0 #4a2a14;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ap-btn:active,
+.ap-open:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.ap-mute {
+  grid-column: span 2;
+}
+
+.ap-info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 8px;
+  margin: 10px 0 0;
+  padding: 8px;
+  background: #fff8e6;
+  border: 2px solid #e2c48d;
+}
+
+.ap-info dt {
+  color: #8a6446;
+}
+
+.ap-info dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.ap-errs {
+  margin: 0;
+  padding: 6px 8px 6px 22px;
+  max-height: 120px;
+  overflow-y: auto;
+  background: #fff8e6;
+  border: 2px solid #e2c48d;
+  font-size: 11px;
+  color: #b23a3a;
+}
+
+.ap-errs .ap-none {
+  color: #5f9e3c;
+  list-style: none;
+  margin-left: -14px;
+}
+
+.ap-close {
+  display: block;
+  margin: 10px auto 0;
+  font-size: 18px;
+}
+
+.pause-screen .ap-open {
+  margin-top: 12px;
+  padding: 0 14px;
+}
+
+.cover-test {
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top));
+  left: max(6px, env(safe-area-inset-left));
+  padding: 0 10px;
+  min-height: 36px;
+  font-size: 12px;
+  opacity: 0.88;
+}

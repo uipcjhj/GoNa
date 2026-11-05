@@ -47,13 +47,18 @@ export class Overlay {
   private overSnacks!: HTMLElement;
   private retryBtn!: HTMLButtonElement;
   private canRetryAt = 0;
+  /** 소리 테스트 화면 열기 (main 에서 연결) */
+  onAudioTest: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
 
     // ── 일시정지
     this.pause = el('section', 'screen pause-screen hidden');
     const pp = el('div', 'panel small');
-    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'));
+    const testBtn = el('button', 'ap-open', '🔊 소리 테스트');
+    testBtn.type = 'button';
+    testBtn.addEventListener('click', () => this.onAudioTest?.());
+    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), testBtn);
     this.pause.append(pp);
 
     // ── 게임 오버

@@ -7,6 +7,13 @@
  *   - iOS 17+ navigator.audioSession = 'playback' (무음 스위치가 켜져 있어도 게임 소리 재생)
  *   - 탭 전환·화면 잠금 후 돌아오면 다시 resume()
  * ▸ 모든 소리는 master → compressor 로 모아 크게 키워도 찢어지지 않게
+ * ▸ 배경음악은 미리 만든 MP3 파일(public/assets/audio, tools/render_audio.cjs)을 HTML <audio> 로 재생
+ *   - iPhone 에서 Web Audio 는 무음 스위치·인앱 브라우저 정책에 따라 소리가 안 날 수 있지만,
+ *     <audio> 재생은 '미디어 재생'으로 취급되어 무음 스위치와 상관없이 들리고,
+ *     <audio> 가 재생 중이면 Web Audio 효과음도 같이 들리게 됨
+ *   - 처음 터치 때 모든 <audio> 를 (음소거로) 한 번 재생→정지해 두어, 이후 터치 없이도 재생 가능
+ * ▸ 효과음은 Web Audio 합성. Web Audio 가 시작되지 않으면 미리 만든 효과음 파일로 대신 재생
+ * ▸ 오류는 조용히 무시하지 않고 기록 → 소리 테스트 화면(ui/audioPanel.ts)에서 확인
  * ▸ BGM 'Dream Nest' (오리지널): 같은 테마를
  *   title 모드 = 느리고 몽환적 (패드 + 글로켄 + 부드러운 베이스, 타악기 없음)
  *   game  모드 = 조금 빠르고 리듬감 (가벼운 킥·셰이커·베이스 펄스 추가)
@@ -56,6 +63,53 @@ const ARP_STEPS_GAME = [1, 3, 5, 7, 9, 11, 13, 15];
 
 const TEMPO: Record<MusicMode, number> = { title: 68, game: 96 };
 
+const AUDIO_DIR = 'assets/audio/';
+/** 미리 만든 소리 파일 (tools/render_audio.cjs) */
+export const MUSIC_FILES: Record<MusicMode, string> = { title: 'bgm-title.mp3', game: 'bgm-game.mp3' };
+export const SFX_NAMES = [
+  'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
+  'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
+] as const;
+export type SfxName = (typeof SFX_NAMES)[number];
+
+/** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
+function silentWavUrl(): string {
+  const n = 2205; // 0.1초 @ 22050
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const w = (o: number, t: string): void => {
+    for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i));
+  };
+  w(0, 'RIFF');
+  v.setUint32(4, 36 + n * 2, true);
+  w(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, 22050, true);
+  v.setUint32(28, 44100, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  w(36, 'data');
+  v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+export interface AudioStatus {
+  unlocked: boolean;
+  contextState: string;
+  sampleRate: number;
+  muted: boolean;
+  musicMode: MusicMode | null;
+  musicSource: 'file' | 'synth' | 'none';
+  musicPlaying: boolean;
+  musicFile: string;
+  keepAlive: string;
+  audioSession: string;
+  sfxPath: 'webaudio' | 'file';
+  errors: string[];
+}
+
 class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -69,16 +123,34 @@ class Sound {
   private nextTime = 0;
   private unlockedOnce = false;
   muted: boolean;
+  // 파일 기반 소리
+  private music: Partial<Record<MusicMode, HTMLAudioElement>> = {};
+  private musicBroken: Partial<Record<MusicMode, boolean>> = {};
+  private sfxEls: Partial<Record<SfxName, HTMLAudioElement[]>> = {};
+  private keepAliveEl: HTMLAudioElement | null = null;
+  private primed = false;
+  private wantMusic: MusicMode | null = null;
+  private musicSource: 'file' | 'synth' | 'none' = 'none';
+  private errors: string[] = [];
+  private listeners: (() => void)[] = [];
 
   constructor() {
     this.muted = storage.get(STORAGE_KEYS.muted) === '1';
+    this.createElements();
     // 어떤 사용자 입력이든 소리를 깨우도록 (iOS 는 touchend/click 에서만 허용되는 경우가 있음)
     const wake = (): void => this.unlock();
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
       window.addEventListener(ev, wake, { capture: true, passive: true });
     }
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && this.ctx && this.ctx.state !== 'running') void this.ctx.resume();
+      if (document.hidden) {
+        // 앱 전환: 음악 멈춤 (돌아오면 다시)
+        this.pauseFileMusic();
+        return;
+      }
+      if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch((e) => this.log('resume(복귀)', e));
+      if (this.wantMusic && !this.muted) this.playFileMusic(this.wantMusic);
+      this.emit();
     });
   }
 
@@ -98,10 +170,21 @@ class Sound {
       } catch {
         /* 지원 안 함 */
       }
-      this.ctx = new Ctor();
-      this.build();
+      try {
+        this.ctx = new Ctor();
+        this.ctx.onstatechange = () => this.emit();
+        this.build();
+      } catch (e) {
+        this.log('AudioContext 생성', e);
+        this.ctx = null;
+      }
     }
-    if (this.ctx.state !== 'running') void this.ctx.resume().catch(() => undefined);
+    if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().then(() => this.emit(), (e) => this.log('AudioContext.resume', e));
+    this.primeElements();
+    // 터치 전에 음악을 틀려다 막혔으면 지금 다시
+    if (this.wantMusic && !this.muted && this.musicSource !== 'synth') this.playFileMusic(this.wantMusic);
+    this.emit();
+    if (!this.ctx) return;
     if (!this.unlockedOnce && this.ctx) {
       // 무음 버퍼 재생으로 iOS 오디오 출력 깨우기
       this.unlockedOnce = true;
@@ -125,7 +208,7 @@ class Sound {
     this.master.gain.value = this.muted ? 0 : 1;
     this.master.connect(comp).connect(ctx.destination);
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 0.9;
+    this.sfxBus.gain.value = 1.8; // 효과음을 충분히 크게 (압축기가 찢어짐 방지)
     this.sfxBus.connect(this.master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = 0.55;
@@ -154,6 +237,177 @@ class Sound {
     this.muted = m;
     storage.set(STORAGE_KEYS.muted, m ? '1' : '0');
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.02);
+    if (m) this.pauseFileMusic();
+    else if (this.wantMusic) this.startMusic(this.wantMusic);
+    this.emit();
+  }
+
+  // ───────────────────────── 파일 기반 소리 · 진단 ─────────────────────────
+
+  private createElements(): void {
+    const mk = (src: string, loop: boolean): HTMLAudioElement => {
+      const a = new Audio();
+      a.preload = 'auto';
+      a.loop = loop;
+      a.setAttribute('playsinline', '');
+      a.src = src;
+      return a;
+    };
+    (Object.keys(MUSIC_FILES) as MusicMode[]).forEach((m) => {
+      const a = mk(AUDIO_DIR + MUSIC_FILES[m], true);
+      a.addEventListener('error', () => {
+        this.musicBroken[m] = true;
+        this.log(`배경음악 파일 오류 (${MUSIC_FILES[m]})`, a.error?.message || `code ${a.error?.code}`);
+      });
+      a.addEventListener('playing', () => this.emit());
+      a.addEventListener('pause', () => this.emit());
+      this.music[m] = a;
+    });
+    for (const n of SFX_NAMES) {
+      const list = [0, 1].map(() => {
+        const a = mk(`${AUDIO_DIR}sfx-${n}.mp3`, false);
+        a.preload = 'none';
+        return a;
+      });
+      this.sfxEls[n] = list;
+    }
+    try {
+      this.keepAliveEl = mk(silentWavUrl(), true);
+    } catch (e) {
+      this.log('무음 유지용 오디오', e);
+    }
+  }
+
+  /** 사용자 입력 안에서: 모든 <audio> 를 음소거로 한 번 재생→정지 (iOS 는 이후 터치 없이 재생 허용) */
+  private primeElements(): void {
+    if (this.keepAliveEl && this.keepAliveEl.paused) {
+      this.keepAliveEl.play().then(() => this.emit(), (e) => this.log('무음 유지 재생', e));
+    }
+    if (this.primed) return;
+    this.primed = true;
+    const all: HTMLAudioElement[] = [...(Object.values(this.music) as HTMLAudioElement[])];
+    for (const list of Object.values(this.sfxEls)) all.push(...(list as HTMLAudioElement[]));
+    for (const a of all) {
+      if (!a.paused) continue;
+      a.muted = true;
+      a.play().then(
+        () => {
+          // 원하는 음악이면 그대로 두고, 아니면 멈춤
+          const isWanted = this.wantMusic && a === this.music[this.wantMusic] && !this.muted;
+          if (!isWanted) {
+            a.pause();
+            a.currentTime = 0;
+          }
+          a.muted = false;
+        },
+        (e) => {
+          a.muted = false;
+          if ((e as Error)?.name !== 'AbortError') this.log('오디오 준비(prime)', e);
+        },
+      );
+    }
+  }
+
+  private playFileMusic(mode: MusicMode): boolean {
+    const el = this.music[mode];
+    if (!el || this.musicBroken[mode]) return false;
+    for (const m of Object.keys(this.music) as MusicMode[]) {
+      if (m !== mode) this.music[m]?.pause();
+    }
+    if (!el.paused && !el.muted) return true;
+    el.muted = false;
+    el.play().then(
+      () => {
+        this.musicSource = 'file';
+        this.emit();
+      },
+      (e) => {
+        this.log(`배경음악 재생 (${mode})`, e);
+        if ((e as Error)?.name !== 'NotAllowedError') {
+          // 파일 문제: 합성 음악으로 대신
+          this.musicBroken[mode] = true;
+          this.startSynthMusic(mode);
+        }
+      },
+    );
+    this.musicSource = 'file';
+    return true;
+  }
+
+  private pauseFileMusic(): void {
+    for (const a of Object.values(this.music) as HTMLAudioElement[]) a.pause();
+  }
+
+  /** 효과음 파일로 대신 재생 (Web Audio 가 동작하지 않을 때). 재생했으면 true */
+  /** (도구용) 파일로 미리 녹음할 때는 항상 합성 */
+  forceSynth = false;
+
+  private sfxFile(name: SfxName): boolean {
+    if (this.forceSynth) return false;
+    if (this.muted) return true;
+    if (this.ctx && this.ctx.state === 'running') return false;
+    const list = this.sfxEls[name];
+    if (!list) return false;
+    const a = list.find((x) => x.paused) ?? list[0];
+    try {
+      a.currentTime = 0;
+    } catch {
+      /* 아직 로드 전 */
+    }
+    a.play().catch((e) => this.log(`효과음 파일 (${name})`, e));
+    return true;
+  }
+
+  private log(where: string, e: unknown): void {
+    const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    const line = `${new Date().toLocaleTimeString()} ${where} — ${msg}`;
+    this.errors.unshift(line);
+    this.errors.length = Math.min(this.errors.length, 12);
+    console.warn('[audio]', line);
+    this.emit();
+  }
+
+  onChange(fn: () => void): void {
+    this.listeners.push(fn);
+  }
+
+  private emit(): void {
+    for (const f of this.listeners) f();
+  }
+
+  status(): AudioStatus {
+    const m = this.wantMusic ? this.music[this.wantMusic] : undefined;
+    const nav = navigator as unknown as { audioSession?: { type: string } };
+    return {
+      unlocked: this.unlockedOnce,
+      contextState: this.ctx ? this.ctx.state : '없음 (아직 터치 전)',
+      sampleRate: this.ctx?.sampleRate ?? 0,
+      muted: this.muted,
+      musicMode: this.wantMusic,
+      musicSource: this.musicSource,
+      musicPlaying: this.musicSource === 'synth' ? this.musicTimer !== null : !!m && !m.paused,
+      musicFile: m ? `${m.paused ? '정지' : '재생 중'} · 로드 ${m.readyState}/4${m.error ? ` · 오류 ${m.error.code}` : ''}` : '-',
+      keepAlive: this.keepAliveEl ? (this.keepAliveEl.paused ? '정지' : '재생 중') : '없음',
+      audioSession: nav.audioSession ? nav.audioSession.type : '지원 안 함',
+      sfxPath: this.ctx && this.ctx.state === 'running' ? 'webaudio' : 'file',
+      errors: [...this.errors],
+    };
+  }
+
+  /** 소리 테스트: 단순한 '삐' (Web Audio) */
+  testBeep(): void {
+    this.unlock();
+    this.tone(880, 0.35, 'square', 0.35);
+    this.tone(1320, 0.35, 'square', 0.25, 0.18);
+  }
+
+  /** 소리 테스트: 효과음 파일 (HTML audio) 직접 재생 */
+  testSfxFile(): void {
+    this.unlock();
+    const a = this.sfxEls.pickup30?.[0];
+    if (!a) return;
+    a.currentTime = 0;
+    a.play().catch((e) => this.log('효과음 파일 테스트', e));
   }
 
   // ───────────────────────── 기본 소리 재료 ─────────────────────────
@@ -211,61 +465,73 @@ class Sound {
 
   /** 시작 버튼 */
   start(): void {
+    if (this.sfxFile('start')) return;
     ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.32, i * 0.07));
     this.tone(hz('C4'), 0.4, 'triangle', 0.18, 0.02);
   }
   /** 알 흔들림 (톡톡) */
   eggWobble(): void {
+    if (this.sfxFile('eggWobble')) return;
     this.tone(320, 0.06, 'triangle', 0.28, 0, 260);
     this.noise(0.04, 0.12, 0, 'bandpass', 2200);
   }
   /** 알에 금 가는 소리 */
   crack(): void {
+    if (this.sfxFile('crack')) return;
     this.noise(0.08, 0.5, 0, 'highpass', 2500);
     this.noise(0.06, 0.4, 0.06, 'highpass', 3200);
     this.tone(900, 0.05, 'square', 0.12, 0, 600);
   }
   /** 머리카락 삐죽 */
   boing(): void {
+    if (this.sfxFile('boing')) return;
     this.tone(260, 0.22, 'triangle', 0.32, 0, 620);
     this.tone(620, 0.18, 'sine', 0.18, 0.12, 400);
   }
   /** 알이 팍! 깨짐 + 탄생 반짝임 */
   hatch(): void {
+    if (this.sfxFile('hatch')) return;
     this.noise(0.25, 0.75, 0, 'bandpass', 1800);
     this.noise(0.12, 0.5, 0, 'highpass', 4000);
     this.tone(180, 0.18, 'square', 0.25, 0, 90);
     ['F5', 'A5', 'C6', 'E6', 'F6'].forEach((n, i) => this.bell(hz(n), 0.6, 0.26, 0.12 + i * 0.07));
   }
   jump(): void {
+    if (this.sfxFile('jump')) return;
     this.tone(330, 0.16, 'square', 0.2, 0, 700);
     this.tone(660, 0.1, 'triangle', 0.12, 0.03, 1000);
   }
   /** 둥지째 통 튀어오름 */
   nestJump(): void {
+    if (this.sfxFile('nestJump')) return;
     this.tone(200, 0.18, 'triangle', 0.36, 0, 520);
     this.noise(0.06, 0.18, 0, 'bandpass', 1400);
   }
   doubleJump(): void {
+    if (this.sfxFile('doubleJump')) return;
     this.tone(520, 0.14, 'square', 0.18, 0, 1100);
     this.bell(hz('E6'), 0.3, 0.2, 0.05);
   }
   pickup(points: number): void {
+    if (this.sfxFile(points >= 30 ? 'pickup30' : points >= 20 ? 'pickup20' : 'pickup10')) return;
     const base = points >= 30 ? hz('G5') : points >= 20 ? hz('E5') : hz('C5');
     this.tone(base, 0.09, 'square', 0.2);
     this.tone(base * 1.5, 0.14, 'square', 0.2, 0.06);
     this.bell(base * 2, 0.35, 0.22, 0.1);
   }
   hit(): void {
+    if (this.sfxFile('hit')) return;
     this.noise(0.3, 0.8, 0, 'lowpass', 900);
     this.tone(220, 0.3, 'square', 0.3, 0, 70);
     this.tone(110, 0.25, 'sine', 0.4, 0, 55);
   }
   gameOver(): void {
+    if (this.sfxFile('gameOver')) return;
     ['G4', 'E4', 'C4', 'G3'].forEach((n, i) => this.tone(hz(n), 0.3, 'triangle', 0.32, i * 0.2));
   }
   /** 진화 시작: 반짝반짝 올라감 */
   evolve(): void {
+    if (this.sfxFile('evolve')) return;
     ['C4', 'E4', 'G4', 'C5', 'E5', 'G5', 'C6'].forEach((n, i) => {
       this.tone(hz(n), 0.16, 'triangle', 0.22, i * 0.15);
       this.bell(hz(n) * 2, 0.4, 0.14, i * 0.15);
@@ -273,19 +539,39 @@ class Sound {
   }
   /** 진화 완료 팡파레 */
   evolveDone(): void {
+    if (this.sfxFile('evolveDone')) return;
     ['G5', 'C6'].forEach((n, i) => this.tone(hz(n), 0.2, 'square', 0.22, i * 0.09));
     this.bell(hz('E6'), 0.9, 0.34, 0.2);
     this.tone(hz('C4'), 0.6, 'triangle', 0.3, 0.2);
   }
   newRecord(): void {
+    if (this.sfxFile('newRecord')) return;
     ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.26, i * 0.1));
   }
 
   // ───────────────────────── 배경음악 ─────────────────────────
 
-  /** BGM 시작 또는 모드 전환 (같은 곡이 이어지며 분위기만 바뀜) */
+  /** BGM 시작 또는 모드 전환 — 파일(우선) 또는 합성 */
   startMusic(mode: MusicMode = 'game'): void {
+    this.wantMusic = mode;
+    if (this.muted) return;
+    if (this.playFileMusic(mode)) {
+      this.stopSynth();
+      return;
+    }
+    this.startSynthMusic(mode);
+  }
+
+  stopMusic(): void {
+    this.wantMusic = null;
+    this.pauseFileMusic();
+    this.stopSynth();
+    this.emit();
+  }
+
+  private startSynthMusic(mode: MusicMode): void {
     if (!this.ctx) return;
+    this.musicSource = 'synth';
     this.mode = mode;
     if (this.musicTimer !== null) return;
     this.step = 0;
@@ -306,7 +592,7 @@ class Sound {
     this.musicTimer = window.setInterval(tick, 90);
   }
 
-  stopMusic(): void {
+  private stopSynth(): void {
     if (this.musicTimer !== null) {
       clearInterval(this.musicTimer);
       this.musicTimer = null;
