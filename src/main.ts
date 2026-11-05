@@ -44,8 +44,8 @@ async function boot(): Promise<void> {
     backgroundColor: '#f8eac0',
     pixelArt: true,
     roundPixels: true,
-    width: size.width,
-    height: size.height,
+    width: size.width * VIEW.renderScale,
+    height: size.height * VIEW.renderScale,
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -65,7 +65,9 @@ async function boot(): Promise<void> {
     clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => {
       const s = computeSize();
-      if (s.width !== game.scale.width || s.height !== game.scale.height) game.scale.setGameSize(s.width, s.height);
+      const w = s.width * VIEW.renderScale;
+      const h = s.height * VIEW.renderScale;
+      if (w !== game.scale.width || h !== game.scale.height) game.scale.setGameSize(w, h);
       game.scale.refresh();
     }, 120);
   };

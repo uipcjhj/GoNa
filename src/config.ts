@@ -19,6 +19,12 @@ export const VIEW = {
   groundHeight: 30,
   /** 공룡의 화면상 x 위치 */
   playerX: 52,
+  /**
+   * 내부 렌더링 배율. 논리 해상도(위 값들)를 이 배수로 그려서
+   * 캐릭터를 1.2배처럼 정수가 아닌 배율로 키우거나 회전·찌그러뜨려도 도트가 빠지지 않게 합니다.
+   * (1.2 × 5 = 6 → 원본 도트 1칸 = 정확히 6픽셀)
+   */
+  renderScale: 5,
 };
 
 export const PHYSICS = {
@@ -105,8 +111,13 @@ export const CHARACTER_ASSET = {
   /** 표정 유지 시간(ms) */
   happyMs: 400,
   surprisedMs: 500,
-  /** 화면에 표시할 캐릭터 높이(px, 논리 해상도 기준). 큰 이미지도 이 크기로 맞춰집니다. */
+  /** 화면에 표시할 캐릭터 높이(px, 논리 해상도 기준). 큰 이미지도 이 크기로 맞춰집니다. (displayScale 이 없을 때) */
   displayHeight: 34,
+  /**
+   * 게임 중 캐릭터 확대 배율 (이미지 해상도는 그대로). 1.2 = 20% 크게.
+   * VIEW.renderScale 과 곱해서 정수가 되는 값을 쓰면 도트가 고르게 보입니다. (1.2×5=6)
+   */
+  displayScale: 1.2 as number | null,
 };
 
 /**

@@ -195,8 +195,11 @@ export class GameScene extends Phaser.Scene {
   // ───────────────────────── 화면 배치 ─────────────────────────
 
   private layout(): void {
-    this.W = this.scale.width;
-    this.H = this.scale.height;
+    // 캔버스는 논리 해상도 × renderScale 로 그리고, 카메라 확대로 논리 좌표를 그대로 사용
+    const k = VIEW.renderScale;
+    this.cameras.main.setOrigin(0, 0).setZoom(k);
+    this.W = Math.round(this.scale.width / k);
+    this.H = Math.round(this.scale.height / k);
     // 세로 화면에서는 땅을 조금 위로 올려 엄지가 닿는 아래쪽은 흙으로 채움
     const extra = Math.max(0, this.H - VIEW.baseHeight);
     this.groundY = Math.round(this.H - VIEW.groundHeight - extra * 0.45);
@@ -401,18 +404,22 @@ export class GameScene extends Phaser.Scene {
 
     // 스쿼시 & 스트레치 (부드럽게 1로 복귀)
     this.squash += (1 - this.squash) * Math.min(1, dt * 12);
-    const sy = this.char.scale * this.squash;
-    const sx = this.char.scale * (2 - this.squash);
+    // 찌그러짐 배율도 렌더 픽셀 단위(1/renderScale)로 맞춰 도트 한 칸이 항상 같은 정수 픽셀이 되게
+    const k = VIEW.renderScale;
+    const sy = Math.round(this.char.scale * this.squash * k) / k;
+    const sx = Math.round(this.char.scale * (2 - this.squash) * k) / k;
     this.player.setScale(sx, sy);
 
     // 프레임이 한 장뿐인 커스텀 이미지는 통통 튀는 효과로 달리기 표현
     const bob = this.grounded && this.char.runFrames.length < 2 ? Math.abs(Math.sin(time * 0.018)) * 2 : 0;
 
     const halfH = (this.char.frameHeight * sy) / 2;
-    this.player.setPosition(VIEW.playerX, Math.round(this.groundY - this.alt - halfH - bob));
+    // 발 = (땅 - 높이). 렌더 픽셀 격자에 맞춰 반올림해서 서 있을 때 발이 정확히 지면에 닿게
+    const feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
+    this.player.setPosition(VIEW.playerX, feetY - halfH);
 
     const shadowScale = Math.max(0.35, 1 - this.alt / 110);
-    this.shadow.setPosition(VIEW.playerX, this.groundY + 1).setScale(shadowScale, 1);
+    this.shadow.setPosition(VIEW.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.char.scale), 1);
 
     // 무적 깜빡임
     if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 80) % 2 ? 0.35 : 1);

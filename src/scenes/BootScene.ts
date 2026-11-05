@@ -118,7 +118,7 @@ export class BootScene extends Phaser.Scene {
         surprisedFrame: CHARACTER_ASSET.surprisedFrame < count ? CHARACTER_ASSET.surprisedFrame : -1,
         frameWidth: fw,
         frameHeight: fh,
-        scale: CHARACTER_ASSET.displayHeight / fh,
+        scale: CHARACTER_ASSET.displayScale ?? CHARACTER_ASSET.displayHeight / fh,
         custom: true,
       };
     }

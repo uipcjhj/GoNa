@@ -12,7 +12,9 @@
   4. 떨어진 잡티 제거, 안쪽 구멍 메우기
   5. 모든 프레임을 같은 크기 칸에 넣고, 발은 바닥에·얼굴은 가운데에 맞춰 정렬
      → 달리기 애니메이션이 흔들리지 않고 자연스럽게 이어짐
-  6. 눈 감은 프레임(타이틀 눈 깜빡임용)을 자동 생성
+  6. 얼굴을 3/4 뷰로 통일: 모든 포즈에서 아주 작은 검은 눈 2개를 같은 규칙으로 다시 찍음
+     (원본 일부 포즈는 옆모습이라 눈이 1개뿐 → 변환할 때마다 자동 보정, 눈이 2개가 아니면 실패)
+  7. 눈 감은 프레임(타이틀 눈 깜빡임용)을 자동 생성
 
 출력: public/assets/character/dino.png  (프레임을 가로로 이어 붙인 시트)
       프레임 순서는 FRAMES 목록 순서 = src/config.ts 의 CHARACTER_ASSET 번호
@@ -175,6 +177,119 @@ def face_center_x(o: np.ndarray) -> float:
     return float(xs.mean()) if len(xs) else o.shape[1] / 2
 
 
+def is_cheek(c) -> bool:
+    r, g, b = (int(v) for v in c[:3])
+    return r > 225 and g <= 200 and b < 170
+
+
+def is_face(c) -> bool:
+    return bool(c[3]) and (is_skin(c) or is_cheek(c))
+
+
+def is_dark(c) -> bool:
+    # 진한 갈색/검정 (입의 붉은색은 제외)
+    return bool(c[3]) and int(c[:3].sum()) < 330 and int(c[0]) - int(c[1]) < 70
+
+
+# 3/4 뷰 눈 규칙: 오른쪽(가까운) 눈 = 얼굴 오른쪽 끝에서 2칸 안쪽,
+# 왼쪽(먼) 눈 = 그보다 EYE_GAP 칸 왼쪽. 표정 포즈(눈이 2칸 높이)는 얼굴이 커서 한 칸 더 넓게.
+EYE_INSET = 2
+EYE_GAP = 4
+EYE_GAP_TALL = 5
+EYE_COLOR = np.array([72, 42, 30], np.uint8)
+
+
+def face_span(o: np.ndarray, y: int) -> tuple[int, int] | None:
+    xs = [x for x in range(o.shape[1]) if is_face(o[y, x])]
+    return (min(xs), max(xs)) if xs else None
+
+
+def eye_runs(o: np.ndarray, y: int) -> list[tuple[int, int]]:
+    """얼굴 안에서 양옆이 피부인 1~2칸짜리 진한 점 = 눈 후보"""
+    runs = []
+    w = o.shape[1]
+    x = 1
+    while x < w - 1:
+        if is_dark(o[y, x]) and is_face(o[y, x - 1]):
+            e = x
+            while e + 1 < w and is_dark(o[y, e + 1]):
+                e += 1
+            if e - x <= 1 and e + 1 < w and is_face(o[y, e + 1]):
+                runs.append((x, e))
+            x = e + 1
+        else:
+            x += 1
+    return runs
+
+
+def normalize_face(o: np.ndarray, name: str) -> np.ndarray:
+    """눈을 지우고 3/4 뷰 규칙에 맞춰 작은 검은 눈 2개를 다시 찍음 (입은 두 눈 가운데로)"""
+    o = o.copy()
+    h = o.shape[0]
+    rows = []
+    for y in range(h):
+        span = face_span(o, y)
+        if span and span[1] - span[0] >= 7:
+            runs = eye_runs(o, y)
+            if runs:
+                rows.append((len(runs), -y, y))
+    if not rows:
+        raise SystemExit(f"[{name}] 얼굴에서 눈 위치를 찾지 못했습니다")
+    eye_y = max(rows)[2]
+    xs_here = {x for a, b in eye_runs(o, eye_y) for x in range(a, b + 1)}
+    overlap = lambda y: any(x in xs_here for a, b in eye_runs(o, y) for x in range(a, b + 1)) if 0 <= y < h else False
+    tall = False
+    if overlap(eye_y - 1):  # 2칸 높이 눈: 윗줄부터
+        eye_y -= 1
+        tall = True
+    elif overlap(eye_y + 1):
+        tall = True
+    eh = 2 if tall else 1
+
+    skin = np.median([o[y, x, :3] for y in range(h) for x in range(o.shape[1]) if o[y, x, 3] and is_skin(o[y, x])], axis=0).astype(np.uint8)
+
+    # 기존 눈 지우기
+    for y in range(eye_y - 1, eye_y + eh + 1):
+        if 0 <= y < h:
+            for a, b in eye_runs(o, y):
+                o[y, a:b + 1, :3] = skin
+
+    span = face_span(o, eye_y)
+    assert span is not None
+    right = span[1] - EYE_INSET
+    left = right - (EYE_GAP_TALL if tall else EYE_GAP)
+    for y in range(eye_y, eye_y + eh):
+        for x in (left, right):
+            o[y, x, :3] = EYE_COLOR
+            o[y, x, 3] = 255
+
+    # 입(표정 포즈): 눈 아래 얼굴 안의 붉은 픽셀을 두 눈 가운데로 옮김
+    mouth = [(y, x) for y in range(eye_y + eh, min(h, eye_y + eh + 4)) for x in range(o.shape[1])
+             if o[y, x, 3] and int(o[y, x, 0]) > 140 and int(o[y, x, 0]) - int(o[y, x, 1]) >= 70
+             and not is_cheek(o[y, x])
+             and (face_span(o, y) or (99, -1))[0] < x < (face_span(o, y) or (99, -1))[1]]
+    if mouth:
+        cx = sum(x for _, x in mouth) / len(mouth)
+        # 원래 위치 쪽으로 반올림 (볼터치에 붙지 않게)
+        shift = int((left + right) / 2 - cx)
+        if shift:
+            colors = {(y, x): o[y, x].copy() for y, x in mouth}
+            for y, x in mouth:
+                o[y, x, :3] = skin
+            for (y, x), c in colors.items():
+                o[y, x + shift] = c
+    return o
+
+
+def count_eyes(o: np.ndarray) -> int:
+    best = 0
+    for y in range(o.shape[0]):
+        span = face_span(o, y)
+        if span and span[1] - span[0] >= 7:
+            best = max(best, len(eye_runs(o, y)))
+    return best
+
+
 def make_blink(o: np.ndarray) -> np.ndarray:
     """얼굴 안의 작은 진한 도트(눈)를 눈꺼풀 색으로 바꿔 눈 감은 프레임 생성"""
     b = o.copy()
@@ -202,7 +317,14 @@ def main() -> None:
         if box[0] is None:
             continue
         sprites[name] = clean(rebuild(img, fg, box))
+    for n in list(sprites):
+        sprites[n] = normalize_face(sprites[n], n)
+        eyes = count_eyes(sprites[n])
+        if eyes != 2:
+            raise SystemExit(f"[{n}] 눈이 {eyes}개입니다 — 모든 포즈는 눈이 2개여야 합니다")
     sprites["blink"] = make_blink(sprites["idle"])
+    if count_eyes(sprites["blink"]) != 0:
+        raise SystemExit("[blink] 눈 감은 프레임에 눈이 남아 있습니다")
 
     # 공통 프레임 크기: 얼굴 중심을 가운데로, 발은 바닥에
     centers = {n: face_center_x(s) for n, s in sprites.items()}
