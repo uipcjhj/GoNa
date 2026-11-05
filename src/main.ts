@@ -5,6 +5,7 @@ import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { Overlay } from './ui/overlay';
 import { TitleScreen } from './ui/title';
+import { CoverScreen } from './ui/cover';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -35,6 +36,8 @@ async function boot(): Promise<void> {
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
   const title = new TitleScreen(ui);
+  // 대표 타이틀 → (게임 시작) → 알 부화 컷신 → 1단계
+  const cover = new CoverScreen(ui, (fromCover) => title.beginIntro(fromCover));
   const overlay = new Overlay(ui);
 
   const size = computeSize();
@@ -57,6 +60,7 @@ async function boot(): Promise<void> {
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
   if (new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
+    (window as unknown as { __sound: typeof sound }).__sound = sound;
   }
 
   // 회전/창 크기 변경 시 논리 해상도 재계산
@@ -82,6 +86,7 @@ async function boot(): Promise<void> {
     ev.preventDefault();
     sound.unlock();
     // 타이틀: 컷신 중 터치 = 건너뛰기, 컷신 후 터치 = 게임 시작 (시작 버튼도 그대로)
+    if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
     if (title.isVisible) {
       title.handleTap();
       return;
@@ -97,7 +102,8 @@ async function boot(): Promise<void> {
     if (ev.code === 'Space' || ev.code === 'ArrowUp' || ev.code === 'KeyW') {
       ev.preventDefault();
       sound.unlock();
-      if (title.isVisible) title.begin();
+      if (cover.isVisible) cover.start();
+      else if (title.isVisible) title.handleTap();
       else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);
     } else if (ev.code === 'KeyP' || ev.code === 'Escape') {

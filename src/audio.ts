@@ -1,157 +1,362 @@
 /**
- * Web Audio 로 즉석에서 만드는 8비트 효과음과 배경음악.
- * (오디오 파일 없이 동작, 모바일은 첫 터치 후 소리가 켜집니다)
+ * Web Audio 로 즉석에서 만드는 효과음과 오리지널 배경음악 (오디오 파일 없음).
+ *
+ * ▸ 모바일(특히 iPhone) 소리 문제 대응
+ *   - 첫 터치/클릭/키 입력(touchend·click 포함) 때마다 AudioContext 를 만들고 resume()
+ *   - 무음 버퍼를 한 번 재생해 iOS 오디오 출력을 '깨움'
+ *   - iOS 17+ navigator.audioSession = 'playback' (무음 스위치가 켜져 있어도 게임 소리 재생)
+ *   - 탭 전환·화면 잠금 후 돌아오면 다시 resume()
+ * ▸ 모든 소리는 master → compressor 로 모아 크게 키워도 찢어지지 않게
+ * ▸ BGM 'Dream Nest' (오리지널): 같은 테마를
+ *   title 모드 = 느리고 몽환적 (패드 + 글로켄 + 부드러운 베이스, 타악기 없음)
+ *   game  모드 = 조금 빠르고 리듬감 (가벼운 킥·셰이커·베이스 펄스 추가)
  */
 import { STORAGE_KEYS } from './config';
 import { storage } from './storage';
 
 type Wave = OscillatorType;
+export type MusicMode = 'title' | 'game';
 
-const NOTE: Record<string, number> = {
-  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.0, A4: 440.0, B4: 493.88,
-  C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.0,
-  C3: 130.81, F3: 174.61, G3: 196.0, A3: 220.0,
-};
+/** 음 이름 → 주파수 (예: 'F4', 'Bb3', 'C#5') */
+function hz(n: string): number {
+  const m = /^([A-G])([b#]?)(\d)$/.exec(n);
+  if (!m) return 0;
+  const base: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const semi = base[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (Number(m[3]) - 4) * 12 - 9;
+  return 440 * Math.pow(2, semi / 12);
+}
 
-// 느긋한 농장 느낌의 짧은 반복 멜로디 (8분음표 단위, '-' 는 쉼표)
-const MELODY = [
-  'E5', 'G5', 'C5', 'G5', 'A5', 'G5', 'E5', '-',
-  'D5', 'E5', 'F5', 'E5', 'D5', 'C5', 'D5', '-',
-  'E5', 'G5', 'C5', 'G5', 'A5', 'G5', 'E5', 'C5',
-  'D5', 'F5', 'E5', 'D5', 'C5', '-', 'C5', '-',
+// ───────────────────────── BGM 'Dream Nest' (오리지널 작곡) ─────────────────────────
+// 8마디 반복, 한 마디 = 16칸(16분음표). 화성: F 장조 계열의 몽환적인 7화음 진행.
+const CHORDS: string[][] = [
+  ['F3', 'A3', 'C4', 'E4'], // Fmaj7
+  ['D3', 'F3', 'A3', 'C4'], // Dm7
+  ['Bb2', 'D3', 'F3', 'A3'], // Bbmaj7
+  ['C3', 'F3', 'G3', 'Bb3'], // C7sus4
+  ['A2', 'C3', 'E3', 'G3'], // Am7
+  ['D3', 'F3', 'A3', 'E4'], // Dm(add9)
+  ['Bb2', 'D3', 'F3', 'C4'], // Bb(add9)
+  ['C3', 'E3', 'G3', 'Bb3'], // C7
 ];
-const BASS = ['C3', 'C3', 'A3', 'A3', 'F3', 'F3', 'G3', 'G3'];
+const BASS_ROOT = ['F2', 'D2', 'Bb1', 'C2', 'A1', 'D2', 'Bb1', 'C2'];
+/** 글로켄 멜로디: [마디 안 칸(0~15), 음, 길이(칸)] */
+const MELODY: [number, string, number][][] = [
+  [[0, 'C6', 4], [4, 'A5', 2], [6, 'G5', 2], [8, 'A5', 6], [14, 'C6', 2]],
+  [[0, 'D6', 4], [4, 'C6', 2], [6, 'A5', 2], [8, 'F5', 8]],
+  [[0, 'D6', 2], [2, 'C6', 2], [4, 'A5', 4], [8, 'F5', 2], [10, 'G5', 2], [12, 'A5', 4]],
+  [[0, 'G5', 8], [10, 'F5', 2], [12, 'G5', 4]],
+  [[0, 'E6', 4], [4, 'C6', 2], [6, 'A5', 2], [8, 'G5', 6], [14, 'A5', 2]],
+  [[0, 'F5', 4], [4, 'A5', 2], [6, 'D6', 2], [8, 'E6', 8]],
+  [[0, 'D6', 2], [2, 'C6', 2], [4, 'D6', 4], [8, 'F6', 4], [12, 'E6', 4]],
+  [[0, 'C6', 12], [12, 'G5', 2], [14, 'A5', 2]],
+];
+/** 반짝이 아르페지오 (화음 음을 한 옥타브 위에서) — 칸 위치 */
+const ARP_STEPS_TITLE = [2, 6, 10, 14];
+const ARP_STEPS_GAME = [1, 3, 5, 7, 9, 11, 13, 15];
+
+const TEMPO: Record<MusicMode, number> = { title: 68, game: 96 };
 
 class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private echoIn: GainNode | null = null;
+  private noiseBuf: AudioBuffer | null = null;
   private musicTimer: number | null = null;
+  private mode: MusicMode = 'game';
   private step = 0;
   private nextTime = 0;
+  private unlockedOnce = false;
   muted: boolean;
 
   constructor() {
     this.muted = storage.get(STORAGE_KEYS.muted) === '1';
+    // 어떤 사용자 입력이든 소리를 깨우도록 (iOS 는 touchend/click 에서만 허용되는 경우가 있음)
+    const wake = (): void => this.unlock();
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
+      window.addEventListener(ev, wake, { capture: true, passive: true });
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.ctx && this.ctx.state !== 'running') void this.ctx.resume();
+    });
   }
 
-  /** 사용자 터치 이벤트 안에서 호출해야 모바일에서 소리가 납니다. */
+  get ready(): boolean {
+    return !!this.ctx && this.ctx.state === 'running';
+  }
+
+  /** 사용자 입력 안에서 호출: 오디오 시작/재개 */
   unlock(): void {
     if (!this.ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
+      try {
+        // iOS 17+: 무음 스위치와 상관없이 재생되는 오디오 세션
+        const nav = navigator as unknown as { audioSession?: { type: string } };
+        if (nav.audioSession) nav.audioSession.type = 'playback';
+      } catch {
+        /* 지원 안 함 */
+      }
       this.ctx = new Ctor();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.5;
-      this.master.connect(this.ctx.destination);
+      this.build();
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state !== 'running') void this.ctx.resume().catch(() => undefined);
+    if (!this.unlockedOnce && this.ctx) {
+      // 무음 버퍼 재생으로 iOS 오디오 출력 깨우기
+      this.unlockedOnce = true;
+      const b = this.ctx.createBuffer(1, 1, 22050);
+      const s = this.ctx.createBufferSource();
+      s.buffer = b;
+      s.connect(this.ctx.destination);
+      s.start(0);
+    }
+  }
+
+  private build(): void {
+    const ctx = this.ctx!;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -14;
+    comp.knee.value = 10;
+    comp.ratio.value = 4;
+    comp.attack.value = 0.004;
+    comp.release.value = 0.2;
+    this.master = ctx.createGain();
+    this.master.gain.value = this.muted ? 0 : 1;
+    this.master.connect(comp).connect(ctx.destination);
+    this.sfxBus = ctx.createGain();
+    this.sfxBus.gain.value = 0.9;
+    this.sfxBus.connect(this.master);
+    this.musicBus = ctx.createGain();
+    this.musicBus.gain.value = 0.55;
+    this.musicBus.connect(this.master);
+    // 몽환적인 메아리 (BGM 벨·글로켄용): delay + 피드백 + 고음 깎기
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.33;
+    const fb = ctx.createGain();
+    fb.gain.value = 0.38;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 2600;
+    this.echoIn = ctx.createGain();
+    this.echoIn.gain.value = 0.5;
+    this.echoIn.connect(delay);
+    delay.connect(tone).connect(fb).connect(delay);
+    tone.connect(this.musicBus);
+    // 타악기용 노이즈
+    const len = ctx.sampleRate;
+    this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = this.noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
 
   setMuted(m: boolean): void {
     this.muted = m;
     storage.set(STORAGE_KEYS.muted, m ? '1' : '0');
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.02);
   }
 
-  private tone(freq: number, dur: number, wave: Wave, vol: number, when = 0, slideTo?: number): void {
-    if (!this.ctx || !this.master) return;
-    const t = this.ctx.currentTime + when;
+  // ───────────────────────── 기본 소리 재료 ─────────────────────────
+
+  private tone(
+    freq: number,
+    dur: number,
+    wave: Wave,
+    vol: number,
+    when = 0,
+    slideTo?: number,
+    dest: AudioNode | null = this.sfxBus,
+    attack = 0.006,
+  ): void {
+    if (!this.ctx || !dest || freq <= 0) return;
+    const t = this.ctx.currentTime + Math.max(0, when);
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = wave;
     osc.frequency.setValueAtTime(freq, t);
     if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(g).connect(this.master);
+    osc.connect(g).connect(dest);
     osc.start(t);
-    osc.stop(t + dur + 0.02);
+    osc.stop(t + dur + 0.05);
   }
 
-  private noise(dur: number, vol: number): void {
-    if (!this.ctx || !this.master) return;
-    const len = Math.floor(this.ctx.sampleRate * dur);
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  private noise(dur: number, vol: number, when = 0, type: BiquadFilterType = 'lowpass', freq = 900, dest: AudioNode | null = this.sfxBus): void {
+    if (!this.ctx || !dest || !this.noiseBuf) return;
+    const t = this.ctx.currentTime + Math.max(0, when);
     const src = this.ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = this.noiseBuf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
     const g = this.ctx.createGain();
-    g.gain.value = vol;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 900;
-    src.connect(filter).connect(g).connect(this.master);
-    src.start();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(dest);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + dur + 0.02);
   }
 
+  /** 벨/글로켄: 기본음 + 비정수 배음의 짧은 반짝임 */
+  private bell(freq: number, dur: number, vol: number, when = 0, dest: AudioNode | null = this.sfxBus, echo = false): void {
+    this.tone(freq, dur, 'sine', vol, when, undefined, dest, 0.003);
+    this.tone(freq * 2.76, dur * 0.35, 'sine', vol * 0.35, when, undefined, dest, 0.002);
+    this.tone(freq * 5.4, dur * 0.12, 'sine', vol * 0.12, when, undefined, dest, 0.001);
+    if (echo && this.echoIn) this.tone(freq, dur, 'sine', vol * 0.8, when, undefined, this.echoIn, 0.003);
+  }
+
+  // ───────────────────────── 효과음 ─────────────────────────
+
+  /** 시작 버튼 */
+  start(): void {
+    ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.32, i * 0.07));
+    this.tone(hz('C4'), 0.4, 'triangle', 0.18, 0.02);
+  }
+  /** 알 흔들림 (톡톡) */
+  eggWobble(): void {
+    this.tone(320, 0.06, 'triangle', 0.28, 0, 260);
+    this.noise(0.04, 0.12, 0, 'bandpass', 2200);
+  }
+  /** 알에 금 가는 소리 */
+  crack(): void {
+    this.noise(0.08, 0.5, 0, 'highpass', 2500);
+    this.noise(0.06, 0.4, 0.06, 'highpass', 3200);
+    this.tone(900, 0.05, 'square', 0.12, 0, 600);
+  }
+  /** 머리카락 삐죽 */
+  boing(): void {
+    this.tone(260, 0.22, 'triangle', 0.32, 0, 620);
+    this.tone(620, 0.18, 'sine', 0.18, 0.12, 400);
+  }
+  /** 알이 팍! 깨짐 + 탄생 반짝임 */
+  hatch(): void {
+    this.noise(0.25, 0.75, 0, 'bandpass', 1800);
+    this.noise(0.12, 0.5, 0, 'highpass', 4000);
+    this.tone(180, 0.18, 'square', 0.25, 0, 90);
+    ['F5', 'A5', 'C6', 'E6', 'F6'].forEach((n, i) => this.bell(hz(n), 0.6, 0.26, 0.12 + i * 0.07));
+  }
   jump(): void {
-    this.tone(330, 0.14, 'square', 0.12, 0, 660);
+    this.tone(330, 0.16, 'square', 0.2, 0, 700);
+    this.tone(660, 0.1, 'triangle', 0.12, 0.03, 1000);
+  }
+  /** 둥지째 통 튀어오름 */
+  nestJump(): void {
+    this.tone(200, 0.18, 'triangle', 0.36, 0, 520);
+    this.noise(0.06, 0.18, 0, 'bandpass', 1400);
   }
   doubleJump(): void {
-    this.tone(520, 0.12, 'square', 0.1, 0, 1040);
-    this.tone(780, 0.1, 'triangle', 0.08, 0.05, 1300);
+    this.tone(520, 0.14, 'square', 0.18, 0, 1100);
+    this.bell(hz('E6'), 0.3, 0.2, 0.05);
   }
   pickup(points: number): void {
-    const base = points >= 30 ? NOTE.G5 : points >= 20 ? NOTE.E5 : NOTE.C5;
-    this.tone(base, 0.08, 'square', 0.09);
-    this.tone(base * 1.5, 0.12, 'square', 0.09, 0.06);
+    const base = points >= 30 ? hz('G5') : points >= 20 ? hz('E5') : hz('C5');
+    this.tone(base, 0.09, 'square', 0.2);
+    this.tone(base * 1.5, 0.14, 'square', 0.2, 0.06);
+    this.bell(base * 2, 0.35, 0.22, 0.1);
   }
   hit(): void {
-    this.noise(0.25, 0.35);
-    this.tone(220, 0.25, 'square', 0.12, 0, 80);
+    this.noise(0.3, 0.8, 0, 'lowpass', 900);
+    this.tone(220, 0.3, 'square', 0.3, 0, 70);
+    this.tone(110, 0.25, 'sine', 0.4, 0, 55);
   }
   gameOver(): void {
-    [NOTE.G4, NOTE.E4, NOTE.C4, NOTE.G3].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.16, i * 0.18));
+    ['G4', 'E4', 'C4', 'G3'].forEach((n, i) => this.tone(hz(n), 0.3, 'triangle', 0.32, i * 0.2));
   }
-  /** 타이틀에서 게임 시작 버튼 */
-  start(): void {
-    [NOTE.C5, NOTE.E5, NOTE.G5].forEach((f, i) => this.tone(f, 0.1, 'square', 0.08, i * 0.07));
-    this.tone(NOTE.C5 * 2, 0.22, 'triangle', 0.1, 0.21);
-  }
-  /** 진화 시작: 반짝반짝 올라가는 소리 */
+  /** 진화 시작: 반짝반짝 올라감 */
   evolve(): void {
-    [NOTE.C4, NOTE.E4, NOTE.G4, NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C5 * 2].forEach((f, i) =>
-      this.tone(f, 0.12, 'triangle', 0.08, i * 0.16),
-    );
+    ['C4', 'E4', 'G4', 'C5', 'E5', 'G5', 'C6'].forEach((n, i) => {
+      this.tone(hz(n), 0.16, 'triangle', 0.22, i * 0.15);
+      this.bell(hz(n) * 2, 0.4, 0.14, i * 0.15);
+    });
   }
   /** 진화 완료 팡파레 */
   evolveDone(): void {
-    [NOTE.G5, NOTE.C5 * 2].forEach((f, i) => this.tone(f, 0.18, 'square', 0.09, i * 0.09));
-    this.tone(NOTE.E5 * 2, 0.35, 'triangle', 0.1, 0.2);
+    ['G5', 'C6'].forEach((n, i) => this.tone(hz(n), 0.2, 'square', 0.22, i * 0.09));
+    this.bell(hz('E6'), 0.9, 0.34, 0.2);
+    this.tone(hz('C4'), 0.6, 'triangle', 0.3, 0.2);
   }
   newRecord(): void {
-    [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C5 * 2].forEach((f, i) => this.tone(f, 0.14, 'square', 0.08, i * 0.1));
+    ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.26, i * 0.1));
   }
 
-  startMusic(): void {
-    if (!this.ctx || this.musicTimer !== null) return;
+  // ───────────────────────── 배경음악 ─────────────────────────
+
+  /** BGM 시작 또는 모드 전환 (같은 곡이 이어지며 분위기만 바뀜) */
+  startMusic(mode: MusicMode = 'game'): void {
+    if (!this.ctx) return;
+    this.mode = mode;
+    if (this.musicTimer !== null) return;
     this.step = 0;
-    this.nextTime = this.ctx.currentTime + 0.05;
-    const stepDur = 0.2;
-    const schedule = (): void => {
+    this.nextTime = this.ctx.currentTime + 0.08;
+    const tick = (): void => {
       if (!this.ctx) return;
-      while (this.nextTime < this.ctx.currentTime + 0.3) {
-        const when = this.nextTime - this.ctx.currentTime;
-        const n = MELODY[this.step % MELODY.length];
-        if (n !== '-') this.tone(NOTE[n], stepDur * 0.9, 'triangle', 0.05, when);
-        if (this.step % 4 === 0) {
-          const b = BASS[Math.floor(this.step / 4) % BASS.length];
-          this.tone(NOTE[b], stepDur * 3.5, 'triangle', 0.06, when);
-        }
+      if (this.ctx.state !== 'running') {
+        this.nextTime = this.ctx.currentTime + 0.08;
+        return;
+      }
+      while (this.nextTime < this.ctx.currentTime + 0.35) {
+        this.playStep(this.step, this.nextTime - this.ctx.currentTime);
         this.step++;
-        this.nextTime += stepDur;
+        this.nextTime += 60 / TEMPO[this.mode] / 4;
       }
     };
-    schedule();
-    this.musicTimer = window.setInterval(schedule, 100);
+    tick();
+    this.musicTimer = window.setInterval(tick, 90);
   }
 
   stopMusic(): void {
     if (this.musicTimer !== null) {
       clearInterval(this.musicTimer);
       this.musicTimer = null;
+    }
+  }
+
+  private playStep(step: number, when: number): void {
+    const bus = this.musicBus;
+    if (!bus) return;
+    const game = this.mode === 'game';
+    const s16 = 60 / TEMPO[this.mode] / 4;
+    const bar = Math.floor(step / 16) % 8;
+    const pos = step % 16;
+    const chord = CHORDS[bar];
+
+    // 신스 패드: 마디 첫 칸에 천천히 부풀었다 사라지는 화음 (살짝 어긋난 두 음으로 몽환적인 울림)
+    if (pos === 0) {
+      const len = s16 * 16 * 1.05;
+      for (const n of chord) {
+        const f = hz(n);
+        this.tone(f, len, 'triangle', game ? 0.045 : 0.06, when, undefined, bus, len * 0.35);
+        this.tone(f * 1.006, len, 'sine', game ? 0.04 : 0.055, when, undefined, bus, len * 0.4);
+      }
+    }
+    // 잔잔한 베이스
+    const root = hz(BASS_ROOT[bar]);
+    if (game) {
+      if (pos === 0 || pos === 8) this.tone(root, s16 * 6, 'triangle', 0.2, when, undefined, bus, 0.01);
+      if (pos === 6 || pos === 14) this.tone(root * 2, s16 * 2, 'triangle', 0.1, when, undefined, bus, 0.01);
+    } else if (pos === 0) {
+      this.tone(root, s16 * 14, 'sine', 0.18, when, undefined, bus, 0.15);
+    }
+    // 글로켄 멜로디 (+메아리)
+    for (const [p, n, l] of MELODY[bar]) {
+      if (p === pos) this.bell(hz(n), Math.min(2.2, s16 * l * 1.6 + 0.4), game ? 0.13 : 0.12, when, bus, true);
+    }
+    // 반짝이 아르페지오 (화음 음 2옥타브 위, 아주 작게)
+    const arp = game ? ARP_STEPS_GAME : ARP_STEPS_TITLE;
+    const ai = arp.indexOf(pos);
+    if (ai >= 0) {
+      const n = chord[(ai + bar) % chord.length];
+      this.bell(hz(n) * 4, 0.5, game ? 0.035 : 0.045, when, bus, !game);
+    }
+    // 가벼운 타악기 (게임 모드만)
+    if (game) {
+      if (pos === 0 || pos === 8) {
+        this.tone(120, 0.16, 'sine', 0.3, when, 50, bus, 0.003); // 부드러운 킥
+      }
+      if (pos === 4 || pos === 12) this.noise(0.08, 0.06, when, 'bandpass', 1800, bus); // 손뼉 같은 스냅
+      if (pos % 2 === 1) this.noise(0.03, pos % 4 === 3 ? 0.035 : 0.02, when, 'highpass', 7000, bus); // 셰이커
     }
   }
 }

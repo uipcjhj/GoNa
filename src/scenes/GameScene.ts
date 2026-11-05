@@ -394,7 +394,7 @@ export class GameScene extends Phaser.Scene {
         sound.doubleJump();
         this.sparkleEmitter.explode(6, this.playerX, this.nestBack.y - 6);
       } else {
-        sound.jump();
+        sound.nestJump();
         this.dustEmitter.explode(4, this.playerX - 10, this.groundY);
       }
     } else if (isDouble) {

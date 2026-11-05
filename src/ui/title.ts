@@ -57,6 +57,11 @@ export class TitleScreen {
   private introTimers: number[] = [];
   private introParts: Record<string, HTMLElement> = {};
   private squirmTimer = 0;
+  /** 대표 타이틀에서 시작 버튼을 눌러야 컷신 시작 */
+  private introArmed = false;
+  /** 대표 타이틀을 거쳐 왔으면 컷신 끝나고 바로 게임 시작 */
+  private autoStart = false;
+  private sceneBuilt = false;
 
   constructor(parent: HTMLElement) {
     this.root = el('section', 'title-root intro');
@@ -266,8 +271,9 @@ export class TitleScreen {
       img.height = src.height * 2;
     });
     this.buildNestScene(p);
+    this.sceneBuilt = true;
     this.layout();
-    this.playIntro();
+    if (this.introArmed) this.playIntro();
   }
 
   // ───────────────────────── 오프닝 컷신: 둥지 위 알 → 머리카락 삐죽 → 팍! 탄생 ─────────────────────────
@@ -337,6 +343,15 @@ export class TitleScreen {
     this.heroAspect = W / H;
   }
 
+  /** 대표 타이틀의 시작 버튼 → 알 부화 컷신 시작 (autoStart: 끝나면 바로 1단계 시작) */
+  beginIntro(autoStart: boolean): void {
+    this.introArmed = true;
+    this.autoStart = autoStart;
+    this.root.classList.toggle('autostart', autoStart);
+    this.root.classList.add('shown');
+    if (this.sceneBuilt) this.playIntro();
+  }
+
   private playIntro(): void {
     if (this.introRunning || !this.root.classList.contains('intro')) return;
     this.introRunning = true;
@@ -344,16 +359,23 @@ export class TitleScreen {
     const at = (ms: number, fn: () => void): void => {
       this.introTimers.push(window.setTimeout(fn, ms));
     };
-    at(300, () => P.egg.classList.add('wobble'));
+    at(300, () => {
+      P.egg.classList.add('wobble');
+      sound.eggWobble();
+    });
+    at(800, () => sound.eggWobble());
     at(1200, () => {
       P.eggs0.classList.add('hidden');
       P.eggs1.classList.remove('hidden');
       P.egg.classList.add('wobble-hard');
+      sound.crack();
     });
     at(1900, () => {
       P.eggs1.classList.add('hidden');
       P.eggs2.classList.remove('hidden');
       P.hair.classList.add('peek'); // 머리카락이 먼저 삐죽!
+      sound.crack();
+      window.setTimeout(() => sound.boing(), 350);
     });
     at(3100, () => this.hatch(true)); // 머리카락이 1초 남짓 보인 뒤 팍!
     at(3800, () => this.finishIntro());
@@ -366,6 +388,7 @@ export class TitleScreen {
     P.hair.classList.add('hidden');
     P.baby.classList.remove('hidden');
     if (animated) {
+      sound.hatch();
       P.baby.classList.add('pop');
       P.flash.classList.remove('hidden');
       for (let i = 0; i < 3; i++) P[`shell${i}`]?.classList.remove('hidden');
@@ -385,6 +408,8 @@ export class TitleScreen {
     this.layout();
     this.scheduleBlink();
     this.scheduleSquirm();
+    // 대표 타이틀에서 시작했으면: 아기가 둥지에서 잠깐 꼬물댄 뒤 바로 1단계 시작
+    if (this.autoStart) this.introTimers.push(window.setTimeout(() => this.begin(), 1100));
   }
 
   /** 둥지 안에서 꼬물꼬물 (꿈틀 프레임 교대) */
@@ -403,7 +428,7 @@ export class TitleScreen {
 
   /** 화면 터치: 컷신 중이면 건너뛰기, 끝났으면 게임 시작 */
   handleTap(): void {
-    if (!this.isVisible) return;
+    if (!this.isVisible || !this.introArmed) return;
     if (this.root.classList.contains('intro')) {
       if (this.introParts.baby) this.finishIntro();
       return;
@@ -504,14 +529,14 @@ export class TitleScreen {
 
   /** 시작 버튼 (또는 Space 키) */
   begin(): void {
-    if (this.starting || !this.isVisible) return;
+    if (this.starting || !this.isVisible || !this.introArmed) return;
     if (this.root.classList.contains('intro')) {
       this.finishIntro();
       return;
     }
     this.starting = true;
     sound.unlock();
-    sound.start();
+    if (!this.autoStart) sound.start();
     this.startBtn.classList.add('pressed');
     this.hero.classList.add('leap');
 

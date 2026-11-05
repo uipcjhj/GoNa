@@ -75,6 +75,17 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 - 표정: 간식을 먹으면 기쁨(7번 프레임) 0.4초, 바위에 부딪히면 놀람(8번 프레임) 0.5초 → 다시 달리기/점프.
   그림만 바뀌고 위치·점프·충돌 판정은 그대로. 시간은 `src/config.ts` 의 `happyMs`, `surprisedMs`.
 
+## 시작 흐름
+
+1. **대표 타이틀** (`public/assets/title/cover.webp`, 원본 `art-src/title/`) — 그림 위 '게임 시작' 버튼, 누를 때까지 대기
+2. 버튼 → **알 부화 컷신** → 3. 자동으로 **1단계 둥지 이동** 시작 (컷신 중 터치 = 건너뛰기)
+
+## 사운드
+
+- 모든 효과음·BGM 은 Web Audio 로 즉석 합성 (`src/audio.ts`). iPhone: 첫 터치/클릭 때 오디오 시작 + 무음 버퍼로 깨우기 + `audioSession = playback`
+- BGM 'Dream Nest' (오리지널): 대표 타이틀·컷신은 느리고 몽환적(패드·글로켄·메아리), 게임은 같은 테마에 가벼운 킥·셰이커·베이스 추가
+- 미리듣기: `art-src/audio/bgm-dream-nest-preview.wav` (타이틀 → 게임 → 시작·부화·간식 효과음)
+
 ## 오프닝 컷신
 
 둥지 위 알이 흔들림 → 금이 감 → 꼭대기 구멍으로 고나의 물방울 머리카락이 먼저 삐죽 → 팍! 깨지며 갓난아기 고나 탄생

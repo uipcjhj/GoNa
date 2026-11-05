@@ -1076,3 +1076,99 @@ h2 {
     opacity: 0;
   }
 }
+
+/* ═════════════════ 대표 타이틀 화면 (첫 화면) ═════════════════ */
+.cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #cfe3c6;
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition: opacity 0.5s ease;
+}
+
+.cover.leaving {
+  opacity: 0;
+  transition-delay: 0.35s;
+}
+
+/* 여백 채우기: 같은 그림을 크게·흐리게 */
+.cover-blur {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  object-fit: cover;
+  filter: blur(18px) saturate(1.1) brightness(0.92);
+}
+
+/* 본 그림: 잘리지 않게 전체 */
+.cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  animation: cover-in 0.8s ease-out both;
+}
+
+@keyframes cover-in {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cover-ui {
+  --b: 5px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--b) * 1.2);
+  pointer-events: none;
+  animation: intro-fade 0.6s ease 0.5s both;
+}
+
+.cover-btn {
+  pointer-events: auto;
+  font-size: calc(var(--b) * 5.4);
+}
+
+.cover-play {
+  font-size: 0.8em;
+}
+
+.cover-hint {
+  margin: 0;
+  font-size: calc(var(--b) * 2.4);
+  color: #fff8e6;
+  text-shadow: 0 1px 0 #3d2716, 0 0 6px rgba(61, 39, 22, 0.6);
+}
+
+/* 대표 타이틀에서 시작했을 때: 컷신 뒤 로고·버튼 없이 바로 게임으로 */
+.title-root.autostart .t-logo,
+.title-root.autostart .t-start {
+  display: none;
+}
+
+.cover.side .cover-ui {
+  align-items: center;
+}
+
+.cover.side .cover-hint {
+  display: none;
+}
+
+.cover.side .cover-btn {
+  font-size: calc(var(--b) * 4.4);
+}

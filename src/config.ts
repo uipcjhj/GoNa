@@ -164,6 +164,8 @@ export const CHARACTER_ASSET = {
  * title-fg.png 는 title-bg.png 와 같은 크기로 만들어 주세요.
  */
 export const TITLE_ASSETS = {
+  /** 게임 실행 시 가장 먼저 보여 주는 대표 타이틀 화면 (없으면 바로 알 부화 컷신) */
+  cover: 'assets/title/cover.webp',
   background: 'assets/title/title-bg.png',
   foreground: 'assets/title/title-fg.png',
   logo: 'assets/title/logo.png',
