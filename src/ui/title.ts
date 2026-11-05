@@ -86,7 +86,9 @@ export class TitleScreen {
     const snacks = el('ul', 't-snacks');
     (Object.keys(SNACKS) as SnackKind[]).forEach((k) => {
       const li = el('li');
-      li.append(pixelImg(snackCanvas(k), 2), el('span', '', `${SNACKS[k].points}`));
+      const icon = pixelImg(snackCanvas(k), 2);
+      icon.dataset.snack = k;
+      li.append(icon, el('span', '', `${SNACKS[k].points}`));
       snacks.append(li);
     });
     this.best = el('span', 't-best');
@@ -249,6 +251,14 @@ export class TitleScreen {
   }
 
   private setCharacter(p: CharacterPreview): void {
+    // 간식 아이콘도 실제 게임 이미지로 맞춤
+    this.start.querySelectorAll<HTMLImageElement>('img[data-snack]').forEach((img) => {
+      const src = p.snacks[img.dataset.snack as SnackKind];
+      if (!src) return;
+      img.src = src.toDataURL();
+      img.width = src.width * 2;
+      img.height = src.height * 2;
+    });
     const bob = this.hero.querySelector('.t-hero-bob');
     if (!bob) return;
     this.heroIdle = pixelImg(p.idle, 1, 't-hero-img');

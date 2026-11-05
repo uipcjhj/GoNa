@@ -53,6 +53,17 @@ export const SNACKS: Record<SnackKind, { points: number; label: string }> = {
   cookie: { points: 30, label: '쿠키' },
 };
 
+/**
+ * 간식 이미지 (public 폴더 기준). 파일이 없으면 코드로 그린 기본 간식을 사용.
+ * 현재 파일은 tools/build_snack_sprites.py 가 art-src/baby-dino 원본에서 만든 17×17 도트입니다.
+ * 점수·등장 빈도·충돌 크기는 이미지와 상관없이 그대로입니다.
+ */
+export const SNACK_ASSETS: Record<SnackKind, string> = {
+  strawberry: 'assets/snacks/strawberry.png',
+  banana: 'assets/snacks/banana.png',
+  cookie: 'assets/snacks/cookie.png',
+};
+
 export const STORAGE_KEYS = {
   best: 'dino-snack-adventure.best',
   muted: 'dino-snack-adventure.muted',
@@ -69,7 +80,7 @@ export const STORAGE_KEYS = {
  *
  * 현재 dino.png 는 tools/build_dino_sheet.py 가 원본(art-src/baby-dino)에서 만든
  * 27×34px 프레임 9장짜리 시트입니다:
- *   0 대기 · 1~4 달리기 · 5 점프 · 6 눈 감기(대기) · 7 기쁨 · 8 놀람
+ *   0 대기 · 1~4 달리기 · 5 점프 · 6 눈 감기(대기) · 7 기쁨(간식) · 8 놀람(충돌)
  */
 export const CHARACTER_ASSET = {
   /** public 폴더 기준 경로. 빈 문자열이면 기본 캐릭터만 사용 */
@@ -87,6 +98,13 @@ export const CHARACTER_ASSET = {
   titleFrame: 0,
   /** 눈 깜빡임 프레임 번호 (-1 이면 사용 안 함, 통통 뛰는 효과만) */
   blinkFrame: 6,
+  /** 간식 먹을 때 기쁨 프레임 (-1 이면 사용 안 함) */
+  happyFrame: 7,
+  /** 바위에 부딪힐 때 놀람 프레임 (-1 이면 사용 안 함) */
+  surprisedFrame: 8,
+  /** 표정 유지 시간(ms) */
+  happyMs: 400,
+  surprisedMs: 500,
   /** 화면에 표시할 캐릭터 높이(px, 논리 해상도 기준). 큰 이미지도 이 크기로 맞춰집니다. */
   displayHeight: 34,
 };

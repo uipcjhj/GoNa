@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
+import { CHARACTER_ASSET, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { GROUND_TILE_H, TEX } from '../art/textures';
 import { bus, EV, type GameOverInfo } from '../events';
 import { sound } from '../audio';
@@ -58,6 +58,9 @@ export class GameScene extends Phaser.Scene {
   private lastPressAt = -9999;
   private invincibleUntil = 0;
   private squash = 1;
+  /** 표정 연출: 이 시각까지 exprFrame 을 보여줌 (-1 = 없음) */
+  private exprFrame = -1;
+  private exprUntil = 0;
 
   // 진행
   private entities: Entity[] = [];
@@ -98,6 +101,8 @@ export class GameScene extends Phaser.Scene {
     this.jumpsUsed = 0;
     this.invincibleUntil = 0;
     this.squash = 1;
+    this.exprFrame = -1;
+    this.exprUntil = 0;
     this.registry.set('autoStart', !!data?.autoStart);
   }
 
@@ -380,7 +385,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     const wantAnim = this.grounded ? 'run' : 'jump';
-    if (this.player.anims.currentAnim?.key !== wantAnim) this.player.play(wantAnim);
+    if (this.exprFrame >= 0) {
+      if (time < this.exprUntil) {
+        // 표정 연출 중: 그림만 바꾸고 위치·물리·충돌 박스는 그대로
+        if (this.player.anims.isPlaying) this.player.anims.stop();
+        this.player.setFrame(this.exprFrame);
+      } else {
+        // 끝나면 지금 상태(달리기/점프)로 자연스럽게 복귀
+        this.exprFrame = -1;
+        this.player.play(wantAnim);
+      }
+    } else if (this.player.anims.currentAnim?.key !== wantAnim) {
+      this.player.play(wantAnim);
+    }
 
     // 스쿼시 & 스트레치 (부드럽게 1로 복귀)
     this.squash += (1 - this.squash) * Math.min(1, dt * 12);
@@ -560,6 +577,13 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  /** 잠깐 표정 프레임 보여주기 (프레임이 없으면 아무것도 안 함) */
+  private showExpression(frame: number, ms: number): void {
+    if (frame < 0) return;
+    this.exprFrame = frame;
+    this.exprUntil = this.time.now + ms;
+  }
+
   private collect(e: Entity): void {
     e.done = true;
     const info = SNACKS[e.snack ?? 'strawberry'];
@@ -567,6 +591,7 @@ export class GameScene extends Phaser.Scene {
     this.snacksEaten++;
     this.updateHud();
     sound.pickup(info.points);
+    this.showExpression(this.char.happyFrame, CHARACTER_ASSET.happyMs);
     this.sparkleEmitter.explode(5, e.sprite.x, e.sprite.y - 6);
 
     this.tweens.add({
@@ -604,6 +629,7 @@ export class GameScene extends Phaser.Scene {
     this.hearts = Math.max(0, this.hearts - 1);
     this.updateHud();
     sound.hit();
+    this.showExpression(this.char.surprisedFrame, CHARACTER_ASSET.surprisedMs);
     this.cameras.main.shake(180, 0.012);
     this.cameras.main.flash(140, 255, 120, 110);
     this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
@@ -629,7 +655,8 @@ export class GameScene extends Phaser.Scene {
     sound.stopMusic();
     sound.gameOver();
     this.player.anims.stop();
-    this.player.setFrame(this.char.jumpFrame).setAlpha(1);
+    this.exprFrame = -1;
+    this.player.setFrame(this.char.surprisedFrame >= 0 ? this.char.surprisedFrame : this.char.jumpFrame).setAlpha(1);
     this.tweens.add({
       targets: this.player,
       y: this.player.y - 30,

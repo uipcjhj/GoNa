@@ -1,17 +1,22 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET } from '../config';
-import { addSheet, buildAllTextures, buildDefaultDinoSheet, TEX } from '../art/textures';
+import { CHARACTER_ASSET, SNACK_ASSETS, type SnackKind } from '../config';
+import { addSheet, buildAllTextures, buildDefaultDinoSheet, snackCanvas, TEX } from '../art/textures';
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { bus, EV } from '../events';
 
 const CUSTOM_KEY = 'dino-custom-src';
+const SNACK_KINDS: SnackKind[] = ['strawberry', 'banana', 'cookie'];
+const SNACK_TEX: Record<SnackKind, string> = { strawberry: TEX.strawberry, banana: TEX.banana, cookie: TEX.cookie };
+const snackSrcKey = (k: SnackKind): string => `snack-src-${k}`;
 
 /** 타이틀 화면에 보낼 캐릭터 그림 */
 export interface CharacterPreview {
   idle: HTMLCanvasElement;
   /** 눈 감은 프레임 (없으면 깜빡임 생략) */
   blink: HTMLCanvasElement | null;
+  /** 간식 아이콘 (이미지가 있으면 이미지, 없으면 기본 도트) */
+  snacks: Record<SnackKind, HTMLCanvasElement>;
 }
 
 /** 캐릭터 프레임 정보 (GameScene 에서 사용) */
@@ -20,6 +25,9 @@ export interface CharacterInfo {
   runFrames: number[];
   jumpFrame: number;
   idleFrame: number;
+  /** 표정 프레임 (-1 = 없음) */
+  happyFrame: number;
+  surprisedFrame: number;
   frameWidth: number;
   frameHeight: number;
   scale: number;
@@ -37,10 +45,12 @@ export class BootScene extends Phaser.Scene {
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
       this.load.image(CUSTOM_KEY, CHARACTER_ASSET.url);
     }
+    for (const k of SNACK_KINDS) if (SNACK_ASSETS[k]) this.load.image(snackSrcKey(k), SNACK_ASSETS[k]);
   }
 
   create(): void {
     buildAllTextures(this);
+    const snackIcons = this.setupSnacks();
     const info = this.setupCharacter();
     this.registry.set('character', info);
 
@@ -63,9 +73,32 @@ export class BootScene extends Phaser.Scene {
           ? this.frameCanvas(info, CHARACTER_ASSET.blinkFrame)
           : null
         : mapToCanvas(DINO_BLINK, DINO_BLINK_PALETTE),
+      snacks: snackIcons,
     };
     bus.emit(EV.ready, preview);
     this.scene.start('Game');
+  }
+
+  /** 간식 이미지가 있으면 기본 도트 간식 텍스처를 이미지로 교체 */
+  private setupSnacks(): Record<SnackKind, HTMLCanvasElement> {
+    const icons = {} as Record<SnackKind, HTMLCanvasElement>;
+    for (const k of SNACK_KINDS) {
+      const src = snackSrcKey(k);
+      if (this.textures.exists(src)) {
+        const img = this.textures.get(src).getSourceImage() as HTMLImageElement;
+        this.textures.remove(SNACK_TEX[k]);
+        this.textures.addImage(SNACK_TEX[k], img);
+        // Phaser 가 쓰고 난 임시 주소(blob)는 사라지므로 캔버스로 복사해서 전달
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        c.getContext('2d')?.drawImage(img, 0, 0);
+        icons[k] = c;
+      } else {
+        icons[k] = snackCanvas(k);
+      }
+    }
+    return icons;
   }
 
   private setupCharacter(): CharacterInfo {
@@ -81,6 +114,8 @@ export class BootScene extends Phaser.Scene {
         runFrames: run.length ? run : [0],
         jumpFrame: CHARACTER_ASSET.jumpFrame < count ? CHARACTER_ASSET.jumpFrame : 0,
         idleFrame: CHARACTER_ASSET.idleFrame < count ? CHARACTER_ASSET.idleFrame : 0,
+        happyFrame: CHARACTER_ASSET.happyFrame < count ? CHARACTER_ASSET.happyFrame : -1,
+        surprisedFrame: CHARACTER_ASSET.surprisedFrame < count ? CHARACTER_ASSET.surprisedFrame : -1,
         frameWidth: fw,
         frameHeight: fh,
         scale: CHARACTER_ASSET.displayHeight / fh,
@@ -95,6 +130,8 @@ export class BootScene extends Phaser.Scene {
       runFrames: [0, 1],
       jumpFrame: 2,
       idleFrame: 0,
+      happyFrame: -1,
+      surprisedFrame: -1,
       frameWidth: fw,
       frameHeight: fh,
       scale: 1, // 기본 캐릭터는 원래 크기(24px) 그대로

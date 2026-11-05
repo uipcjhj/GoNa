@@ -68,6 +68,20 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 파일이 없으면 코드로 그린 기본 캐릭터(물방울 모양 갈색 머리, 동그란 얼굴, 연두색 공룡 옷)가 나옵니다.
 기본 캐릭터 도트는 `src/art/sprites.ts` 의 `DINO_FRAMES` 에서 글자 단위로 직접 고칠 수도 있어요.
 
+## 간식 이미지 & 표정
+
+- 간식: `public/assets/snacks/{strawberry,banana,cookie}.png` (17×17 도트, 원본에서 `python3 tools/build_snack_sprites.py` 로 생성).
+  파일이 없으면 코드로 그린 기본 간식. 점수·등장 빈도·충돌 크기는 그대로.
+- 표정: 간식을 먹으면 기쁨(7번 프레임) 0.4초, 바위에 부딪히면 놀람(8번 프레임) 0.5초 → 다시 달리기/점프.
+  그림만 바뀌고 위치·점프·충돌 판정은 그대로. 시간은 `src/config.ts` 의 `happyMs`, `surprisedMs`.
+
+## 자동 테스트
+
+```bash
+npm run build && npx vite preview --port 4173   # 다른 터미널에서
+node tools/e2e-test.cjs                         # 모바일 가로·세로·이미지 없음 3가지 상황 검사
+```
+
 ## 구조
 
 ```
