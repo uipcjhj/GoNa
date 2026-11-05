@@ -5,20 +5,11 @@
 원본: art-src/title/gona-cover-original.png (1448x1086, 단일 이미지)
 출력: public/assets/title/cover/  (webp + layers.json)
 
-  base.webp        로고를 지우고, 움직이는 요소 뒤쪽을 채워 넣은 바탕
-  logo.webp        제목 로고 (세로 화면에서는 위쪽에 따로 배치)
-  gona.webp        고나 몸 (머리카락 제외) — 숨쉬기
-  gona-blink.webp  고나 눈 감은 패치 — 깜빡임
-  hair.webp        물방울 머리카락 — 살랑
-  mush-*.webp      큰 버섯들 — 미세하게 흔들림
-  vine-*.webp      위에서 늘어진 덩굴·잎 — 살랑
-  fall-0..3.webp   폭포 물줄기 4프레임 — 흐름
-  sky-ext.webp     세로 화면 위쪽 여백용 하늘 (원본 색으로 새로 그린 도트)
-  ground-ext.webp  세로 화면 아래쪽 여백용 풀밭·흙길 (원본 색으로 새로 그린 도트)
-
-분리 방법: 원본은 진한 갈색 외곽선으로 그려져 있어서, 상자 가장자리에서부터
-'외곽선이 아닌 픽셀'을 채워 들어가 닿지 않는 부분 = 그 물체. 물체가 움직이면
-드러나는 바탕은 바깥 색을 안쪽으로 번져 채움(가장자리 몇 픽셀만, 머리카락·로고는 전체).
+  scene.webp       원본 그대로 (아무것도 오려내거나 메우지 않음 — 고나는 그림 속에서 움직이지 않음)
+  logo.webp        제목 로고 (세로 화면에서 위쪽 하늘에 따로 배치. 원본은 그대로 둠)
+  fall-0..3.webp   폭포 물줄기 4프레임 (폭포 영역 안의 물 픽셀만 아래로 순환 → 같은 자리에 덮어 그려 흐름)
+  sky-ext.webp     세로 화면 위쪽: 원본 하늘 색으로 새로 그린 도트 하늘 (아래 끝 = 원본 458번째 줄 색)
+  ground-ext.webp  세로 화면 아래쪽: 원본 풀밭·흙길 색으로 새로 그린 도트 땅 (위 끝 = 원본 맨 아랫줄 색)
 
 사용법:  python3 tools/build_cover_layers.py
 """
@@ -213,7 +204,6 @@ def dilate(m, r):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     layers = {}
-    base = img.copy()
 
     # ── 로고
     logo = extract_from_sky((228, 4, 1232, 452), drop_top=False)
@@ -223,104 +213,29 @@ def main():
     logo[:, 1214:] = False
     logo[:128, :440] = False  # 왼쪽 위 큰 버섯 갓
     logo[:195, 1150:] = False  # 오른쪽 위 큰 버섯 갓
+    # 로고에 딸려 온 작은 조각(옆 버섯 갓 끄트머리 등) 제거: 큰 덩어리만
+    lab = np.full((H, W), -1, np.int32)
+    sizes = []
+    ys, xs = np.where(logo)
+    for y0, x0 in zip(ys, xs):
+        if lab[y0, x0] >= 0:
+            continue
+        n = len(sizes)
+        st = [(y0, x0)]
+        lab[y0, x0] = n
+        c = 0
+        while st:
+            y, x = st.pop()
+            c += 1
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < H and 0 <= nx < W and logo[ny, nx] and lab[ny, nx] < 0:
+                    lab[ny, nx] = n
+                    st.append((ny, nx))
+        sizes.append(c)
+    keep = [i for i, c in enumerate(sizes) if c >= max(sizes) * 0.05]
+    logo &= np.isin(lab, keep)
     layers["logo"] = save_layer("logo", logo)
-    # 로고 뒤 하늘: 세로줄마다 위·아래 하늘색을 이어 칠함 (번짐 줄무늬 없이)
-    lm = dilate(logo, 3)
-    for x in range(W):
-        col = lm[:, x]
-        y = 0
-        while y < H:
-            if col[y]:
-                y1 = y
-                while y1 < H and col[y1]:
-                    y1 += 1
-                top = base[y - 1, x] if y > 0 else base[min(H - 1, y1), x]
-                bot = base[y1, x] if y1 < H else top
-                for k in range(y, y1):
-                    t = (k - y + 1) / (y1 - y + 1)
-                    base[k, x] = top * (1 - t) + bot * t
-                y = y1
-            y += 1
-
-    # ── 고나 + 머리카락
-    gona = extract((535, 528, 965, 1018))
-    hair = gona.copy()
-    hair[:, :715] = False
-    hair[:, 816:] = False
-    hair[612:, :] = False
-    hair[612:626, 770:814] = gona[612:626, 770:814]
-    hair[600:, :768] = False  # 머리 윗선 조각 제외
-    body = gona & ~hair
-    layers["gona"] = save_layer("gona", body)
-    layers["hair"] = save_layer("hair", hair)
-    layers["hair"]["pivot"] = [792, 622]
-    # 눈 감은 패치: 얼굴 안의 작은 진한 점(눈) → 얼굴색으로 덮고 아래쪽에 가는 선
-    face_box = (600, 650, 770, 735)
-    fx0, fy0, fx1, fy1 = face_box
-    eyes = DARK[fy0:fy1, fx0:fx1] & gona[fy0:fy1, fx0:fx1]
-    # 외곽선과 붙은 건 제외: 작은 덩어리만
-    em = np.zeros((H, W), bool)
-    seen = np.zeros_like(eyes)
-    blobs = []
-    for y in range(eyes.shape[0]):
-        for x in range(eyes.shape[1]):
-            if eyes[y, x] and not seen[y, x]:
-                st = [(y, x)]
-                seen[y, x] = True
-                pts = []
-                while st:
-                    cy, cx = st.pop()
-                    pts.append((cy, cx))
-                    for dy in (-1, 0, 1):
-                        for dx in (-1, 0, 1):
-                            ny, nx = cy + dy, cx + dx
-                            if 0 <= ny < eyes.shape[0] and 0 <= nx < eyes.shape[1] and eyes[ny, nx] and not seen[ny, nx]:
-                                seen[ny, nx] = True
-                                st.append((ny, nx))
-                ys_ = [p[0] for p in pts]
-                xs_ = [p[1] for p in pts]
-                # 눈: 상자 가장자리에 닿지 않는 작고 뭉툭한 점 (외곽선 조각 제외)
-                touches = min(ys_) == 0 or min(xs_) == 0 or max(ys_) == eyes.shape[0] - 1 or max(xs_) == eyes.shape[1] - 1
-                if 80 <= len(pts) <= 900 and not touches:
-                    blobs.append(pts)
-    blink = np.zeros((H, W, 3), np.int32)
-    bmask = np.zeros((H, W), bool)
-    face_col = np.median(img[fy0:fy1, fx0:fx1][~DARK[fy0:fy1, fx0:fx1]], axis=0).astype(np.int32)
-    eye_col = np.median(np.array([img[fy0 + y, fx0 + x] for b in blobs for y, x in b]), axis=0).astype(np.int32)
-    for b in blobs:
-        ys = [fy0 + y for y, _ in b]
-        xs = [fx0 + x for _, x in b]
-        for y, x in zip(ys, xs):
-            em[y, x] = True
-        reg = dilate(em, 2) & gona
-        bmask |= reg
-        blink[reg] = face_col
-        # 감은 눈: 눈 아래쪽에 두 도트 높이의 짧은 선
-        yb = max(ys)
-        for x in range(min(xs) - 2, max(xs) + 3):
-            for y in range(yb - DOT, yb + 1):
-                blink[y, x] = eye_col
-                bmask[y, x] = True
-        em[:] = False
-    print(f"  눈 {len(blobs)}개", [(fx0 + min(x for _, x in b), fy0 + min(y for y, _ in b), len(b)) for b in blobs])
-    if len(blobs) != 2:
-        raise SystemExit("고나 눈을 2개 찾지 못했습니다")
-    layers["blink"] = save_layer("gona-blink", bmask, src=blink)
-    base = inpaint(base, dilate(hair, 2))
-
-    # ── 큰 버섯 · 덩굴: 외곽선이 끊겨 있어 깔끔히 오려낼 수 없으므로,
-    #    '가장자리가 부드럽게 사라지는 영역'(feather)만 지정 → 화면에서 그 안의 그림을 몇 px 살랑 (이음매 없음)
-    #    (x, y, w, h, 기준점: 'bottom' 아래 고정 / 'top' 위 고정)
-    layers["sway"] = {
-        "mush-tl": [0, 0, 250, 200, "bottom"],
-        "mush-l2": [0, 270, 275, 160, "bottom"],
-        "mush-tr": [1195, 50, 253, 220, "bottom"],
-        "mush-ml": [240, 598, 190, 110, "bottom"],
-        "mush-r": [1030, 665, 222, 120, "bottom"],
-        "vine-t": [940, 0, 290, 130, "top"],
-        "vine-r": [1280, 0, 168, 420, "top"],
-        "vine-l": [0, 0, 140, 270, "top"],
-    }
 
     # ── 폭포 (물 픽셀을 아래로 순환 이동한 4프레임)
     fx0, fy0, fx1, fy1 = 1028, 568, 1104, 702
@@ -340,13 +255,15 @@ def main():
         info = save_layer(f"fall-{k}", wm, src=fr, pad=0)
     layers["fall"] = info
 
-    # ── 바탕
-    Image.fromarray(base.astype(np.uint8)).save(OUT / "base.webp", quality=90, method=6)
+    # ── 바탕: 원본 그대로 (아무것도 오려내거나 메우지 않음)
+    Image.fromarray(img.astype(np.uint8)).save(OUT / "scene.webp", quality=90, method=6)
+
+
 
     # ── 세로 화면용 여백: 하늘(위) · 풀밭(아래), 원본 색으로 도트 크기 6px 에 맞춰 새로 그림
-    crop_x0, crop_x1, crop_top = 404, 1136, 446
+    crop_x0, crop_x1, crop_top = 404, 1136, 458
     cw = (crop_x1 - crop_x0) // DOT
-    sky_bottom = np.array([np.median(base[crop_top:crop_top + 8, crop_x0 + i * DOT:crop_x0 + (i + 1) * DOT].reshape(-1, 3), axis=0) for i in range(cw)])
+    sky_bottom = np.array([np.median(img[crop_top:crop_top + 8, crop_x0 + i * DOT:crop_x0 + (i + 1) * DOT].reshape(-1, 3), axis=0) for i in range(cw)])
     top_col = np.array([150, 190, 238])
     sky_h = 140
     sky = np.zeros((sky_h, cw, 3))

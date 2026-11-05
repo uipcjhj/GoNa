@@ -1328,8 +1328,7 @@ h2 {
 .cv-side {
   position: absolute;
   background-repeat: no-repeat;
-  transform: scaleX(-1);
-  filter: brightness(0.62) saturate(0.85);
+  background-size: 100% 100%;
 }
 
 /* 반딧불 · 빛 입자 */
@@ -1579,18 +1578,15 @@ h2 {
 }
 
 /* 로고: 물러나는 도중에 위에서 통 내려옴 */
-.cover .cv-logo-top,
-.cover .cv-logo {
+.cover .cv-logo-top {
   opacity: 0;
 }
 
-.cover.revealed .cv-logo-top,
-.cover.revealed .cv-logo {
+.cover.revealed .cv-logo-top {
   animation: cv-logo-drop 0.9s cubic-bezier(0.3, 1.5, 0.5, 1) 1.1s both, logo-float 4s ease-in-out 2s infinite;
 }
 
-.cover.instant .cv-logo-top,
-.cover.instant .cv-logo {
+.cover.instant .cv-logo-top {
   animation: logo-float 4s ease-in-out infinite;
   opacity: 1;
 }
@@ -1788,4 +1784,31 @@ h2 {
     transform: translate(50px, 100vh) rotate(380deg);
     opacity: 0;
   }
+}
+
+.cv-gona-mark {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* 세로: 작은 버튼은 아래 모서리로 (로고와 겹치지 않게) */
+.cover.portrait .cover-test,
+.cover.portrait .cover-replay {
+  top: auto;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  min-height: 32px;
+  font-size: 11px;
+}
+
+.cover.portrait .cover-test {
+  left: max(6px, env(safe-area-inset-left));
+}
+
+.cover.portrait .cover-replay {
+  left: auto;
+  right: max(6px, env(safe-area-inset-right));
+}
+
+.cover.portrait .cover-hint {
+  margin-bottom: 30px;
 }
