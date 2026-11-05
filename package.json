@@ -1,0 +1,23 @@
+{
+  "name": "dino-snack-adventure",
+  "private": true,
+  "version": "1.0.0",
+  "description": "우리애기 공룡의 간식 대모험 - 모바일 픽셀 러너 게임",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "tsc --noEmit && vite build --mode single",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "galmuri": "^2.40.3",
+    "phaser": "^4.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}
