@@ -226,9 +226,12 @@ export class GameScene extends Phaser.Scene {
     if (this.bgImage) {
       // 원본의 groundRow 줄이 게임 땅 윗면에 오도록 확대 (위쪽은 화면 맨 위부터)
       const src = this.textures.get(TEX.bgImage).getSourceImage() as HTMLImageElement;
-      this.bgScale = this.groundY / GAME_BG.groundRow;
+      // 가로: 원본 그림(숲 지붕 제외)의 맨 위가 화면 맨 위에 오도록 / 세로: 덜 확대해서 숲을 넓게 (위는 숲 지붕이 채움)
+      const landscapeScale = this.groundY / (GAME_BG.groundRow - GAME_BG.extraTop);
+      const minScale = this.groundY / GAME_BG.groundRow; // 이보다 작으면 화면 위가 빔
+      this.bgScale = this.H > VIEW.baseHeight ? Math.max(GAME_BG.portraitScale, minScale) : landscapeScale;
       this.bgImage
-        .setPosition(0, 0)
+        .setPosition(0, Math.round((this.groundY - GAME_BG.groundRow * this.bgScale) * VIEW.renderScale) / VIEW.renderScale)
         .setSize(this.W, Math.ceil(src.height * this.bgScale))
         .setTileScale(this.bgScale, this.bgScale);
       this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -20, this.W, this.groundY + 20);
