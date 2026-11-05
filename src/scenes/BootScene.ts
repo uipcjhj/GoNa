@@ -151,7 +151,8 @@ export class BootScene extends Phaser.Scene {
         ...base,
         texture: stageTexKey(st.id),
         frameHeight: fh,
-        scale: (CHARACTER_ASSET.displayHeight / fh) * (st.anim.scale / 1.2),
+        // 1:1 도트 시트는 지정 배율(도트 크기 통일), 크기가 제각각인 그림은 기존 캐릭터 키에 맞춰
+        scale: asset.scale ?? (CHARACTER_ASSET.displayHeight / fh) * (st.anim.scale / 1.2),
         runFrames: run.length ? run : [0],
         jumpFrame: ok(asset.anim.jump, 0),
         idleFrame: ok(asset.anim.idle, 0),

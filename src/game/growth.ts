@@ -108,7 +108,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     name: '빅베이비 곤룡',
     description: '쿵쿵! 최종 진화 완료!',
     gaugeToNext: null,
-    anim: { run: [1, 2, 3, 4], runFps: 8, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.6, wiggleDeg: 0, wiggleSpeed: 0, bob: 0 },
+    // (bigbaby.png 가 없을 때의 임시: 직립보행 포즈를 1.6배) / 있으면 전용 체형 그림, 묵직하게 통통
+    anim: { run: [1, 2, 3, 4], runFps: 7, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.6, wiggleDeg: 0, wiggleSpeed: 0, bob: 2 },
     hitbox: SAME_HITBOX,
     controls: SAME_CONTROLS,
     abilities: { hairBoomerang: true },
@@ -133,11 +134,18 @@ export const GROWTH_ON_GAME_OVER = 'restart' as const;
  * 단계별 전용 그림 (선택). 파일이 있으면 그 단계는 이 시트를 사용합니다.
  * 형식: 프레임을 가로로 이어 붙인 PNG. frames 의 번호는 그 PNG 안의 프레임 번호.
  */
-export const STAGE_ASSETS: Partial<Record<GrowthStageId, { url: string; frameCount: number; anim: Partial<StageAnimation> }>> = {
-  newborn: { url: 'assets/character/stages/newborn.png', frameCount: 4, anim: { run: [0, 1, 2, 3], jump: 0, idle: 0 } },
-  crawler: { url: 'assets/character/stages/crawler.png', frameCount: 4, anim: { run: [0, 1, 2, 3], jump: 0, idle: 0 } },
+export const STAGE_ASSETS: Partial<
+  Record<GrowthStageId, { url: string; frameCount: number; anim: Partial<StageAnimation>; scale?: number }>
+> = {
+  // tools/build_growth_sprites.py 가 컨셉 시트(art-src/growth)에서 만든 1:1 도트 시트 — 모두 1.2배(도트 6px)로 표시
+  // 0 엎드림 · 1 꿈틀(몸 1칸 늘림) · 2 눈 깜빡
+  newborn: { url: 'assets/character/stages/newborn.png', frameCount: 3, scale: 1.2, anim: { run: [0, 1, 0, 1, 0, 2], jump: 0, idle: 0 } },
+  // 0 기기 · 1 다리 벌림
+  crawler: { url: 'assets/character/stages/crawler.png', frameCount: 2, scale: 1.2, anim: { run: [0, 1], jump: 1, idle: 0 } },
+  // 직립보행은 기존 dino.png 달리기 프레임 유지 (walker.png 를 넣으면 교체)
   walker: { url: 'assets/character/stages/walker.png', frameCount: 6, anim: { run: [0, 1, 2, 3], jump: 4, idle: 5 } },
-  bigbaby: { url: 'assets/character/stages/bigbaby.png', frameCount: 6, anim: { run: [0, 1, 2, 3], jump: 4, idle: 5 } },
+  // 0 서기 · 1 왼발 들기 · 2 오른발 들기 → 묵직한 걸음
+  bigbaby: { url: 'assets/character/stages/bigbaby.png', frameCount: 3, scale: 1.2, anim: { run: [1, 0, 2, 0], jump: 1, idle: 0 } },
 };
 
 /** 한 판 동안의 성장 상태 (점수와 독립) */
