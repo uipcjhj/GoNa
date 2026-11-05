@@ -809,3 +809,57 @@ h2 {
     display: none;
   }
 }
+
+/* ───────── 진화 연출: 새 성장 단계 이름 ───────── */
+.evolve-banner {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  min-width: min(84vw, 360px);
+  padding: 10px 18px 12px;
+  text-align: center;
+  pointer-events: none;
+  background: rgba(61, 39, 22, 0.78);
+  border: 3px solid #ffcf4d;
+  border-radius: 6px;
+  box-shadow: 0 3px 0 #4a2a14, 0 0 18px rgba(255, 220, 120, 0.6);
+  animation: evo-pop 0.45s steps(5) both;
+}
+
+.evolve-banner p {
+  margin: 0;
+}
+
+.evo-top {
+  font-size: clamp(13px, 3.6vmin, 18px);
+  color: #ffe08a;
+}
+
+.evo-name {
+  margin-top: 4px !important;
+  font-size: clamp(20px, 6.4vmin, 32px);
+  color: #fff8e6;
+  text-shadow: 0 2px 0 #a2491d;
+}
+
+.evo-desc {
+  margin-top: 4px !important;
+  font-size: clamp(12px, 3.4vmin, 16px);
+  color: #d8f5a2;
+}
+
+@keyframes evo-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.growth-line {
+  color: #5f9e3c;
+}

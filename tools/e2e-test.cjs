@@ -10,7 +10,7 @@ const S = process.argv[2] || require('os').tmpdir();
 const URL = process.env.GAME_URL || 'http://localhost:4173/';
 const results = [];
 const check = (name, ok, info = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} ${name} ${info}`); };
-async function run(label, device, { noImages = false } = {}) {
+async function run(label, device, { noImages = false, stage = null } = {}) {
   const b = await chromium.launch();
   const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
   const page = await ctx.newPage(); const errs = [];
@@ -23,8 +23,12 @@ async function run(label, device, { noImages = false } = {}) {
   const box = await page.locator('.start-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(1300);
-  const info = await ev((sc) => ({ custom: sc.char.custom, happy: sc.char.happyFrame, sur: sc.char.surprisedFrame, state: sc.state }));
-  check(`${label}: game started`, info.state === 'playing', JSON.stringify(info));
+  // 성장 단계 지정 (null = 시작 단계 그대로)
+  if (stage !== null) await ev((sc, i) => sc.debugSetStage(i), stage);
+  // 기대 프레임은 '현재 성장 단계의 모습' 정의에서 읽어 옴
+  const info = await ev((sc) => ({ custom: sc.vis.source !== 'fallback' || sc.vis.happyFrame >= 0, happy: sc.vis.happyFrame, sur: sc.vis.surprisedFrame, run: sc.vis.runFrames, jump: sc.vis.jumpFrame, idle: sc.vis.idleFrame, stage: sc.growth.stage.name, state: sc.state }));
+  const isRun = (f) => info.run.map(String).includes(String(f)) || String(f) === String(info.idle);
+  check(`${label}: game started`, info.state === 'playing', `${info.stage} ${JSON.stringify(info.run)}`);
   await ev((sc) => { sc.distToNext = 1e9; sc.entities.forEach(e => { e.sprite.destroy(); }); sc.entities = []; });
   const frame = () => ev((sc) => ({ f: sc.player.frame.name, y: sc.player.y, alt: sc.alt, score: sc.score, hearts: sc.hearts, inv: sc.invincibleUntil - sc.time.now, grounded: sc.grounded }));
 
@@ -36,15 +40,15 @@ async function run(label, device, { noImages = false } = {}) {
     check(`${label}: ${kind} +${pts}`, s.score - before.score === pts, `score ${before.score}->${s.score}`);
     await page.waitForTimeout(150);
     const mid = await frame();
-    if (!info.custom) check(`${label}: no expression w/o image`, ['0', '1', 0, 1].includes(mid.f), `frame ${mid.f}`);
+    if (info.happy < 0) check(`${label}: no expression frame in this stage (pose kept)`, isRun(mid.f), `frame ${mid.f}`);
     else {
-      check(`${label}: happy face during pickup`, mid.f === 7 || mid.f === '7', `frame ${mid.f}`);
+      check(`${label}: happy face during pickup`, String(mid.f) === String(info.happy), `frame ${mid.f}`);
       check(`${label}: position unchanged during expression`, Math.abs(mid.y - before.y) <= 1, `y ${before.y}->${mid.y}`);
       if (kind === 'strawberry') await page.screenshot({ path: `${S}/t5-${label}-happy.png` });
     }
     await page.waitForTimeout(400);
     const after = await frame();
-    check(`${label}: back to run after happy`, [1, 2, 3, 4, '1', '2', '3', '4', 0, '0'].includes(after.f), `frame ${after.f}`);
+    check(`${label}: back to run after happy`, isRun(after.f), `frame ${after.f}`);
   }
 
   // 기쁨 표정 중 점프 / 더블 점프
@@ -59,7 +63,7 @@ async function run(label, device, { noImages = false } = {}) {
   check(`${label}: double jump works during expression`, j2.alt > j1.alt, `alt ${j1.alt.toFixed(1)}->${j2.alt.toFixed(1)}`);
   await page.waitForTimeout(300);
   const j3 = await frame();
-  if (info.custom) check(`${label}: back to jump pose in air`, !j3.grounded ? (j3.f === 5 || j3.f === '5') : true, `frame ${j3.f} grounded ${j3.grounded}`);
+  check(`${label}: back to jump pose in air`, !j3.grounded ? String(j3.f) === String(info.jump) : true, `frame ${j3.f} grounded ${j3.grounded}`);
   for (let i = 0; i < 60; i++) { if ((await frame()).grounded) break; await page.waitForTimeout(30); }
   await page.waitForTimeout(200);
 
@@ -71,7 +75,7 @@ async function run(label, device, { noImages = false } = {}) {
   check(`${label}: invincible after hit`, r.inv > 1100, `inv ${Math.round(r.inv)}ms`);
   await page.waitForTimeout(120);
   const sface = await frame();
-  if (info.custom) { check(`${label}: surprised face on hit`, sface.f === 8 || sface.f === '8', `frame ${sface.f}`); await page.screenshot({ path: `${S}/t5-${label}-surprised.png` }); }
+  if (info.sur >= 0) { check(`${label}: surprised face on hit`, String(sface.f) === String(info.sur), `frame ${sface.f}`); await page.screenshot({ path: `${S}/t5-${label}-surprised.png` }); }
   // 무적 중 다시 충돌 → 하트 유지
   for (let i = 0; i < 60; i++) { if ((await frame()).grounded) break; await page.waitForTimeout(20); }
   await ev((sc) => sc.addRock(sc.playerX + 18));
@@ -80,7 +84,7 @@ async function run(label, device, { noImages = false } = {}) {
   check(`${label}: no damage while invincible`, r2.hearts === h0 - 1, `hearts ${r2.hearts} inv ${Math.round(r2.inv)}`);
   await page.waitForTimeout(300);
   const r3 = await frame();
-  check(`${label}: back to run after surprised`, [1, 2, 3, 4, '1', '2', '3', '4', 0, '0'].includes(r3.f) || !r3.grounded, `frame ${r3.f}`);
+  check(`${label}: back to run after surprised`, isRun(r3.f) || !r3.grounded, `frame ${r3.f}`);
 
   // 일시정지
   await page.waitForTimeout(800);
@@ -113,10 +117,94 @@ async function run(label, device, { noImages = false } = {}) {
   check(`${label}: no page errors`, errs.length === 0, errs.join(' | '));
   await b.close();
 }
+async function growthTests(label, device) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.goto(URL + '?test'); await page.waitForTimeout(1500);
+  const ev = (fn, arg) => page.evaluate(([f, a]) => { const sc = window.__gona.scene.getScene('Game'); return eval(f)(sc, a); }, [fn.toString(), arg]);
+  const box = await page.locator('.start-btn').boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(1300);
+  await ev((sc) => { sc.distToNext = 1e9; sc.entities.forEach(e => e.sprite.destroy()); sc.entities = []; });
+  const g = () => ev((sc) => ({ state: sc.state, stage: sc.growth.stageIndex, gauge: sc.growth.gauge, score: sc.score, d: sc.distance, vis: sc.vis.id, alt: sc.alt, grounded: sc.grounded, hearts: sc.hearts }));
+  const s0 = await g();
+  check(`${label}: starts as newborn`, s0.stage === 0 && s0.vis === 'newborn', JSON.stringify(s0));
+  // 간식 → 점수와 게이지가 각자 증가
+  await ev((sc) => sc.addSnack('cookie', sc.playerX + 22, 4));
+  await page.waitForTimeout(600);
+  const s1 = await g();
+  check(`${label}: cookie +30 score, +3 gauge`, s1.score - s0.score === 30 && s1.gauge - s0.gauge === 3, `score ${s1.score} gauge ${s1.gauge}`);
+  // 게이지 가득 → 진화 연출 동안 정지
+  await ev((sc) => { sc.growth.gauge = 11; sc.addSnack('strawberry', sc.playerX + 18, 4); });
+  let e1; for (let i = 0; i < 50; i++) { e1 = await g(); if (e1.state === 'evolving') break; await page.waitForTimeout(15); }
+  check(`${label}: evolution starts when gauge full`, e1.state === 'evolving', e1.state);
+  await page.waitForTimeout(150);
+  await page.touchscreen.tap(20, 200); // 진화 중 터치는 무시
+  await page.waitForTimeout(500);
+  const e2 = await g();
+  check(`${label}: game paused during evolution`, e2.state === 'evolving' && Math.abs(e2.d - e1.d) < 0.01 && e2.alt === e1.alt, `distance ${e1.d.toFixed(1)}→${e2.d.toFixed(1)}`);
+  // 연출 시간은 게임 프레임 시간 기준이라, 느린 기기에서는 실제 시간보다 늦을 수 있어 나타날 때까지 기다림
+  let banner = '';
+  for (let i = 0; i < 60 && !banner; i++) {
+    banner = await page.evaluate(() => { const el = document.querySelector('.evolve-banner'); return el.classList.contains('hidden') ? '' : el.textContent; });
+    if (!banner) await page.waitForTimeout(50);
+  }
+  check(`${label}: new stage name shown`, banner.includes('기어 다니는 고나'), banner);
+  let e3; for (let i = 0; i < 80; i++) { e3 = await g(); if (e3.state === 'playing') break; await page.waitForTimeout(50); }
+  check(`${label}: game resumes as crawler`, e3.state === 'playing' && e3.stage === 1 && e3.vis === 'crawler' && e3.gauge === 0, JSON.stringify(e3));
+  // 진화 후 점프·점수 정상
+  const vp = page.viewportSize();
+  await page.waitForTimeout(1100);
+  await page.touchscreen.tap(vp.width / 2, vp.height / 2); await page.waitForTimeout(150);
+  const j = await g();
+  check(`${label}: jump works after evolution`, !j.grounded && j.alt > 5, `alt ${j.alt.toFixed(1)}`);
+  for (let i = 0; i < 60; i++) { if ((await g()).grounded) break; await page.waitForTimeout(25); }
+  const before = await g();
+  await ev((sc) => sc.addSnack('banana', sc.playerX + 22, 4)); await page.waitForTimeout(600);
+  const after = await g();
+  check(`${label}: score & gauge after evolution`, after.score - before.score === 20 && after.gauge - before.gauge === 2, `score +${after.score - before.score} gauge +${after.gauge - before.gauge}`);
+  // 3·4단계까지 진화
+  for (const [target, name] of [[2, '직립보행 고나'], [3, '빅베이비 곤룡']]) {
+    await ev((sc) => { sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
+    let st; await page.waitForTimeout(300);
+    for (let i = 0; i < 100; i++) { st = await g(); if (st.state === 'playing') break; await page.waitForTimeout(50); }
+    check(`${label}: evolves to ${name}`, st.stage === target && st.state === 'playing', JSON.stringify(st));
+    if (target === 3) await page.screenshot({ path: `${S}/grow-${label}-bigbaby.png` });
+  }
+  // 최종 단계: 더 진화하지 않음
+  await ev((sc) => { sc.growth.gauge = 999; sc.addSnack('cookie', sc.playerX + 18, 4); });
+  await page.waitForTimeout(700);
+  const fin = await g();
+  check(`${label}: final stage stays (no evolution)`, fin.state === 'playing' && fin.stage === 3, JSON.stringify(fin));
+  // 빅베이비도 충돌 판정 동일 (박스 크기)
+  const hb = await ev((sc) => { const b = sc.playerBox(); return [b.right - b.left, b.top - b.bottom + 1]; });
+  check(`${label}: hitbox unchanged at bigbaby`, Math.round(hb[0]) === 11 && Math.round(hb[1]) === 19, JSON.stringify(hb));
+  // 게임 오버 → 다시하기는 갓난아기부터, 최고 단계 기록
+  await ev((sc) => { sc.hearts = 1; sc.invincibleUntil = 0; });
+  for (let i = 0; i < 60; i++) { const f = await g(); if (f.grounded) break; await page.waitForTimeout(25); }
+  await ev((sc) => sc.addRock(sc.playerX + 22));
+  await page.waitForTimeout(2000);
+  const overText = await page.locator('.growth-line').textContent();
+  check(`${label}: game over shows growth`, overText.includes('4/4') && overText.includes('빅베이비'), overText);
+  await page.locator('.pixel-btn').click(); await page.waitForTimeout(800);
+  const rs = await g();
+  check(`${label}: retry restarts as newborn (rule)`, rs.stage === 0 && rs.gauge === 0 && rs.vis === 'newborn', JSON.stringify(rs));
+  const bestStage = await page.evaluate(() => localStorage.getItem('dino-snack-adventure.bestStage'));
+  check(`${label}: best growth stage saved`, bestStage === '4', bestStage);
+  check(`${label}: no page errors (growth)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
   await run('land', devices['iPhone 13 landscape']);
+  await run('land-walker', devices['iPhone 13 landscape'], { stage: 2 });
+  await run('port-walker', devices['iPhone 13'], { stage: 2 });
   await run('port', devices['iPhone 13']);
   await run('noimg', devices['iPhone 13 landscape'], { noImages: true });
+  await growthTests('grow-land', devices['iPhone 13 landscape']);
+  await growthTests('grow-port', devices['iPhone 13']);
   console.log(results.join('\n'));
   process.exitCode = results.some((r) => r.startsWith('FAIL')) ? 1 : 0;
 })();

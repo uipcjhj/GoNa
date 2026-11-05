@@ -100,6 +100,7 @@ export const GAME_BG = {
 export const STORAGE_KEYS = {
   best: 'dino-snack-adventure.best',
   muted: 'dino-snack-adventure.muted',
+  bestStage: 'dino-snack-adventure.bestStage',
 };
 
 /**
@@ -112,14 +113,15 @@ export const STORAGE_KEYS = {
  *   한 장짜리 이미지도 OK      ← frameCount: 1 (달릴 때 통통 튀는 효과로 대체)
  *
  * 현재 dino.png 는 tools/build_dino_sheet.py 가 원본(art-src/baby-dino)에서 만든
- * 27×34px 프레임 9장짜리 시트입니다:
+ * 33×34px 프레임 13장짜리 시트입니다:
  *   0 대기 · 1~4 달리기 · 5 점프 · 6 눈 감기(대기) · 7 기쁨(간식) · 8 놀람(충돌)
+ *   9 웅크리기 · 10 앉기 · 11 엎드려 눈 감기 · 12 엎드린 갓난아기  (성장 단계 임시 애니메이션용)
  */
 export const CHARACTER_ASSET = {
   /** public 폴더 기준 경로. 빈 문자열이면 기본 캐릭터만 사용 */
   url: 'assets/character/dino.png',
   /** 시트에 가로로 들어 있는 프레임 수 */
-  frameCount: 9,
+  frameCount: 13,
   /** 달리기 애니메이션에 쓸 프레임 번호 (없는 번호는 자동으로 무시) */
   runFrames: [1, 2, 3, 4],
   /** 점프 프레임 번호 (없으면 0번 사용) */

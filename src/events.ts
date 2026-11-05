@@ -20,6 +20,10 @@ export const EV = {
   /** UI → 게임: 일시정지 / 재개 요청 */
   requestPause: 'requestPause',
   requestResume: 'requestResume',
+  /** 성장: 진화 연출 시작 / 새 단계 확정({ level, name, description }) / 연출 끝 */
+  evolveStart: 'evolveStart',
+  evolve: 'evolve',
+  evolveEnd: 'evolveEnd',
   /** 화면 터치 */
   tap: 'tap',
 } as const;
@@ -29,4 +33,16 @@ export interface GameOverInfo {
   best: number;
   isNewBest: boolean;
   snacks: number;
+  /** 이번 판에서 도달한 성장 단계 (1~4) */
+  growthLevel: number;
+  growthName: string;
+  /** 지금까지 최고 성장 단계 */
+  bestGrowthLevel: number;
+  growthLevels: number;
+}
+
+export interface EvolveInfo {
+  level: number;
+  name: string;
+  description: string;
 }

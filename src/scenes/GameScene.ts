@@ -4,9 +4,15 @@ import { FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type GameOverInfo } from '../events';
 import { sound } from '../audio';
 import { storage } from '../storage';
-import type { CharacterInfo } from './BootScene';
+import type { StageVisual } from './BootScene';
+import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '../game/growth';
+import { StageManager } from '../game/stages';
 
-type State = 'ready' | 'playing' | 'paused' | 'dead';
+type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead';
+
+/** 진화 연출 시간(초): 변신 반짝임 → 새 모습 공개 → 게임 재개 */
+const EVO_TRANSFORM = 1.4;
+const EVO_TOTAL = 2.5;
 
 interface Entity {
   sprite: Phaser.GameObjects.Image;
@@ -32,7 +38,20 @@ const SNACK_TEX: Record<SnackKind, string> = {
 
 export class GameScene extends Phaser.Scene {
   private state: State = 'ready';
-  private char!: CharacterInfo;
+
+  // 성장 (점수와 독립)
+  private growth = new GrowthState();
+  private stageMgr = new StageManager();
+  private visuals!: Record<GrowthStageId, StageVisual>;
+  /** 지금 성장 단계의 모습 */
+  private vis!: StageVisual;
+  private gaugeGfx!: Phaser.GameObjects.Graphics;
+  private evoT = 0;
+  private evoFrom!: StageVisual;
+  private evoTo!: StageVisual;
+  private evoCommitted = false;
+  private evoSparkleT = 0;
+  private pauseAfterEvolve = false;
 
   // 화면 배치
   private W = 0;
@@ -109,11 +128,16 @@ export class GameScene extends Phaser.Scene {
     this.squash = 1;
     this.exprFrame = -1;
     this.exprUntil = 0;
+    // 게임 오버 후 규칙: 한 판 = 한 번의 성장 여정 → 다시하기는 항상 갓난아기부터 (GROWTH_ON_GAME_OVER)
+    this.growth.reset();
+    this.stageMgr.reset();
+    this.pauseAfterEvolve = false;
     this.registry.set('autoStart', !!data?.autoStart);
   }
 
   create(): void {
-    this.char = this.registry.get('character') as CharacterInfo;
+    this.visuals = this.registry.get('stageVisuals') as Record<GrowthStageId, StageVisual>;
+    this.vis = this.visuals[this.growth.stage.id];
 
     this.sky = this.add.graphics();
     this.sun = this.add.image(0, 0, TEX.sun);
@@ -136,9 +160,9 @@ export class GameScene extends Phaser.Scene {
     this.ground = this.add.tileSprite(0, 0, 10, GROUND_TILE_H, groundTex).setOrigin(0, 0);
 
     this.shadow = this.add.ellipse(0, 0, 14, 3, 0x3d2b22, 0.25);
-    this.player = this.add.sprite(0, 0, TEX.dino, this.char.runFrames[0]).setDepth(10);
-    this.player.setScale(this.char.scale);
-    this.player.play('run');
+    this.player = this.add.sprite(0, 0, this.vis.texture, this.vis.runFrames[0]).setDepth(10);
+    this.player.setScale(this.vis.scale);
+    this.player.play(this.vis.runAnim);
 
     this.dustEmitter = this.add.particles(0, 0, TEX.dust, {
       lifespan: 380,
@@ -165,6 +189,8 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(20)
       .setScrollFactor(0);
+    // 성장 게이지 (하트 아래)
+    this.gaugeGfx = this.add.graphics().setDepth(20).setScrollFactor(0);
     this.updateHud();
 
     this.layout();
@@ -234,7 +260,7 @@ export class GameScene extends Phaser.Scene {
         .setPosition(0, Math.round((this.groundY - GAME_BG.groundRow * this.bgScale) * VIEW.renderScale) / VIEW.renderScale)
         .setSize(this.W, Math.ceil(src.height * this.bgScale))
         .setTileScale(this.bgScale, this.bgScale);
-      this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -20, this.W, this.groundY + 20);
+      this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -80, this.W, this.groundY + 80);
     }
     this.ground.setPosition(0, this.groundY).setSize(this.W, GROUND_TILE_H);
 
@@ -294,11 +320,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pauseGame(): void {
+    if (this.state === 'evolving') {
+      this.pauseAfterEvolve = true; // 진화 연출이 끝나면 바로 일시정지
+      return;
+    }
     if (this.state !== 'playing') return;
     this.state = 'paused';
     this.tweens.pauseAll();
     this.player.anims.pause();
-    this.player.setFrame(this.char.idleFrame); // 쉬는 동안은 대기 포즈
+    this.player.setFrame(this.vis.idleFrame); // 쉬는 동안은 대기 포즈
     sound.stopMusic();
     bus.emit(EV.pause);
   }
@@ -316,16 +346,18 @@ export class GameScene extends Phaser.Scene {
   private setHudVisible(v: boolean): void {
     this.heartIcons.forEach((h) => h.setVisible(v));
     this.scoreText.setVisible(v);
+    this.gaugeGfx?.setVisible(v);
   }
 
   // ───────────────────────── 점프 ─────────────────────────
 
   private pressJump(): void {
     const now = this.time.now;
+    const c = this.growth.stage.controls; // 단계별 조작 (기본값 1배 = 기존과 동일)
     if (this.grounded) {
-      this.doJump(PHYSICS.jumpVelocity, false);
-    } else if (this.jumpsUsed < 2) {
-      this.doJump(PHYSICS.doubleJumpVelocity, true);
+      this.doJump(PHYSICS.jumpVelocity * c.jumpMul, false);
+    } else if (this.jumpsUsed < c.maxJumps) {
+      this.doJump(PHYSICS.doubleJumpVelocity * c.doubleJumpMul, true);
     } else {
       // 착지 직전 입력은 기억했다가 착지하자마자 점프
       this.lastPressAt = now;
@@ -356,7 +388,7 @@ export class GameScene extends Phaser.Scene {
     this.dustEmitter.explode(3, this.player.x, this.groundY);
     if (this.time.now - this.lastPressAt < PHYSICS.jumpBuffer && this.state === 'playing') {
       this.lastPressAt = -9999;
-      this.doJump(PHYSICS.jumpVelocity, false);
+      this.doJump(PHYSICS.jumpVelocity * this.growth.stage.controls.jumpMul, false);
     }
   }
 
@@ -365,6 +397,11 @@ export class GameScene extends Phaser.Scene {
   update(time: number, deltaMs: number): void {
     if (this.state === 'paused') return;
     const dt = Math.min(deltaMs, 50) / 1000;
+    if (this.state === 'evolving') {
+      // 진화 연출 중: 세상은 멈추고 연출만 진행
+      this.updateEvolution(dt, time);
+      return;
+    }
 
     if (this.state === 'playing') {
       this.elapsed += dt;
@@ -421,7 +458,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const wantAnim = this.grounded ? 'run' : 'jump';
+    const wantAnim = this.grounded ? this.vis.runAnim : this.vis.jumpAnim;
     if (this.exprFrame >= 0) {
       if (time < this.exprUntil) {
         // 표정 연출 중: 그림만 바꾸고 위치·물리·충돌 박스는 그대로
@@ -436,37 +473,46 @@ export class GameScene extends Phaser.Scene {
       this.player.play(wantAnim);
     }
 
+    // 갓난아기: 땅에서 꼬물꼬물 흔들림
+    if (this.grounded && this.vis.wiggleDeg > 0) this.player.angle = Math.sin(time * this.vis.wiggleSpeed) * this.vis.wiggleDeg;
+
+    this.placePlayer(dt, time);
+
+    if (this.grounded && this.state === 'playing' && Math.random() < dt * 6) {
+      this.dustEmitter.explode(1, this.playerX - 6, this.groundY);
+    }
+  }
+
+  /** 크기(스쿼시)·위치·그림자·카메라 들림·무적 깜빡임 — 물리와 무관한 표시만 */
+  private placePlayer(dt: number, time: number): void {
     // 스쿼시 & 스트레치 (부드럽게 1로 복귀)
     this.squash += (1 - this.squash) * Math.min(1, dt * 12);
     // 찌그러짐 배율도 렌더 픽셀 단위(1/renderScale)로 맞춰 도트 한 칸이 항상 같은 정수 픽셀이 되게
     const k = VIEW.renderScale;
-    const sy = Math.round(this.char.scale * this.squash * k) / k;
-    const sx = Math.round(this.char.scale * (2 - this.squash) * k) / k;
+    const sy = Math.round(this.vis.scale * this.squash * k) / k;
+    const sx = Math.round(this.vis.scale * (2 - this.squash) * k) / k;
     this.player.setScale(sx, sy);
 
     // 프레임이 한 장뿐인 커스텀 이미지는 통통 튀는 효과로 달리기 표현
-    const bob = this.grounded && this.char.runFrames.length < 2 ? Math.abs(Math.sin(time * 0.018)) * 2 : 0;
+    const bobAmp = this.vis.bob > 0 ? this.vis.bob : this.vis.runFrames.length < 2 ? 2 : 0;
+    const bob = this.grounded && this.state === 'playing' && bobAmp > 0 ? Math.abs(Math.sin(time * 0.018)) * bobAmp : 0;
 
-    const halfH = (this.char.frameHeight * sy) / 2;
+    const halfH = (this.vis.frameHeight * sy) / 2;
     // 발 = (땅 - 높이). 렌더 픽셀 격자에 맞춰 반올림해서 서 있을 때 발이 정확히 지면에 닿게
     const feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
     this.player.setPosition(this.playerX, feetY - halfH);
 
     // 아주 높은 더블 점프로 머리가 화면 위로 나가면, 그만큼만 카메라를 살짝 올림 (물리·판정은 그대로)
-    const headTop = feetY - this.char.frameHeight * sy;
+    const headTop = feetY - this.vis.frameHeight * sy;
     const lift = Math.min(0, Math.round((headTop - 2) * k) / k);
     this.cameras.main.scrollY = lift;
 
     const shadowScale = Math.max(0.35, 1 - this.alt / 110);
-    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.char.scale), 1);
+    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.vis.scale), 1);
 
     // 무적 깜빡임
     if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 80) % 2 ? 0.35 : 1);
     else this.player.setAlpha(1);
-
-    if (this.grounded && this.state === 'playing' && Math.random() < dt * 6) {
-      this.dustEmitter.explode(1, this.playerX - 6, this.groundY);
-    }
   }
 
   // ───────────────────────── 장애물 / 간식 ─────────────────────────
@@ -613,8 +659,9 @@ export class GameScene extends Phaser.Scene {
 
   /** 플레이어 충돌 박스 (땅 기준 높이 좌표계) */
   private playerBox(): { left: number; right: number; bottom: number; top: number } {
-    const w = PLAYER.hitboxWidth;
-    const h = PLAYER.hitboxHeight;
+    // 충돌 박스는 그림 크기와 별개 — 성장 단계 정의의 hitbox (기본: 모든 단계 기존과 동일)
+    const w = this.growth.stage.hitbox.width;
+    const h = this.growth.stage.hitbox.height;
     return {
       left: this.playerX - w / 2,
       right: this.playerX + w / 2,
@@ -637,7 +684,13 @@ export class GameScene extends Phaser.Scene {
     this.snacksEaten++;
     this.updateHud();
     sound.pickup(info.points);
-    this.showExpression(this.char.happyFrame, CHARACTER_ASSET.happyMs);
+    if (this.vis.happyFrame >= 0) this.showExpression(this.vis.happyFrame, CHARACTER_ASSET.happyMs);
+    else this.squash = 0.8; // 표정 프레임이 없는 단계는 통통 반응
+
+    // 성장 게이지 (점수와 별개로 증가)
+    const full = this.growth.add(SNACK_GROWTH[e.snack ?? 'strawberry']);
+    this.updateHud();
+    if (full) this.startEvolution();
     this.sparkleEmitter.explode(5, e.sprite.x, e.sprite.y - 6);
 
     this.tweens.add({
@@ -675,7 +728,7 @@ export class GameScene extends Phaser.Scene {
     this.hearts = Math.max(0, this.hearts - 1);
     this.updateHud();
     sound.hit();
-    this.showExpression(this.char.surprisedFrame, CHARACTER_ASSET.surprisedMs);
+    this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
     this.cameras.main.shake(180, 0.012);
     this.cameras.main.flash(140, 255, 120, 110);
     this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
@@ -703,7 +756,7 @@ export class GameScene extends Phaser.Scene {
     sound.gameOver();
     this.player.anims.stop();
     this.exprFrame = -1;
-    this.player.setFrame(this.char.surprisedFrame >= 0 ? this.char.surprisedFrame : this.char.jumpFrame).setAlpha(1);
+    this.player.setFrame(this.vis.surprisedFrame >= 0 ? this.vis.surprisedFrame : this.vis.jumpFrame).setAlpha(1);
     this.tweens.add({
       targets: this.player,
       y: this.player.y - 30,
@@ -720,10 +773,24 @@ export class GameScene extends Phaser.Scene {
     const isNewBest = this.score > prevBest;
     const best = Math.max(prevBest, this.score);
     if (isNewBest) storage.set(STORAGE_KEYS.best, String(best));
+    // 최고 성장 단계 기록 (성장 자체는 다음 판에 갓난아기부터 다시)
+    const reached = this.growth.maxStageIndex + 1;
+    const prevBestStage = Number(storage.get(STORAGE_KEYS.bestStage) ?? 0) || 0;
+    if (reached > prevBestStage) storage.set(STORAGE_KEYS.bestStage, String(reached));
+    const bestStage = Math.max(prevBestStage, reached);
 
     this.time.delayedCall(1100, () => {
       if (isNewBest && this.score > 0) sound.newRecord();
-      const info: GameOverInfo = { score: this.score, best, isNewBest: isNewBest && this.score > 0, snacks: this.snacksEaten };
+      const info: GameOverInfo = {
+        score: this.score,
+        best,
+        isNewBest: isNewBest && this.score > 0,
+        snacks: this.snacksEaten,
+        growthLevel: reached,
+        growthName: GROWTH_STAGES[reached - 1].name,
+        bestGrowthLevel: bestStage,
+        growthLevels: GROWTH_STAGES.length,
+      };
       bus.emit(EV.gameOver, info);
     });
   }
@@ -731,5 +798,115 @@ export class GameScene extends Phaser.Scene {
   private updateHud(): void {
     this.heartIcons.forEach((h, i) => h.setTexture(i < this.hearts ? TEX.heartFull : TEX.heartEmpty));
     this.scoreText.setText(`점수 ${this.score}`);
+    this.drawGauge();
+  }
+
+  // ───────────────────────── 성장 게이지 / 진화 ─────────────────────────
+
+  /** 하트 아래 성장 게이지: [막대] + 단계 칸 4개 */
+  private drawGauge(): void {
+    const g = this.gaugeGfx;
+    if (!g) return;
+    const x = 6;
+    const y = 16;
+    const w = 31;
+    const h = 5;
+    const final = this.growth.isFinal;
+    g.clear();
+    g.fillStyle(0x4a2a14, 1).fillRect(x - 1, y - 1, w + 2, h + 2);
+    g.fillStyle(0xf6e7c6, 1).fillRect(x, y, w, h);
+    const fill = Math.round(w * this.growth.ratio);
+    if (fill > 0) {
+      g.fillStyle(final ? 0xffcf4d : 0x8fd35a, 1).fillRect(x, y, fill, h);
+      g.fillStyle(final ? 0xfff1a8 : 0xc8f29a, 1).fillRect(x, y, fill, 1);
+    }
+    // 단계 칸
+    for (let i = 0; i < GROWTH_STAGES.length; i++) {
+      const px = x + w + 3 + i * 4;
+      g.fillStyle(0x4a2a14, 1).fillRect(px, y, 3, h);
+      g.fillStyle(i <= this.growth.stageIndex ? (final ? 0xffcf4d : 0x8fd35a) : 0xf6e7c6, 1).fillRect(px, y + 1, 1, h - 2);
+      g.fillRect(px + 1, y + 1, 1, h - 2);
+    }
+  }
+
+  private setVisual(v: StageVisual, frame: number): void {
+    this.vis = v;
+    this.player.setTexture(v.texture, frame);
+  }
+
+  /** 게이지가 가득 참 → 게임 정지 + 진화 연출 시작 */
+  private startEvolution(): void {
+    if (this.growth.isFinal) return;
+    const next = GROWTH_STAGES[this.growth.stageIndex + 1];
+    this.state = 'evolving';
+    this.evoT = 0;
+    this.evoSparkleT = 0;
+    this.evoCommitted = false;
+    this.evoFrom = this.vis;
+    this.evoTo = this.visuals[next.id];
+    this.exprFrame = -1;
+    this.tweens.killTweensOf(this.player);
+    this.player.anims.stop();
+    this.player.setAngle(0).setAlpha(1);
+    this.squash = 1;
+    sound.evolve();
+    this.cameras.main.flash(220, 255, 250, 225);
+    bus.emit(EV.evolveStart, { level: next.level });
+  }
+
+  private updateEvolution(dt: number, time: number): void {
+    this.evoT += dt;
+    const t = this.evoT;
+    // 반짝이: 공룡 주변에 계속
+    this.evoSparkleT -= dt;
+    if (this.evoSparkleT <= 0) {
+      this.evoSparkleT = t < EVO_TRANSFORM ? 0.08 : 0.2;
+      const r = 14 + Math.random() * 10;
+      const a = Math.random() * Math.PI * 2;
+      this.sparkleEmitter.explode(2, this.player.x + Math.cos(a) * r, this.player.y + Math.sin(a) * r);
+    }
+    if (t < EVO_TRANSFORM) {
+      // 변신: 이전 모습 ↔ 새 모습이 점점 빠르게 번갈아 (크기·자세가 함께 바뀜)
+      const period = Math.max(0.05, 0.22 * (1 - t / EVO_TRANSFORM));
+      const showNew = Math.floor(t / period) % 2 === 1;
+      const v = showNew ? this.evoTo : this.evoFrom;
+      this.setVisual(v, v.idleFrame);
+    } else if (!this.evoCommitted) {
+      // 새 단계 확정
+      this.evoCommitted = true;
+      const st = this.growth.evolve();
+      this.setVisual(this.evoTo, this.evoTo.idleFrame);
+      this.squash = 0.7;
+      this.sparkleEmitter.explode(18, this.player.x, this.player.y);
+      this.cameras.main.flash(160, 255, 255, 240);
+      sound.evolveDone();
+      this.updateHud();
+      bus.emit(EV.evolve, { level: st.level, name: st.name, description: st.description });
+    } else if (t >= EVO_TOTAL) {
+      // 게임 재개 (바로 부딪히지 않도록 잠깐 무적)
+      this.state = 'playing';
+      this.invincibleUntil = time + 1000;
+      this.player.play(this.grounded ? this.vis.runAnim : this.vis.jumpAnim);
+      bus.emit(EV.evolveEnd);
+      if (this.pauseAfterEvolve) {
+        this.pauseAfterEvolve = false;
+        this.pauseGame();
+      }
+      return;
+    }
+    this.placePlayer(dt, time);
+  }
+
+  // ───────────────────────── 테스트·디버그용 ─────────────────────────
+
+  /** (자동 테스트용) 성장 단계를 바로 지정 */
+  debugSetStage(index: number): void {
+    this.growth.stageIndex = Phaser.Math.Clamp(index, 0, GROWTH_STAGES.length - 1);
+    this.growth.gauge = 0;
+    this.growth.maxStageIndex = Math.max(this.growth.maxStageIndex, this.growth.stageIndex);
+    this.setVisual(this.visuals[this.growth.stage.id], this.visuals[this.growth.stage.id].runFrames[0]);
+    this.player.setAngle(0);
+    this.player.play(this.grounded ? this.vis.runAnim : this.vis.jumpAnim);
+    this.updateHud();
   }
 }

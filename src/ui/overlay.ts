@@ -3,7 +3,7 @@
  * 타이틀(오프닝) 화면은 ui/title.ts 에 있습니다.
  * 한글 글자가 선명하게 보이도록 캔버스 대신 DOM 으로 그립니다.
  */
-import { bus, EV, type GameOverInfo } from '../events';
+import { bus, EV, type EvolveInfo, type GameOverInfo } from '../events';
 import { heartCanvas } from '../art/textures';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { sound } from '../audio';
@@ -35,6 +35,8 @@ const ICON_PAUSE = ['kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 'kk..kk', 
 export class Overlay {
   private pause: HTMLElement;
   private hint: HTMLElement;
+  private evolveBanner: HTMLElement;
+  private overGrowth!: HTMLElement;
   private over: HTMLElement;
   private buttons: HTMLElement;
   private soundBtn: HTMLButtonElement;
@@ -72,7 +74,10 @@ export class Overlay {
     this.hint = el('p', 'touch-hint hidden');
     this.hint.innerHTML = '탭 <b>점프</b> · 공중에서 탭 <b>더블 점프</b>';
 
-    root.append(this.hint, this.pause, this.over, this.buttons);
+    // 진화 연출: 새 성장 단계 이름 표시
+    this.evolveBanner = el('div', 'evolve-banner hidden');
+
+    root.append(this.hint, this.evolveBanner, this.pause, this.over, this.buttons);
     this.bind();
   }
 
@@ -83,9 +88,10 @@ export class Overlay {
     this.overNew = el('p', 'new-best hidden', '★ 최고 기록! ★');
     this.overScore = el('p', 'score-big', '0');
     this.overSnacks = el('p', 'sub');
+    this.overGrowth = el('p', 'sub growth-line');
     this.overBest = el('p', 'best');
     this.retryBtn = el('button', 'pixel-btn', '다시하기');
-    p.append(el('h2', '', '게임 오버'), hearts, this.overNew, this.overScore, this.overSnacks, this.overBest, this.retryBtn);
+    p.append(el('h2', '', '게임 오버'), hearts, this.overNew, this.overScore, this.overSnacks, this.overGrowth, this.overBest, this.retryBtn);
     return p;
   }
 
@@ -99,6 +105,8 @@ export class Overlay {
     bus.on(EV.pause, () => this.pause.classList.remove('hidden'));
     bus.on(EV.resume, () => this.pause.classList.add('hidden'));
     bus.on(EV.gameOver, (info: GameOverInfo) => this.showGameOver(info));
+    bus.on(EV.evolve, (info: EvolveInfo) => this.showEvolve(info));
+    bus.on(EV.evolveEnd, () => this.evolveBanner.classList.add('hidden'));
 
     this.retryBtn.addEventListener('click', () => this.tryRetry());
     this.soundBtn.addEventListener('click', () => {
@@ -109,6 +117,20 @@ export class Overlay {
     this.pauseBtn.addEventListener('click', () => {
       bus.emit(this.isPaused ? EV.requestResume : EV.requestPause);
     });
+  }
+
+  private showEvolve(info: EvolveInfo): void {
+    const b = this.evolveBanner;
+    b.replaceChildren(
+      el('p', 'evo-top', '✨ 성장! ✨'),
+      el('p', 'evo-name', `${info.level}단계 ${info.name}`),
+      el('p', 'evo-desc', info.description),
+    );
+    b.classList.remove('hidden');
+    // 애니메이션 다시 시작
+    b.style.animation = 'none';
+    void b.offsetWidth;
+    b.style.animation = '';
   }
 
   /** 다시하기 (게임 오버 직후 연타 방지) */
@@ -133,7 +155,10 @@ export class Overlay {
     this.hint.classList.add('hidden');
     this.overScore.textContent = `${info.score}점`;
     this.overSnacks.textContent = `먹은 간식 ${info.snacks}개`;
-    this.overBest.textContent = `최고 점수 ${info.best}점`;
+    this.overGrowth.textContent = `성장 ${info.growthLevel}/${info.growthLevels}단계 · ${info.growthName}`;
+    this.overGrowth.title = `최고 성장 ${info.bestGrowthLevel}단계`;
+    this.overBest.textContent = `최고 점수 ${info.best}점 · 최고 성장 ${info.bestGrowthLevel}단계`;
+    this.evolveBanner.classList.add('hidden');
     this.overNew.classList.toggle('hidden', !info.isNewBest);
     this.over.classList.remove('hidden');
     // 연타로 바로 재시작되는 것 방지

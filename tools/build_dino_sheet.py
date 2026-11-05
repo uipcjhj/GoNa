@@ -47,7 +47,21 @@ FRAMES = [
     ("blink", None, None, None, None),  # idle 에서 자동 생성
     ("happy", 452, 732, 124, 346),
     ("surprised", 452, 732, 1188, 1369),
+    # ── 성장 단계용 포즈 ──
+    ("crouch", 77, 366, 959, 1128),     # 9: 웅크리기 (기어 다니는 고나)
+    ("sit", 77, 366, 1316, 1479),       # 10: 앉기 (기어 다니는 고나 2번째 프레임)
+    ("sleep", 452, 732, 883, 1145),     # 11: 엎드려 눈 감기 (갓난아기 깜빡임)
+    ("newborn", None, None, None, None),  # 12: 엎드린 갓난아기, 눈 뜸 (sleep 에서 자동 생성)
 ]
+
+# 누워 있어서 얼굴이 기울어진 포즈 → 3/4 뷰 눈 규칙에서 제외
+NO_FACE_RULE = {"sleep", "newborn"}
+# sleep 의 감은 눈(짧은 선) 위치 → 지우고 뜬 눈(작은 검은 점)을 찍어 newborn 생성
+#   (지울 픽셀들, 눈 점 위치) — 좌표는 복원된 sleep 스프라이트 기준
+NEWBORN_EYES = {
+    "erase": [(17, 11), (17, 12), (15, 16), (15, 17)],
+    "dots": [(17, 12), (15, 17)],
+}
 
 MIN_CELL, MAX_CELL, NOMINAL_CELL = 6, 14, 9.6
 
@@ -318,10 +332,23 @@ def main() -> None:
             continue
         sprites[name] = clean(rebuild(img, fg, box))
     for n in list(sprites):
+        if n in NO_FACE_RULE:
+            continue
         sprites[n] = normalize_face(sprites[n], n)
         eyes = count_eyes(sprites[n])
         if eyes != 2:
             raise SystemExit(f"[{n}] 눈이 {eyes}개입니다 — 모든 포즈는 눈이 2개여야 합니다")
+    # 갓난아기(눈 뜸): 엎드려 자는 포즈의 감은 눈을 지우고 작은 검은 점 2개
+    nb = sprites["sleep"].copy()
+    skin = np.median([nb[y, x, :3] for y in range(nb.shape[0]) for x in range(nb.shape[1])
+                      if nb[y, x, 3] and is_skin(nb[y, x])], axis=0).astype(np.uint8)
+    for y, x in NEWBORN_EYES["erase"]:
+        if not (nb[y, x, 3] and not is_skin(nb[y, x])):
+            raise SystemExit(f"[newborn] ({y},{x}) 가 감은 눈 픽셀이 아닙니다 — 원본이 바뀌었으면 NEWBORN_EYES 를 고쳐 주세요")
+        nb[y, x, :3] = skin
+    for y, x in NEWBORN_EYES["dots"]:
+        nb[y, x, :3] = EYE_COLOR
+    sprites["newborn"] = nb
     sprites["blink"] = make_blink(sprites["idle"])
     if count_eyes(sprites["blink"]) != 0:
         raise SystemExit("[blink] 눈 감은 프레임에 눈이 남아 있습니다")

@@ -110,6 +110,17 @@ class Sound {
     [NOTE.C5, NOTE.E5, NOTE.G5].forEach((f, i) => this.tone(f, 0.1, 'square', 0.08, i * 0.07));
     this.tone(NOTE.C5 * 2, 0.22, 'triangle', 0.1, 0.21);
   }
+  /** 진화 시작: 반짝반짝 올라가는 소리 */
+  evolve(): void {
+    [NOTE.C4, NOTE.E4, NOTE.G4, NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C5 * 2].forEach((f, i) =>
+      this.tone(f, 0.12, 'triangle', 0.08, i * 0.16),
+    );
+  }
+  /** 진화 완료 팡파레 */
+  evolveDone(): void {
+    [NOTE.G5, NOTE.C5 * 2].forEach((f, i) => this.tone(f, 0.18, 'square', 0.09, i * 0.09));
+    this.tone(NOTE.E5 * 2, 0.35, 'triangle', 0.1, 0.2);
+  }
   newRecord(): void {
     [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C5 * 2].forEach((f, i) => this.tone(f, 0.14, 'square', 0.08, i * 0.1));
   }

@@ -4,6 +4,7 @@ import { addCanvas, addSheet, buildAllTextures, buildDefaultDinoSheet, buildGrou
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { bus, EV } from '../events';
+import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
 
 const CUSTOM_KEY = 'dino-custom-src';
 const SNACK_KINDS: SnackKind[] = ['strawberry', 'banana', 'cookie'];
@@ -34,6 +35,31 @@ export interface CharacterInfo {
   custom: boolean;
 }
 
+/** 성장 단계 하나의 실제 '모습' (그림·애니메이션·크기). 판정·조작은 GrowthStageDef 에 따로 있음 */
+export interface StageVisual {
+  id: GrowthStageId;
+  texture: string;
+  frameHeight: number;
+  scale: number;
+  runAnim: string;
+  jumpAnim: string;
+  runFrames: number[];
+  jumpFrame: number;
+  idleFrame: number;
+  happyFrame: number;
+  surprisedFrame: number;
+  wiggleDeg: number;
+  wiggleSpeed: number;
+  bob: number;
+  /** 'asset' = 단계 전용 PNG / 'sheet' = 기본 시트의 임시 애니메이션 / 'fallback' = 코드 그림 */
+  source: 'asset' | 'sheet' | 'fallback';
+}
+
+const stageSrcKey = (id: GrowthStageId): string => `stage-src-${id}`;
+const stageTexKey = (id: GrowthStageId): string => `dino-stage-${id}`;
+/** 기본 시트에 성장용 포즈(9~12번)가 있어야 임시 애니메이션 사용 */
+const SHEET_FRAMES_NEEDED = 13;
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
@@ -47,6 +73,10 @@ export class BootScene extends Phaser.Scene {
     }
     for (const k of SNACK_KINDS) if (SNACK_ASSETS[k]) this.load.image(snackSrcKey(k), SNACK_ASSETS[k]);
     if (GAME_BG.url) this.load.image(TEX.bgImage, GAME_BG.url);
+    for (const st of GROWTH_STAGES) {
+      const a = STAGE_ASSETS[st.id];
+      if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
+    }
   }
 
   create(): void {
@@ -55,6 +85,7 @@ export class BootScene extends Phaser.Scene {
     this.setupBackgroundGround();
     const info = this.setupCharacter();
     this.registry.set('character', info);
+    this.registry.set('stageVisuals', this.setupStageVisuals(info));
 
     this.anims.create({
       key: 'run',
@@ -79,6 +110,87 @@ export class BootScene extends Phaser.Scene {
     };
     bus.emit(EV.ready, preview);
     this.scene.start('Game');
+  }
+
+  /** 성장 단계별 모습 준비: 전용 PNG → 기본 시트 임시 애니메이션 → 코드 그림 순서로 */
+  private setupStageVisuals(info: CharacterInfo): Record<GrowthStageId, StageVisual> {
+    const out = {} as Record<GrowthStageId, StageVisual>;
+    for (const st of GROWTH_STAGES) {
+      const v = this.resolveStage(st, info);
+      this.anims.create({
+        key: v.runAnim,
+        frames: v.runFrames.map((f) => ({ key: v.texture, frame: f })),
+        frameRate: st.anim.runFps,
+        repeat: -1,
+      });
+      this.anims.create({ key: v.jumpAnim, frames: [{ key: v.texture, frame: v.jumpFrame }], frameRate: 1 });
+      out[st.id] = v;
+    }
+    return out;
+  }
+
+  private resolveStage(st: GrowthStageDef, info: CharacterInfo): StageVisual {
+    const base = {
+      id: st.id,
+      runAnim: `${st.id}-run`,
+      jumpAnim: `${st.id}-jump`,
+      wiggleDeg: st.anim.wiggleDeg,
+      wiggleSpeed: st.anim.wiggleSpeed,
+      bob: st.anim.bob,
+    };
+    // 1) 단계 전용 PNG
+    const asset = STAGE_ASSETS[st.id];
+    if (asset && this.textures.exists(stageSrcKey(st.id))) {
+      const img = this.textures.get(stageSrcKey(st.id)).getSourceImage() as HTMLImageElement;
+      const frames = Math.max(1, asset.frameCount);
+      const fh = img.height;
+      const count = addSheet(this, stageTexKey(st.id), img, Math.floor(img.width / frames), fh);
+      const ok = (f: number | undefined, d: number): number => (f !== undefined && f >= 0 && f < count ? f : d);
+      const run = (asset.anim.run ?? [0]).filter((f) => f < count);
+      return {
+        ...base,
+        texture: stageTexKey(st.id),
+        frameHeight: fh,
+        scale: (CHARACTER_ASSET.displayHeight / fh) * (st.anim.scale / 1.2),
+        runFrames: run.length ? run : [0],
+        jumpFrame: ok(asset.anim.jump, 0),
+        idleFrame: ok(asset.anim.idle, 0),
+        happyFrame: ok(asset.anim.happy, -1),
+        surprisedFrame: ok(asset.anim.surprised, -1),
+        source: 'asset',
+      };
+    }
+    // 2) 기본 dino.png 시트의 포즈로 만든 임시 애니메이션
+    if (info.custom && info.frameCount >= SHEET_FRAMES_NEEDED) {
+      const a = st.anim;
+      return {
+        ...base,
+        texture: TEX.dino,
+        frameHeight: info.frameHeight,
+        scale: a.scale,
+        runFrames: a.run,
+        jumpFrame: a.jump,
+        idleFrame: a.idle,
+        happyFrame: a.happy,
+        surprisedFrame: a.surprised,
+        source: 'sheet',
+      };
+    }
+    // 3) 그림 파일이 없거나 예전 시트: 기존 캐릭터 프레임을 단계별 크기만 달리해서
+    const fallbackScale: Record<GrowthStageId, number> = { newborn: 0.8, crawler: 1, walker: 1, bigbaby: 1.4 };
+    const k = info.custom ? info.scale / 1.2 : 1;
+    return {
+      ...base,
+      texture: TEX.dino,
+      frameHeight: info.frameHeight,
+      scale: Math.round(fallbackScale[st.id] * k * 5) / 5,
+      runFrames: info.runFrames,
+      jumpFrame: info.jumpFrame,
+      idleFrame: info.idleFrame,
+      happyFrame: st.anim.happy >= 0 ? info.happyFrame : -1,
+      surprisedFrame: st.anim.surprised >= 0 ? info.surprisedFrame : -1,
+      source: 'fallback',
+    };
   }
 
   /** 배경 이미지가 있으면 그 풀밭 색으로 땅 풀 색을 맞춘 땅 텍스처를 따로 만듦 */
