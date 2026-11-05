@@ -20,6 +20,7 @@ import { snackCanvas } from '../art/textures';
 import { sound } from '../audio';
 import { storage } from '../storage';
 import { el, pixelImg, tryLoadImage } from './dom';
+import { buildEgg, buildNest, buildShellPieces, EGG_H, EGG_W, NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import type { CharacterPreview } from '../scenes/BootScene';
 
 const PLAY_ICON = ['k....', 'kk...', 'kwk..', 'kwwk.', 'kwwwk', 'kwwk.', 'kwk..', 'kk...', 'k....'];
@@ -51,9 +52,14 @@ export class TitleScreen {
   private bgSource: Source | null = null;
   private starting = false;
   private blinkTimer = 0;
+  /** 오프닝 컷신(알 → 탄생) 진행 중 */
+  private introRunning = false;
+  private introTimers: number[] = [];
+  private introParts: Record<string, HTMLElement> = {};
+  private squirmTimer = 0;
 
   constructor(parent: HTMLElement) {
-    this.root = el('section', 'title-root');
+    this.root = el('section', 'title-root intro');
     this.root.setAttribute('aria-label', GAME_TITLE);
 
     this.edges = {
@@ -259,15 +265,150 @@ export class TitleScreen {
       img.width = src.width * 2;
       img.height = src.height * 2;
     });
+    this.buildNestScene(p);
+    this.layout();
+    this.playIntro();
+  }
+
+  // ───────────────────────── 오프닝 컷신: 둥지 위 알 → 머리카락 삐죽 → 팍! 탄생 ─────────────────────────
+
+  /** 무대 좌표(도트) 기준 둥지·알·아기 배치. 영웅 상자 = COMP_W x COMP_H 도트 */
+  private static readonly COMP_W = 32;
+  private static readonly COMP_H = 36;
+
+  private placeArt(img: HTMLElement, x: number, y: number, w: number, h: number): void {
+    const W = TitleScreen.COMP_W;
+    const H = TitleScreen.COMP_H;
+    Object.assign(img.style, { left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, width: `${(w / W) * 100}%`, height: `${(h / H) * 100}%` });
+  }
+
+  private buildNestScene(p: CharacterPreview): void {
     const bob = this.hero.querySelector('.t-hero-bob');
     if (!bob) return;
-    this.heroIdle = pixelImg(p.idle, 1, 't-hero-img');
-    this.heroBlink = p.blink ? pixelImg(p.blink, 1, 't-hero-img hidden') : null;
-    bob.replaceChildren(this.heroIdle, ...(this.heroBlink ? [this.heroBlink] : []));
-    this.heroSrcH = p.idle.height;
-    this.heroAspect = p.idle.width / p.idle.height;
+    this.hero.classList.add('nest-hero');
+    const W = TitleScreen.COMP_W;
+    const H = TitleScreen.COMP_H;
+    const nest = buildNest();
+    const nestX = Math.round((W - NEST_W) / 2);
+    const nestY = H - NEST_H;
+    const eggX = Math.round((W - EGG_W) / 2);
+    const eggY = nestY + NEST_SINK + 1 - EGG_H;
+
+    const mk = (c: HTMLCanvasElement, cls: string, x: number, y: number): HTMLImageElement => {
+      const img = pixelImg(c, 1, `t-art ${cls}`);
+      this.placeArt(img, x, y, c.width, c.height);
+      return img;
+    };
+    const nestBack = mk(nest.back, 'nest-back', nestX, nestY);
+    const nestFront = mk(nest.front, 'nest-front', nestX, nestY);
+    // 머리카락: 알 꼭대기 뒤에 숨어 있다가 위로 삐죽
+    const hair = p.newborn.hair;
+    // 알 꼭대기 구멍(가운데) 위로, 머리카락 전체가 보이도록
+    const hairImg = mk(hair, 'egg-hair', eggX + 9 - Math.round(hair.width / 2), eggY - hair.height + 1);
+    const eggs = ([0, 1, 2] as const).map((k) => mk(buildEgg(k), `egg egg-${k}${k ? ' hidden' : ''}`, eggX, eggY));
+    const egg = el('div', 't-egg');
+    egg.style.transformOrigin = `50% ${((eggY + EGG_H) / H) * 100}%`; // 알 바닥을 축으로 흔들림
+    egg.append(hairImg, ...eggs); // 머리카락은 알 뒤(같이 흔들림)
+    // 아기 (둥지 안에 쏙)
+    const f0 = p.newborn.frames[0];
+    const babyX = Math.round((W - f0.width) / 2);
+    const babyY = nestY + NEST_SINK - f0.height + 1;
+    const baby = el('div', 't-baby hidden');
+    this.placeArt(baby, babyX, babyY, f0.width, f0.height);
+    this.heroIdle = pixelImg(f0, 1, 't-hero-img');
+    const squirm = p.newborn.frames[1] ? pixelImg(p.newborn.frames[1], 1, 't-hero-img hidden') : null;
+    this.heroBlink = p.newborn.blink ? pixelImg(p.newborn.blink, 1, 't-hero-img hidden') : null;
+    baby.append(this.heroIdle, ...(squirm ? [squirm] : []), ...(this.heroBlink ? [this.heroBlink] : []));
+    if (squirm) this.introParts.squirm = squirm;
+    // 깨진 껍데기 조각 + 번쩍
+    const shells = buildShellPieces();
+    const shellEls = [
+      mk(shells[0], 'shell shell-top hidden', eggX + 1, eggY - 1),
+      mk(shells[1], 'shell shell-left hidden', eggX - 1, eggY + 8),
+      mk(shells[2], 'shell shell-right hidden', eggX + 8, eggY + 8),
+    ];
+    const flash = el('div', 't-flash hidden');
+    this.placeArt(flash, 2, eggY - 6, W - 4, EGG_H + 10);
+
+    bob.replaceChildren(nestBack, egg, baby, ...shellEls, nestFront, flash);
+    this.introParts = { ...this.introParts, egg, hair: hairImg, baby, flash, eggs0: eggs[0], eggs1: eggs[1], eggs2: eggs[2] };
+    shellEls.forEach((e, i) => (this.introParts[`shell${i}`] = e));
+    this.heroSrcH = H;
+    this.heroAspect = W / H;
+  }
+
+  private playIntro(): void {
+    if (this.introRunning || !this.root.classList.contains('intro')) return;
+    this.introRunning = true;
+    const P = this.introParts;
+    const at = (ms: number, fn: () => void): void => {
+      this.introTimers.push(window.setTimeout(fn, ms));
+    };
+    at(300, () => P.egg.classList.add('wobble'));
+    at(1200, () => {
+      P.eggs0.classList.add('hidden');
+      P.eggs1.classList.remove('hidden');
+      P.egg.classList.add('wobble-hard');
+    });
+    at(1900, () => {
+      P.eggs1.classList.add('hidden');
+      P.eggs2.classList.remove('hidden');
+      P.hair.classList.add('peek'); // 머리카락이 먼저 삐죽!
+    });
+    at(3100, () => this.hatch(true)); // 머리카락이 1초 남짓 보인 뒤 팍!
+    at(3800, () => this.finishIntro());
+  }
+
+  /** 알이 팍 깨지며 갓난아기 등장 */
+  private hatch(animated: boolean): void {
+    const P = this.introParts;
+    P.egg.classList.add('hidden');
+    P.hair.classList.add('hidden');
+    P.baby.classList.remove('hidden');
+    if (animated) {
+      P.baby.classList.add('pop');
+      P.flash.classList.remove('hidden');
+      for (let i = 0; i < 3; i++) P[`shell${i}`]?.classList.remove('hidden');
+      this.root.classList.add('hatched');
+    }
+  }
+
+  /** 컷신 끝 (또는 터치로 건너뛰기) → 타이틀·시작 버튼 표시 */
+  private finishIntro(): void {
+    this.introTimers.forEach((t) => clearTimeout(t));
+    this.introTimers = [];
+    if (this.introParts.baby?.classList.contains('hidden')) this.hatch(false); // 건너뛰기: 바로 탄생 상태로
+    this.introRunning = false;
+    this.root.classList.remove('intro');
+    this.root.classList.add('intro-done');
+    this.introParts.baby?.classList.add('wiggle');
     this.layout();
     this.scheduleBlink();
+    this.scheduleSquirm();
+  }
+
+  /** 둥지 안에서 꼬물꼬물 (꿈틀 프레임 교대) */
+  private scheduleSquirm(): void {
+    const sq = this.introParts.squirm;
+    if (!sq || !this.heroIdle) return;
+    clearInterval(this.squirmTimer);
+    let on = false;
+    this.squirmTimer = window.setInterval(() => {
+      if (this.heroBlink && !this.heroBlink.classList.contains('hidden')) return;
+      on = !on;
+      sq.classList.toggle('hidden', !on);
+      this.heroIdle?.classList.toggle('hidden', on);
+    }, 380);
+  }
+
+  /** 화면 터치: 컷신 중이면 건너뛰기, 끝났으면 게임 시작 */
+  handleTap(): void {
+    if (!this.isVisible) return;
+    if (this.root.classList.contains('intro')) {
+      if (this.introParts.baby) this.finishIntro();
+      return;
+    }
+    this.begin();
   }
 
   private scheduleBlink(): void {
@@ -282,6 +423,7 @@ export class TitleScreen {
   private blinkOnce(done: () => void): void {
     if (!this.heroIdle || !this.heroBlink) return;
     this.heroIdle.classList.add('hidden');
+    this.introParts.squirm?.classList.add('hidden');
     this.heroBlink.classList.remove('hidden');
     window.setTimeout(() => {
       this.heroIdle?.classList.remove('hidden');
@@ -363,6 +505,10 @@ export class TitleScreen {
   /** 시작 버튼 (또는 Space 키) */
   begin(): void {
     if (this.starting || !this.isVisible) return;
+    if (this.root.classList.contains('intro')) {
+      this.finishIntro();
+      return;
+    }
     this.starting = true;
     sound.unlock();
     sound.start();
@@ -385,5 +531,6 @@ export class TitleScreen {
   private hide(): void {
     this.root.classList.add('hidden');
     clearTimeout(this.blinkTimer);
+    clearInterval(this.squirmTimer);
   }
 }

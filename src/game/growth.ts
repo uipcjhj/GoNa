@@ -58,6 +58,11 @@ export interface GrowthStageDef {
   controls: { jumpMul: number; doubleJumpMul: number; maxJumps: number };
   /** 해금 기술 (추후 구현) */
   abilities: { hairBoomerang: boolean };
+  /**
+   * 탈것: 'nest' 이면 고나는 둥지에 누워 있고 실제로 움직이는(점프하는) 것은 둥지.
+   * 고나는 둥지 안에서 꼬물거리거나 통통 튀며 반응만 함.
+   */
+  vehicle?: 'nest';
 }
 
 const SAME_HITBOX = { width: 11, height: 19 };
@@ -73,10 +78,12 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     id: 'newborn',
     level: 1,
     name: '갓난아기 고나',
-    description: '엎드려 꼬물꼬물!',
+    description: '둥지에서 꼬물꼬물!',
     gaugeToNext: 12,
-    anim: { run: [12, 12, 12, 11], runFps: 4, jump: 12, idle: 12, happy: -1, surprised: -1, scale: 1, wiggleDeg: 5, wiggleSpeed: 0.012, bob: 1 },
-    hitbox: SAME_HITBOX,
+    anim: { run: [12, 12, 12, 11], runFps: 4, jump: 12, idle: 12, happy: -1, surprised: -1, scale: 1, wiggleDeg: 3, wiggleSpeed: 0.012, bob: 0 },
+    // 둥지째 움직이므로 판정도 둥지+아기 모양에 맞춤 (그림 폭 약 36px · 키 약 23px)
+    hitbox: { width: 18, height: 17 },
+    vehicle: 'nest',
     controls: SAME_CONTROLS,
     abilities: { hairBoomerang: false },
   },

@@ -5,6 +5,7 @@
 import Phaser from 'phaser';
 import { PixelCanvas, mapToCanvas, seededRandom } from './PixelCanvas';
 import { buildGameBackground, FAR_H, MID_H, NEAR_H } from './gameBg';
+import { buildNest } from './nest';
 
 export { FAR_H, MID_H, NEAR_H };
 import {
@@ -43,6 +44,9 @@ export const TEX = {
   near: 'bg-near',
   /** 이미지 배경 (있을 때) + 그 색에 맞춘 땅 */
   bgImage: 'bg-image',
+  /** 1단계 둥지 (아기 뒤 / 아기 앞) */
+  nestBack: 'nest-back',
+  nestFront: 'nest-front',
   groundImg: 'ground-img',
   cloud: 'bg-cloud',
   sun: 'bg-sun',
@@ -191,6 +195,9 @@ export function buildAllTextures(scene: Phaser.Scene): void {
   addCanvas(scene, TEX.sparkle, mapToCanvas(SPARKLE_ROWS, SPARKLE_PALETTE));
   addCanvas(scene, TEX.dust, mapToCanvas(DUST_ROWS, DUST_PALETTE));
   addCanvas(scene, TEX.ground, buildGround());
+  const nest = buildNest();
+  addCanvas(scene, TEX.nestBack, nest.back);
+  addCanvas(scene, TEX.nestFront, nest.front);
   const bg = buildGameBackground();
   addCanvas(scene, TEX.far, bg.far[0]);
   addCanvas(scene, TEX.far2, bg.far[1]);

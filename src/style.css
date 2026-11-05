@@ -863,3 +863,216 @@ h2 {
 .growth-line {
   color: #5f9e3c;
 }
+
+/* ═════════════════ 오프닝 컷신: 둥지 위 알 → 고나 탄생 ═════════════════ */
+
+/* 컷신 동안 타이틀·시작 버튼 숨김 → 끝나면 나타남 */
+.title-root.intro .t-logo,
+.title-root.intro .t-start {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.title-root.intro-done .t-logo {
+  animation: intro-logo 0.6s steps(6) both, logo-float 3.2s ease-in-out 0.6s infinite;
+}
+
+.title-root.intro-done .t-start {
+  animation: intro-fade 0.5s steps(5) 0.25s both;
+}
+
+@keyframes intro-logo {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes intro-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 둥지 장면에서는 통째로 뛰는 대신 아기만 꼬물 */
+.t-hero.nest-hero .t-hero-bob {
+  animation: none;
+}
+
+.t-hero.nest-hero .t-hero-shadow {
+  left: 8%;
+  right: 8%;
+  animation: none;
+}
+
+.t-art,
+.t-egg,
+.t-baby,
+.t-flash {
+  position: absolute;
+}
+
+.t-art {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.t-egg {
+  inset: 0;
+}
+
+.t-egg.wobble {
+  animation: egg-wobble 0.5s ease-in-out infinite;
+}
+
+.t-egg.wobble-hard {
+  animation: egg-wobble-hard 0.22s ease-in-out infinite;
+}
+
+@keyframes egg-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes egg-wobble-hard {
+  0%,
+  100% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+}
+
+/* 머리카락: 알 뒤에 숨어 있다가 삐죽 */
+.egg-hair {
+  transform: translateY(100%);
+  transition: transform 0.45s steps(5);
+}
+
+.egg-hair.peek {
+  transform: translateY(0);
+  animation: hair-boing 0.5s steps(4) 0.45s 2;
+}
+
+@keyframes hair-boing {
+  50% {
+    transform: translateY(-12%) rotate(-6deg);
+  }
+}
+
+/* 탄생 */
+.t-baby .t-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.t-baby {
+  transform-origin: 50% 100%;
+}
+
+.t-baby.pop {
+  animation: baby-pop 0.55s steps(6) both;
+}
+
+.t-baby.wiggle {
+  animation: baby-wiggle 1.2s ease-in-out infinite;
+}
+
+@keyframes baby-pop {
+  0% {
+    transform: translateY(35%) scale(0.6, 0.6);
+  }
+  45% {
+    transform: translateY(-30%) scale(1.1, 0.95);
+  }
+  70% {
+    transform: translateY(0) scale(1.1, 0.88);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes baby-wiggle {
+  0%,
+  100% {
+    transform: rotate(-3deg) translateY(0);
+  }
+  25% {
+    transform: rotate(0deg) translateY(-6%);
+  }
+  50% {
+    transform: rotate(3deg) translateY(0);
+  }
+  75% {
+    transform: rotate(0deg) translateY(-3%);
+  }
+}
+
+.t-flash {
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 240, 0.95) 0 30%, rgba(255, 236, 160, 0.6) 31% 55%, transparent 56%);
+  animation: hatch-flash 0.5s steps(5) forwards;
+}
+
+@keyframes hatch-flash {
+  from {
+    opacity: 1;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.shell-top {
+  animation: shell-top 0.7s ease-out forwards;
+}
+
+.shell-left {
+  animation: shell-left 0.7s ease-out forwards;
+}
+
+.shell-right {
+  animation: shell-right 0.7s ease-out forwards;
+}
+
+@keyframes shell-top {
+  to {
+    transform: translate(10%, -160%) rotate(-140deg);
+    opacity: 0;
+  }
+}
+
+@keyframes shell-left {
+  to {
+    transform: translate(-150%, -40%) rotate(-80deg);
+    opacity: 0;
+  }
+}
+
+@keyframes shell-right {
+  to {
+    transform: translate(150%, -40%) rotate(90deg);
+    opacity: 0;
+  }
+}

@@ -81,8 +81,12 @@ async function boot(): Promise<void> {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     sound.unlock();
-    // 타이틀에서는 '게임 시작' 버튼으로만 시작
-    if (title.isVisible || overlay.isGameOverVisible) return;
+    // 타이틀: 컷신 중 터치 = 건너뛰기, 컷신 후 터치 = 게임 시작 (시작 버튼도 그대로)
+    if (title.isVisible) {
+      title.handleTap();
+      return;
+    }
+    if (overlay.isGameOverVisible) return;
     bus.emit(EV.tap);
   };
   document.addEventListener('pointerdown', onPointer, { passive: false });

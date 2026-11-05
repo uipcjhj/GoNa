@@ -3,6 +3,7 @@ import { CHARACTER_ASSET, GAME_BG, SNACK_ASSETS, type SnackKind } from '../confi
 import { addCanvas, addSheet, buildAllTextures, buildDefaultDinoSheet, buildGround, snackCanvas, TEX } from '../art/textures';
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
+import { cropHairTuft } from '../art/nest';
 import { bus, EV } from '../events';
 import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
 
@@ -18,6 +19,8 @@ export interface CharacterPreview {
   blink: HTMLCanvasElement | null;
   /** 간식 아이콘 (이미지가 있으면 이미지, 없으면 기본 도트) */
   snacks: Record<SnackKind, HTMLCanvasElement>;
+  /** 오프닝 컷신용: 1단계 갓난아기 프레임들(대기·꿈틀·깜빡)과 머리카락만 잘라 낸 그림 */
+  newborn: { frames: HTMLCanvasElement[]; blink: HTMLCanvasElement | null; hair: HTMLCanvasElement };
 }
 
 /** 캐릭터 프레임 정보 (GameScene 에서 사용) */
@@ -85,7 +88,8 @@ export class BootScene extends Phaser.Scene {
     this.setupBackgroundGround();
     const info = this.setupCharacter();
     this.registry.set('character', info);
-    this.registry.set('stageVisuals', this.setupStageVisuals(info));
+    const visuals = this.setupStageVisuals(info);
+    this.registry.set('stageVisuals', visuals);
 
     this.anims.create({
       key: 'run',
@@ -107,9 +111,37 @@ export class BootScene extends Phaser.Scene {
           : null
         : mapToCanvas(DINO_BLINK, DINO_BLINK_PALETTE),
       snacks: snackIcons,
+      newborn: this.newbornPreview(visuals.newborn),
     };
     bus.emit(EV.ready, preview);
     this.scene.start('Game');
+  }
+
+  /** 텍스처의 프레임 하나를 캔버스로 */
+  private frameToCanvas(key: string, frame: number): HTMLCanvasElement {
+    const f = this.textures.getFrame(key, frame);
+    const c = document.createElement('canvas');
+    c.width = f.cutWidth;
+    c.height = f.cutHeight;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
+    }
+    return c;
+  }
+
+  private newbornPreview(v: StageVisual): CharacterPreview['newborn'] {
+    const uniq = [...new Set(v.runFrames)];
+    // 눈 감은 프레임: 전용 그림은 2번, 임시(기본 시트)는 11번
+    const blinkFrame = v.source === 'asset' ? 2 : v.source === 'sheet' ? 11 : -1;
+    const open = uniq.filter((f) => f !== blinkFrame);
+    const frames = (open.length ? open : uniq).map((f) => this.frameToCanvas(v.texture, f));
+    return {
+      frames,
+      blink: blinkFrame >= 0 && uniq.includes(blinkFrame) ? this.frameToCanvas(v.texture, blinkFrame) : null,
+      hair: cropHairTuft(frames[0]),
+    };
   }
 
   /** 성장 단계별 모습 준비: 전용 PNG → 기본 시트 임시 애니메이션 → 코드 그림 순서로 */

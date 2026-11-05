@@ -7,6 +7,7 @@ import { storage } from '../storage';
 import type { StageVisual } from './BootScene';
 import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '../game/growth';
 import { StageManager } from '../game/stages';
+import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 
 type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead';
 
@@ -52,6 +53,17 @@ export class GameScene extends Phaser.Scene {
   private evoCommitted = false;
   private evoSparkleT = 0;
   private pauseAfterEvolve = false;
+
+  // 1단계 둥지: 실제로 움직이는 건 둥지, 아기는 안에서 스프링처럼 반응
+  private nestBack!: Phaser.GameObjects.Image;
+  private nestFront!: Phaser.GameObjects.Image;
+  /** 둥지 기준 아기 위치(위가 -)와 속도 — 출렁·퐁 반응 */
+  private babyOff = 0;
+  private babyVel = 0;
+  /** 둥지 덜컹 흔들림 남은 시간(초) */
+  private nestShake = 0;
+  /** 진화로 둥지를 내려놓음 */
+  private nestLeft = false;
 
   // 화면 배치
   private W = 0;
@@ -132,6 +144,10 @@ export class GameScene extends Phaser.Scene {
     this.growth.reset();
     this.stageMgr.reset();
     this.pauseAfterEvolve = false;
+    this.babyOff = 0;
+    this.babyVel = 0;
+    this.nestShake = 0;
+    this.nestLeft = false;
     this.registry.set('autoStart', !!data?.autoStart);
   }
 
@@ -160,6 +176,8 @@ export class GameScene extends Phaser.Scene {
     this.ground = this.add.tileSprite(0, 0, 10, GROUND_TILE_H, groundTex).setOrigin(0, 0);
 
     this.shadow = this.add.ellipse(0, 0, 14, 3, 0x3d2b22, 0.25);
+    this.nestBack = this.add.image(0, 0, TEX.nestBack).setOrigin(0.5, 1).setDepth(9.5);
+    this.nestFront = this.add.image(0, 0, TEX.nestFront).setOrigin(0.5, 1).setDepth(10.5);
     this.player = this.add.sprite(0, 0, this.vis.texture, this.vis.runFrames[0]).setDepth(10);
     this.player.setScale(this.vis.scale);
     this.player.play(this.vis.runAnim);
@@ -369,7 +387,17 @@ export class GameScene extends Phaser.Scene {
     this.grounded = false;
     this.jumpsUsed = isDouble ? 2 : 1;
     this.squash = isDouble ? 1.12 : 1.18;
-    if (isDouble) {
+    if (this.inNest) {
+      // 둥지째 튀어오름: 아기는 둥지에 꾹 눌렸다가 따라 올라감 (아기가 직접 뛰지 않음)
+      this.babyVel += isDouble ? 90 : 70;
+      if (isDouble) {
+        sound.doubleJump();
+        this.sparkleEmitter.explode(6, this.playerX, this.nestBack.y - 6);
+      } else {
+        sound.jump();
+        this.dustEmitter.explode(4, this.playerX - 10, this.groundY);
+      }
+    } else if (isDouble) {
       sound.doubleJump();
       this.sparkleEmitter.explode(6, this.player.x, this.player.y + this.player.displayHeight / 2);
       this.tweens.add({ targets: this.player, angle: { from: 0, to: -360 }, duration: 380, ease: 'Cubic.Out' });
@@ -385,6 +413,7 @@ export class GameScene extends Phaser.Scene {
     this.vy = 0;
     this.squash = 0.82;
     this.player.angle = 0;
+    if (this.inNest) this.babyVel -= 100; // 착지하면 아기가 둥지 안에서 퐁
     this.dustEmitter.explode(3, this.player.x, this.groundY);
     if (this.time.now - this.lastPressAt < PHYSICS.jumpBuffer && this.state === 'playing') {
       this.lastPressAt = -9999;
@@ -478,8 +507,8 @@ export class GameScene extends Phaser.Scene {
 
     this.placePlayer(dt, time);
 
-    if (this.grounded && this.state === 'playing' && Math.random() < dt * 6) {
-      this.dustEmitter.explode(1, this.playerX - 6, this.groundY);
+    if (this.grounded && this.state === 'playing' && Math.random() < dt * (this.inNest ? 9 : 6)) {
+      this.dustEmitter.explode(1, this.playerX - (this.inNest ? 18 : 6), this.groundY);
     }
   }
 
@@ -499,16 +528,41 @@ export class GameScene extends Phaser.Scene {
 
     const halfH = (this.vis.frameHeight * sy) / 2;
     // 발 = (땅 - 높이). 렌더 픽셀 격자에 맞춰 반올림해서 서 있을 때 발이 정확히 지면에 닿게
-    const feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
-    this.player.setPosition(this.playerX, feetY - halfH);
+    let feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
+    const snap = (v: number): number => Math.round(v * k) / k;
+    const nest = this.inNest;
+    this.nestBack.setVisible(nest);
+    this.nestFront.setVisible(nest);
+    if (nest) {
+      // ── 둥지가 땅 위를 통통 굴러가고, 아기는 그 안에서 스프링처럼 출렁
+      const moving = this.grounded && this.state === 'playing';
+      const bump = moving ? Math.abs(Math.sin(time * 0.022)) * 1.2 : 0;
+      const tilt = moving ? Math.sin(time * 0.011) * 2.5 : 0;
+      const shakeX = this.nestShake > 0 ? Math.sin(this.nestShake * 70) * 2.5 : 0;
+      this.nestShake = Math.max(0, this.nestShake - dt);
+      // 스프링 (둥지 움직임에 아기가 늦게 따라옴)
+      this.babyVel += (-320 * this.babyOff - 16 * this.babyVel) * dt;
+      this.babyOff = Phaser.Math.Clamp(this.babyOff + this.babyVel * dt, -12, 3);
+      const nestBottom = snap(this.groundY - this.alt - bump);
+      const nsx = snap(this.vis.scale * (2 - this.squash));
+      const nsy = snap(this.vis.scale * this.squash);
+      for (const n of [this.nestBack, this.nestFront]) n.setPosition(snap(this.playerX + shakeX), nestBottom).setScale(nsx, nsy).setAngle(tilt);
+      // 아기 발 = 둥지 바닥에서 (둥지 높이 - 묻히는 깊이)만큼 위 + 출렁
+      feetY = snap(nestBottom - (NEST_H - NEST_SINK - 1) * nsy + this.babyOff);
+      this.player.setPosition(snap(this.playerX + shakeX), feetY - halfH);
+    } else {
+      this.player.setPosition(this.playerX, feetY - halfH);
+    }
 
+    if (nest) feetY = snap(this.groundY - this.alt); // 화면 위 여유 계산은 둥지 기준
     // 아주 높은 더블 점프로 머리가 화면 위로 나가면, 그만큼만 카메라를 살짝 올림 (물리·판정은 그대로)
     const headTop = feetY - this.vis.frameHeight * sy;
     const lift = Math.min(0, Math.round((headTop - 2) * k) / k);
     this.cameras.main.scrollY = lift;
 
     const shadowScale = Math.max(0.35, 1 - this.alt / 110);
-    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * Math.max(1, this.vis.scale), 1);
+    const shadowW = nest ? (NEST_W * this.vis.scale) / 14 : Math.max(1, this.vis.scale);
+    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * shadowW, 1);
 
     // 무적 깜빡임
     if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 80) % 2 ? 0.35 : 1);
@@ -685,6 +739,7 @@ export class GameScene extends Phaser.Scene {
     this.updateHud();
     sound.pickup(info.points);
     if (this.vis.happyFrame >= 0) this.showExpression(this.vis.happyFrame, CHARACTER_ASSET.happyMs);
+    else if (this.inNest) this.babyVel = -150; // 둥지에서 퐁! 솟았다 쏙
     else this.squash = 0.8; // 표정 프레임이 없는 단계는 통통 반응
 
     // 성장 게이지 (점수와 별개로 증가)
@@ -729,6 +784,10 @@ export class GameScene extends Phaser.Scene {
     this.updateHud();
     sound.hit();
     this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
+    if (this.inNest) {
+      this.nestShake = 0.35; // 둥지가 덜컹
+      this.babyVel = -90;
+    }
     this.cameras.main.shake(180, 0.012);
     this.cameras.main.flash(140, 255, 120, 110);
     this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
@@ -874,7 +933,9 @@ export class GameScene extends Phaser.Scene {
     } else if (!this.evoCommitted) {
       // 새 단계 확정
       this.evoCommitted = true;
+      const leavingNest = this.inNest;
       const st = this.growth.evolve();
+      if (leavingNest) this.leaveNest();
       this.setVisual(this.evoTo, this.evoTo.idleFrame);
       this.squash = 0.7;
       this.sparkleEmitter.explode(18, this.player.x, this.player.y);
@@ -897,6 +958,33 @@ export class GameScene extends Phaser.Scene {
     this.placePlayer(dt, time);
   }
 
+  /** 지금 둥지에 누워 있는 단계인지 (진화 연출 중 깜빡일 때는 보이는 모습 기준) */
+  private get inNest(): boolean {
+    return !this.nestLeft && this.vis.id === 'newborn' && !!GROWTH_STAGES.find((s) => s.id === 'newborn')?.vehicle;
+  }
+
+  /** 진화: 둥지를 내려놓고 기어 나옴 → 둥지는 땅에 남아 뒤로 멀어짐 */
+  private leaveNest(): void {
+    this.nestLeft = true;
+    const ghostB = this.add.image(this.nestBack.x, this.groundY, TEX.nestBack).setOrigin(0.5, 1).setScale(this.vis.scale).setDepth(4);
+    const ghostF = this.add.image(this.nestFront.x, this.groundY, TEX.nestFront).setOrigin(0.5, 1).setScale(this.vis.scale).setDepth(4);
+    // 게임이 다시 달리기 시작하면 땅과 같은 속도로 뒤로 (장애물/간식 목록과 별개인 장식)
+    const startD = this.distance;
+    const x0 = ghostB.x;
+    const follow = (): void => {
+      const x = x0 - (this.distance - startD);
+      ghostB.setX(Math.round(x));
+      ghostF.setX(Math.round(x));
+      if (x < -40) {
+        ghostB.destroy();
+        ghostF.destroy();
+        this.events.off('update', follow);
+      }
+    };
+    this.events.on('update', follow);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('update', follow));
+  }
+
   // ───────────────────────── 테스트·디버그용 ─────────────────────────
 
   /** (자동 테스트용) 성장 단계를 바로 지정 */
@@ -904,6 +992,7 @@ export class GameScene extends Phaser.Scene {
     this.growth.stageIndex = Phaser.Math.Clamp(index, 0, GROWTH_STAGES.length - 1);
     this.growth.gauge = 0;
     this.growth.maxStageIndex = Math.max(this.growth.maxStageIndex, this.growth.stageIndex);
+    this.nestLeft = this.growth.stageIndex > 0;
     this.setVisual(this.visuals[this.growth.stage.id], this.visuals[this.growth.stage.id].runFrames[0]);
     this.player.setAngle(0);
     this.player.play(this.grounded ? this.vis.runAnim : this.vis.jumpAnim);

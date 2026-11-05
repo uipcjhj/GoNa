@@ -9,7 +9,14 @@ const { chromium, devices } = require('playwright');
 const S = process.argv[2] || require('os').tmpdir();
 const URL = process.env.GAME_URL || 'http://localhost:4173/';
 const results = [];
-const check = (name, ok, info = '') => { results.push(`${ok ? 'PASS' : 'FAIL'} ${name} ${info}`); };
+/** 오프닝 컷신(알 → 탄생)이 끝나 시작 버튼이 나타나면 눌러 게임 시작 */
+async function startFromTitle(page) {
+  await page.waitForSelector('.title-root.intro-done', { timeout: 8000 });
+  await page.waitForTimeout(800);
+  const box = await page.locator('.start-btn').boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+}
+const check = (name, ok, info = "") => { const line = `${ok ? "PASS" : "FAIL"} ${name} ${info}`; results.push(line); if (process.env.PROGRESS) console.error(line); };
 async function run(label, device, { noImages = false, stage = null } = {}) {
   const b = await chromium.launch();
   const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
@@ -20,8 +27,7 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   await page.goto(URL + '?test'); await page.waitForTimeout(1500);
   await page.screenshot({ path: `${S}/t5-${label}-title.png` });
   const ev = (fn, arg) => page.evaluate(([f, a]) => { const sc = window.__gona.scene.getScene('Game'); return eval(f)(sc, a); }, [fn.toString(), arg]);
-  const box = await page.locator('.start-btn').boundingBox();
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await startFromTitle(page);
   await page.waitForTimeout(1300);
   // 성장 단계 지정 (null = 시작 단계 그대로)
   if (stage !== null) await ev((sc, i) => sc.debugSetStage(i), stage);
@@ -124,8 +130,7 @@ async function growthTests(label, device) {
   page.on('pageerror', e => errs.push(e.message));
   await page.goto(URL + '?test'); await page.waitForTimeout(1500);
   const ev = (fn, arg) => page.evaluate(([f, a]) => { const sc = window.__gona.scene.getScene('Game'); return eval(f)(sc, a); }, [fn.toString(), arg]);
-  const box = await page.locator('.start-btn').boundingBox();
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await startFromTitle(page);
   await page.waitForTimeout(1300);
   await ev((sc) => { sc.distToNext = 1e9; sc.entities.forEach(e => e.sprite.destroy()); sc.entities = []; });
   const g = () => ev((sc) => ({ state: sc.state, stage: sc.growth.stageIndex, gauge: sc.growth.gauge, score: sc.score, d: sc.distance, vis: sc.vis.id, alt: sc.alt, grounded: sc.grounded, hearts: sc.hearts }));
@@ -197,7 +202,43 @@ async function growthTests(label, device) {
   await b.close();
 }
 
+async function introTests(label, device) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.addInitScript(() => {
+    window.__seq = [];
+    new MutationObserver((ms) => { for (const m of ms) { const c = m.target.className || ''; if (typeof c !== 'string') continue;
+      if (/egg-hair peek/.test(c)) window.__seq.push('hair'); if (/t-baby pop/.test(c)) window.__seq.push('hatch'); if (/intro-done/.test(c)) window.__seq.push('title'); } })
+      .observe(document, { attributes: true, subtree: true, attributeFilter: ['class'] });
+  });
+  await page.goto(URL + '?test');
+  await page.waitForSelector('.t-egg', { timeout: 8000 });
+  const hiddenDuring = await page.evaluate(() => getComputedStyle(document.querySelector('.t-start')).opacity === '0');
+  check(`${label}: title hidden during egg cutscene`, hiddenDuring);
+  await page.waitForSelector('.title-root.intro-done', { timeout: 8000 });
+  const seq = [...new Set(await page.evaluate(() => window.__seq))];
+  check(`${label}: hair peeks → egg hatches → title`, seq.join(',') === 'hair,hatch,title', seq.join(','));
+  const vp = page.viewportSize();
+  await page.waitForTimeout(700);
+  await page.touchscreen.tap(vp.width / 2, vp.height * 0.4); // 버튼이 아닌 곳 터치로도 시작
+  await page.waitForTimeout(1300);
+  const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { state: s.state, stage: s.growth.stageIndex, nest: s.nestBack.visible }; });
+  check(`${label}: tap starts game in nest (stage 1)`, st.state === 'playing' && st.stage === 0 && st.nest, JSON.stringify(st));
+  // 건너뛰기
+  await page.reload(); await page.waitForSelector('.t-egg', { timeout: 8000 }); await page.waitForTimeout(400);
+  await page.touchscreen.tap(vp.width / 2, vp.height * 0.4);
+  await page.waitForTimeout(300);
+  const skipped = await page.evaluate(() => document.querySelector('.title-root').classList.contains('intro-done') && !document.querySelector('.t-baby').classList.contains('hidden'));
+  check(`${label}: tap skips cutscene (baby shown)`, skipped);
+  check(`${label}: no page errors (intro)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
+  await introTests('intro-land', devices['iPhone 13 landscape']);
+  await introTests('intro-port', devices['iPhone 13']);
   await run('land', devices['iPhone 13 landscape']);
   await run('land-walker', devices['iPhone 13 landscape'], { stage: 2 });
   await run('port-walker', devices['iPhone 13'], { stage: 2 });
