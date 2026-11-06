@@ -154,7 +154,9 @@ export class CoverScreen {
       };
       mk('🧪 뽀뽀괴물 테스트', () => this.start({ boss: 'kiss' }));
       mk('🧪 킁카괴물 테스트', () => this.start({ boss: 'sniff' }));
-      mk('🧪 몬스터 테스트 (3단계)', () => this.start({ devMonsters: true }));
+      // 몬스터 즉시 테스트: 개발 모드(npm run dev) 또는 주소에 ?dev / ?test 가 있을 때만 (정식 플레이에선 숨김)
+      const q = new URLSearchParams(window.location.search);
+      if (import.meta.env.DEV || q.has('dev') || q.has('test')) mk('🧪 몬스터 테스트 (3단계)', () => this.start({ devMonsters: true }));
       const label = (): string => (perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기');
       mk(label(), () => {
         setPerfOverlay(!perf.enabled);
