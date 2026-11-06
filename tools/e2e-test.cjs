@@ -383,11 +383,11 @@ async function bossTests(label, device) {
   await tapEl('.bt-special');
   await page.waitForTimeout(300);
   const sp = await battle();
-  await page.waitForTimeout(1700);
-  // (보스 체력이 70% 아래로 내려가면 분노 전환 연출이 이어서 나옴 → 전투로 돌아올 때까지)
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 5000 }).catch(() => {});
+  // '초특급 꼬불머리 팡팡!' 약 3.6초 (슬로모션 → 멈춤 → 3연타) → 분노 전환 연출이 이어질 수 있음 → 전투로 돌아올 때까지
+  await page.waitForTimeout(3700);
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 }).catch(() => {});
   const sp2 = await battle();
-  check(`${label}: special = cutscene + big damage`, sp.frozen && sp2.hp === Math.max(0, hp1 - 3) && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
+  check(`${label}: special = cutscene + big damage`, sp.mode === 'cutscene' && sp2.hp === Math.max(0, hp1 - 3) && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
   // 승리 → 3단계 직립보행
   // (HP 를 1 로 낮춰도 2차 분노 → 왕뽀뽀 → 지침을 보여 준 뒤에야 쓰러짐)
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
