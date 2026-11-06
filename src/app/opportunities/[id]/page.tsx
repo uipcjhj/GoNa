@@ -24,14 +24,14 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
   const primary = articles.find((a) => a.id === o.primaryArticleId) ?? articles[0];
 
   const overview: [string, string][] = [
-    ["Company", o.company], ["Project", o.projectName], ["Country / City", `${o.country}${o.city !== "Unknown" ? ` / ${o.city}` : ""}`], ["Region", o.region],
-    ["Industry", o.industry], ["Facility Type", o.facilityType], ["Signal Type", o.signalType], ["Investment Amount", o.investmentAmount],
-    ["Project Stage", o.projectStage], ["Expected Timeline", o.expectedTimeline], ["Event Date (사건·발표일)", o.eventDate ?? "확인되지 않음"], ["Latest Published", fmtDate(o.latestPublishedAt)],
+    ["기업", o.company], ["프로젝트", o.projectName], ["국가 / 도시", `${o.country}${o.city !== "Unknown" ? ` / ${o.city}` : ""}`], ["지역", o.region],
+    ["산업", o.industry], ["시설 유형", o.facilityType], ["투자 신호", o.signalType], ["투자 규모", o.investmentAmount],
+    ["진행 단계", o.projectStage], ["예상 일정", o.expectedTimeline], ["사건·발표일", o.eventDate ?? "확인되지 않음"], ["최근 기사 발행일", fmtDate(o.latestPublishedAt)],
   ];
 
   return (
     <div className="space-y-4">
-      <Link href="/opportunities" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" />Opportunities</Link>
+      <Link href="/opportunities" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"><ArrowLeft className="h-4 w-4" />수주기회 목록</Link>
       {o.isDemo && <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-800"><b>DEMO</b> — 화면 확인용 가상 데이터입니다. 실제 기업·기사가 아닙니다.</div>}
 
       <div className="flex flex-wrap items-start gap-4">
@@ -46,25 +46,25 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader><CardTitle>Project Overview</CardTitle><span className="text-[11px] text-slate-400">원문에 없는 정보는 Unknown / Not Disclosed로 표시</span></CardHeader>
+          <CardHeader><CardTitle>프로젝트 개요</CardTitle><span className="text-[11px] text-slate-400">원문에 없는 정보는 Unknown / Not Disclosed로 표시</span></CardHeader>
           <CardContent>
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
               {overview.map(([k, v]) => (
                 <div key={k}>
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{k}</dt>
+                  <dt className="text-[11px] font-semibold tracking-wide text-slate-400">{k}</dt>
                   <dd className={`text-sm ${/^(unknown|not disclosed|확인되지 않음)$/i.test(v) ? "text-slate-400 italic" : "text-slate-800"}`}>{v}</dd>
                 </div>
               ))}
             </dl>
             <div className="mt-5 rounded-lg bg-slate-50 p-4">
-              <div className="mb-1 text-xs font-semibold text-slate-500">AI Summary</div>
+              <div className="mb-1 text-xs font-semibold text-slate-500">AI 요약</div>
               <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">{o.summaryKo.map((s, i) => <li key={i}>{s}</li>)}</ul>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Score Breakdown</CardTitle><span className="text-[11px] text-slate-400">가중치 반영</span></CardHeader>
+          <CardHeader><CardTitle>점수 세부 근거</CardTitle><span className="text-[11px] text-slate-400">가중치 반영</span></CardHeader>
           <CardContent className="space-y-3">
             {SCORE_CRITERIA.map((c) => {
               const item = o.scoreBreakdown[c.key];
@@ -90,19 +90,19 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
       </div>
 
       <Card>
-        <CardHeader><CardTitle>AI Opportunity Analysis</CardTitle><span className="text-[11px] text-slate-400">AI 추론과 기사 사실을 구분하여 표시</span></CardHeader>
+        <CardHeader><CardTitle>AI 수주기회 분석</CardTitle><span className="text-[11px] text-slate-400">AI 추론과 기사 사실을 구분하여 표시</span></CardHeader>
         <CardContent className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-4">
             <div>
-              <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-slate-500"><Lightbulb className="h-3.5 w-3.5" />Why This Matters to Hyundai Movex</div>
+              <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-slate-500"><Lightbulb className="h-3.5 w-3.5" />현대무벡스 관점의 의미</div>
               <p className="text-sm text-slate-800">{o.whyItMatters}</p>
             </div>
             <div>
-              <div className="mb-1 text-xs font-semibold text-slate-500">Potential Hyundai Movex Solutions <span className="font-normal text-slate-400">(검토 가능 솔루션 — 공급 확정 아님)</span></div>
+              <div className="mb-1 text-xs font-semibold text-slate-500">검토 가능한 현대무벡스 솔루션 <span className="font-normal text-slate-400">(검토 가능 솔루션 — 공급 확정 아님)</span></div>
               <div className="space-y-1.5">{o.solutions.map((s) => <div key={s.solution} className="text-sm"><Badge tone="blue">{s.solution}</Badge> <span className="text-slate-600">{s.reason}</span></div>)}{!o.solutions.length && <span className="text-sm text-slate-400">해당 없음</span>}</div>
             </div>
             <div>
-              <div className="mb-1 text-xs font-semibold text-slate-500">Potential Automation Needs <span className="font-normal text-slate-400">(추론)</span></div>
+              <div className="mb-1 text-xs font-semibold text-slate-500">예상 자동화 수요 <span className="font-normal text-slate-400">(추론)</span></div>
               <ul className="list-disc pl-5 text-sm text-slate-700">{o.automationNeeds.map((n) => <li key={n}>{n}</li>)}</ul>
             </div>
           </div>
@@ -124,7 +124,7 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Source Evidence</CardTitle><span className="text-[11px] text-slate-400">모든 링크는 실제 수집된 원문 URL입니다 (새 탭)</span></CardHeader>
+        <CardHeader><CardTitle>근거 기사</CardTitle><span className="text-[11px] text-slate-400">모든 링크는 실제 수집된 원문 URL입니다 (새 탭)</span></CardHeader>
         <div className="divide-y divide-slate-100">
           {articles.map((a) => (
             <div key={a.id} className="flex flex-wrap items-start gap-3 px-5 py-3">
@@ -150,7 +150,7 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Project History</CardTitle><span className="text-[11px] text-slate-400">확인된 이력만 표시</span></CardHeader>
+        <CardHeader><CardTitle>프로젝트 이력</CardTitle><span className="text-[11px] text-slate-400">확인된 이력만 표시</span></CardHeader>
         <CardContent>
           <ol className="relative border-l border-slate-200 pl-5">
             {o.history.map((h) => (

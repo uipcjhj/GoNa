@@ -4,6 +4,7 @@
 // News Discovery → Article Validation → Deduplication → Information Extraction → Opportunity Scoring
 // → Database Storage → Dashboard Update
 import "server-only";
+import { getStore } from "@/lib/db/store";
 import { randomUUID } from "node:crypto";
 import { getArticles, getJob, getSettings, listArticles, listJobs, listOpportunities, saveArticles, saveJob, saveOpportunities, saveSettings, getOpportunity } from "@/lib/db/repo";
 import { searchGdelt, RateLimitError } from "@/lib/news/gdelt";
@@ -100,9 +101,15 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
   return { job, created: true, resumed: false };
 }
 
+// Cancellation is a separate flag row that only cancelJob writes and the runner only reads, so a runner's
+// heartbeat save can never overwrite a cancel request (local file store or Supabase alike).
+const cancelFlagId = (jobId: string) => `cancel:${jobId}`;
+const isCancelRequested = async (jobId: string) => Boolean(await getStore().get("settings", cancelFlagId(jobId)));
+
 export async function cancelJob(id: string): Promise<Job | null> {
   const job = await getJob(id);
   if (!job || job.status !== "running") return job;
+  await getStore().upsert("settings", [{ id: cancelFlagId(id), value: { requestedAt: new Date().toISOString() } } as never]);
   job.status = "cancelled";
   job.finishedAt = new Date().toISOString();
   log(job, "warn", "사용자가 작업을 취소했습니다.");
@@ -453,6 +460,12 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
   const job = await getJob(jobId);
   try {
     if (!job || job.status !== "running") return true;
+    if (await isCancelRequested(jobId)) {
+      job.status = "cancelled";
+      job.finishedAt = job.finishedAt ?? new Date().toISOString();
+      await saveJob(job);
+      return true;
+    }
     if (job.lease && job.lease.until > new Date().toISOString() && job.lease.owner !== owner) return false;
     job.lease = { owner, until: new Date(Date.now() + budgetMs + 60_000).toISOString() };
     job.slices++;
@@ -461,8 +474,14 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
     const settings = await getSettings();
     const beat = async () => {
       job!.heartbeatAt = new Date().toISOString();
-      const fresh = await getJob(jobId);
-      if (fresh?.status === "cancelled") throw new CancelledError();
+      if (await isCancelRequested(jobId)) {
+        job!.status = "cancelled";
+        job!.finishedAt = job!.finishedAt ?? new Date().toISOString();
+        job!.lease = null;
+        if (!job!.log.some((l) => l.msg.startsWith("사용자가 작업을 취소"))) log(job!, "warn", "사용자가 작업을 취소했습니다.");
+        await saveJob(job!);
+        throw new CancelledError();
+      }
       await saveJob(job!);
     };
 

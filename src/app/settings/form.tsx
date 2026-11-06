@@ -25,11 +25,11 @@ function GroupEditor({ title, groups, onChange }: { title: string; groups: Keywo
       <CardHeader><CardTitle>{title}</CardTitle><Button size="sm" variant="outline" onClick={() => onChange([...groups, { name: "New", enabled: true, keywords: [] }])}><Plus className="h-3 w-3" />추가</Button></CardHeader>
       <CardContent className="space-y-2">
         {groups.map((g, i) => (
-          <div key={i} className="grid items-start gap-2 md:grid-cols-[auto_200px_1fr_auto]">
+          <div key={i} className="grid grid-cols-[auto_1fr_auto] items-start gap-2 md:grid-cols-[auto_200px_1fr_auto]">
             <input type="checkbox" className="mt-2.5" checked={g.enabled} onChange={(e) => onChange(groups.map((x, k) => (k === i ? { ...x, enabled: e.target.checked } : x)))} />
             <Input value={g.name} onChange={(e) => onChange(groups.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} />
-            <Input value={g.keywords.join(", ")} placeholder="검색 키워드 (쉼표로 구분)" onChange={(e) => onChange(groups.map((x, k) => (k === i ? { ...x, keywords: splitList(e.target.value) } : x)))} />
-            <Button variant="ghost" size="sm" onClick={() => onChange(groups.filter((_, k) => k !== i))}><Trash2 className="h-3.5 w-3.5" /></Button>
+            <Input className="order-4 col-span-3 md:order-none md:col-span-1" value={g.keywords.join(", ")} placeholder="검색 키워드 (쉼표로 구분)" onChange={(e) => onChange(groups.map((x, k) => (k === i ? { ...x, keywords: splitList(e.target.value) } : x)))} />
+            <Button className="order-3 md:order-none" variant="ghost" size="sm" onClick={() => onChange(groups.filter((_, k) => k !== i))}><Trash2 className="h-3.5 w-3.5" /></Button>
           </div>
         ))}
       </CardContent>
@@ -82,7 +82,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
 
       <Card>
         <CardHeader><CardTitle>관심 국가</CardTitle><Button size="sm" variant="outline" onClick={() => up("countries", [...s.countries, { name: "", region: "Other", enabled: true, priority: false, aliases: [] }])}><Plus className="h-3 w-3" />국가 추가</Button></CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto"><div className="min-w-[640px]">
           <div className="mb-2 grid grid-cols-[60px_1fr_160px_70px_1fr_40px] gap-2 text-[11px] font-semibold uppercase text-slate-400"><span>사용</span><span>국가 (영문)</span><span>Region</span><span>전략지역</span><span>별칭</span><span /></div>
           <div className="space-y-1.5">
             {s.countries.map((c, i) => {
@@ -99,7 +99,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
               );
             })}
           </div>
-        </CardContent>
+        </div></CardContent>
       </Card>
 
       <GroupEditor title="관심 산업 (산업별 검색 키워드)" groups={s.industries} onChange={(g) => up("industries", g)} />
@@ -115,7 +115,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
         </Card>
         <Card>
           <CardHeader><CardTitle>경쟁사 목록</CardTitle><Button size="sm" variant="outline" onClick={() => up("competitors", [...s.competitors, { name: "", enabled: true, aliases: [] }])}><Plus className="h-3 w-3" />추가</Button></CardHeader>
-          <CardContent className="space-y-1.5">
+          <CardContent className="overflow-x-auto"><div className="min-w-[460px] space-y-1.5">
             {s.competitors.map((c, i) => {
               const set = (patch: Partial<typeof c>) => up("competitors", s.competitors.map((x, k) => (k === i ? { ...x, ...patch } : x)));
               return (
@@ -127,13 +127,13 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
                 </div>
               );
             })}
-          </CardContent>
+          </div></CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader><CardTitle>산업 전문지 RSS 피드</CardTitle><Button size="sm" variant="outline" onClick={() => up("rssFeeds", [...s.rssFeeds, { name: "", url: "", enabled: true }])}><Plus className="h-3 w-3" />추가</Button></CardHeader>
-        <CardContent className="space-y-1.5">
+        <CardContent className="overflow-x-auto"><div className="min-w-[620px] space-y-1.5">
           {s.rssFeeds.map((f, i) => {
             const set = (patch: Partial<typeof f>) => up("rssFeeds", s.rssFeeds.map((x, k) => (k === i ? { ...x, ...patch } : x)));
             return (
@@ -146,7 +146,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
               </div>
             );
           })}
-        </CardContent>
+        </div></CardContent>
       </Card>
 
       <Card>
@@ -172,7 +172,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Opportunity Scoring Weight</CardTitle><Badge tone={totalW === 100 ? "green" : "amber"}>합계 {totalW} {totalW !== 100 && "(100으로 자동 정규화)"}</Badge></CardHeader>
+          <CardHeader><CardTitle>수주기회 점수 가중치</CardTitle><Badge tone={totalW === 100 ? "green" : "amber"}>합계 {totalW} {totalW !== 100 && "(100으로 자동 정규화)"}</Badge></CardHeader>
           <CardContent className="space-y-2">
             {SCORE_CRITERIA.map((c) => (
               <div key={c.key} className="grid grid-cols-[1fr_90px] items-center gap-2 text-sm">
@@ -221,7 +221,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
         </CardContent>
       </Card>
 
-      <div className="fixed bottom-4 right-6 z-30 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-lg">
+      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 z-30 flex max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-xl border border-sky-200 bg-navy-900 px-4 py-2 shadow-2xl sm:right-6">
         {msg && <span className="text-sm text-slate-600">{msg}</span>}
         <Button onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}설정 저장</Button>
       </div>

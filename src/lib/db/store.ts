@@ -96,25 +96,64 @@ class SupabaseStore implements Store {
 // ---------------------------------------------------------------- Local JSON
 type LocalData = Record<TableName, Record<string, Row>>;
 
+const TABLES: TableName[] = ["articles", "opportunities", "jobs", "settings", "reports"];
+
+/**
+ * Local JSON-file store. Safe against a second writer on the same file (e.g. an old dev server still finishing a
+ * collection job after a restart): it re-reads the file when another process changed it, and on save it only
+ * overwrites the rows this process changed, instead of rewriting the whole file from a stale in-memory copy.
+ */
 class LocalStore implements Store {
   kind: "local" | "local-ephemeral";
   private file: string;
   private data: LocalData | null = null;
+  private mtimeMs = 0;
   private writeTimer: NodeJS.Timeout | null = null;
+  private dirty: Record<TableName, Set<string>> = this.emptySets();
+  private removed: Record<TableName, Set<string>> = this.emptySets();
 
   constructor(dir: string, ephemeral: boolean) {
     this.kind = ephemeral ? "local-ephemeral" : "local";
     this.file = path.join(dir, "db.json");
   }
 
-  private load(): LocalData {
-    if (this.data) return this.data;
+  private emptySets(): Record<TableName, Set<string>> {
+    return Object.fromEntries(TABLES.map((t) => [t, new Set<string>()])) as Record<TableName, Set<string>>;
+  }
+
+  private readDisk(): { data: LocalData; mtimeMs: number } {
+    let data: LocalData;
+    let mtimeMs = 0;
     try {
-      this.data = JSON.parse(fs.readFileSync(this.file, "utf8")) as LocalData;
+      mtimeMs = fs.statSync(this.file).mtimeMs;
+      data = JSON.parse(fs.readFileSync(this.file, "utf8")) as LocalData;
     } catch {
-      this.data = { articles: {}, opportunities: {}, jobs: {}, settings: {}, reports: {} };
+      data = { articles: {}, opportunities: {}, jobs: {}, settings: {}, reports: {} };
     }
-    for (const t of ["articles", "opportunities", "jobs", "settings", "reports"] as TableName[]) this.data[t] ??= {};
+    for (const t of TABLES) data[t] ??= {};
+    return { data, mtimeMs };
+  }
+
+  private diskMtime(): number {
+    try {
+      return fs.statSync(this.file).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Load once, and reload (keeping this process's unsaved changes) when another process wrote the file. */
+  private load(): LocalData {
+    if (this.data && this.diskMtime() === this.mtimeMs) return this.data;
+    const disk = this.readDisk();
+    if (this.data) {
+      for (const t of TABLES) {
+        for (const id of this.dirty[t]) if (this.data[t][id]) disk.data[t][id] = this.data[t][id];
+        for (const id of this.removed[t]) delete disk.data[t][id];
+      }
+    }
+    this.data = disk.data;
+    this.mtimeMs = disk.mtimeMs;
     return this.data;
   }
 
@@ -128,14 +167,18 @@ class LocalStore implements Store {
 
   flush() {
     if (!this.data) return;
+    const data = this.load(); // merges any concurrent external write first
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const tmp = this.file + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(this.data));
+    const tmp = `${this.file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data));
     fs.renameSync(tmp, this.file);
+    this.mtimeMs = this.diskMtime();
+    this.dirty = this.emptySets();
+    this.removed = this.emptySets();
   }
 
   async list<T extends Row>(table: TableName, opts: ListOptions = {}): Promise<T[]> {
-    const rows = Object.values(this.load()[table]) as T[];
+    const rows = Object.values(this.load()[table]) as unknown as T[];
     let out = rows.map((r) => ({ r, s: sortAt(table, r) }));
     if (opts.since) out = out.filter((x) => x.s >= opts.since!);
     out.sort((a, b) => (a.s < b.s ? 1 : -1));
@@ -143,20 +186,28 @@ class LocalStore implements Store {
   }
   async get<T extends Row>(table: TableName, id: string): Promise<T | null> {
     const r = this.load()[table][id];
-    return r ? (structuredClone(r) as T) : null;
+    return r ? (structuredClone(r) as unknown as T) : null;
   }
   async getMany<T extends Row>(table: TableName, ids: string[]): Promise<T[]> {
     const t = this.load()[table];
-    return ids.map((id) => t[id]).filter(Boolean).map((r) => structuredClone(r) as T);
+    return ids.map((id) => t[id]).filter(Boolean).map((r) => structuredClone(r) as unknown as T);
   }
   async upsert<T extends Row>(table: TableName, rows: T[]): Promise<void> {
     const t = this.load()[table];
-    for (const r of rows) t[r.id] = structuredClone(r);
+    for (const r of rows) {
+      t[r.id] = structuredClone(r);
+      this.dirty[table].add(r.id);
+      this.removed[table].delete(r.id);
+    }
     this.persist();
   }
   async remove(table: TableName, ids: string[]): Promise<void> {
     const t = this.load()[table];
-    for (const id of ids) delete t[id];
+    for (const id of ids) {
+      delete t[id];
+      this.removed[table].add(id);
+      this.dirty[table].delete(id);
+    }
     this.persist();
   }
 }

@@ -59,7 +59,7 @@ export function OpportunityTable({ rows, initial }: { rows: OppRow[]; initial: {
   }, [rows, q, region, country, industry, signal, stage, priority, minScore, days, verifiedOnly, sort, now]);
 
   const sortBtn = (k: SortKey, children: React.ReactNode) => (
-    <button className="inline-flex items-center gap-0.5 uppercase" onClick={() => setSort((s) => ({ k, asc: s.k === k ? !s.asc : k !== "score" && k !== "latestPublishedAt" }))}>
+    <button className="inline-flex items-center gap-0.5" onClick={() => setSort((s) => ({ k, asc: s.k === k ? !s.asc : k !== "score" && k !== "latestPublishedAt" }))}>
       {children}
       {sort.k === k && (sort.asc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
     </button>
@@ -74,15 +74,15 @@ export function OpportunityTable({ rows, initial }: { rows: OppRow[]; initial: {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
           <Input className="pl-8" placeholder="기업, 프로젝트, 국가, 솔루션 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Select value={region} onChange={(e) => { setRegion(e.target.value); setCountry(""); }}><option value="">전체 Region</option>{opts.regions.map((x) => <option key={x}>{x}</option>)}</Select>
-        <Select value={country} onChange={(e) => setCountry(e.target.value)}><option value="">전체 Country</option>{opts.countries.map((x) => <option key={x}>{x}</option>)}</Select>
-        <Select value={industry} onChange={(e) => setIndustry(e.target.value)}><option value="">전체 Industry</option>{opts.industries.map((x) => <option key={x}>{x}</option>)}</Select>
-        <Select value={signal} onChange={(e) => setSignal(e.target.value)}><option value="">전체 Signal</option>{opts.signals.map((x) => <option key={x}>{x}</option>)}</Select>
-        <Select value={stage} onChange={(e) => setStage(e.target.value)}><option value="">전체 Stage</option>{PROJECT_STAGES.map((x) => <option key={x}>{x}</option>)}</Select>
+        <Select value={region} onChange={(e) => { setRegion(e.target.value); setCountry(""); }}><option value="">전체 지역</option>{opts.regions.map((x) => <option key={x}>{x}</option>)}</Select>
+        <Select value={country} onChange={(e) => setCountry(e.target.value)}><option value="">전체 국가</option>{opts.countries.map((x) => <option key={x}>{x}</option>)}</Select>
+        <Select value={industry} onChange={(e) => setIndustry(e.target.value)}><option value="">전체 산업</option>{opts.industries.map((x) => <option key={x}>{x}</option>)}</Select>
+        <Select value={signal} onChange={(e) => setSignal(e.target.value)}><option value="">전체 투자 신호</option>{opts.signals.map((x) => <option key={x}>{x}</option>)}</Select>
+        <Select value={stage} onChange={(e) => setStage(e.target.value)}><option value="">전체 진행 단계</option>{PROJECT_STAGES.map((x) => <option key={x}>{x}</option>)}</Select>
         <Select value={priority} onChange={(e) => setPriority(e.target.value)}><option value="">전체 우선순위</option><option>HOT</option><option>WATCH</option><option>GENERAL</option></Select>
-        <Select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>{[0, 40, 60, 80].map((x) => <option key={x} value={x}>{x ? `Score ≥ ${x}` : "전체 Score"}</option>)}</Select>
+        <Select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}>{[0, 40, 60, 80].map((x) => <option key={x} value={x}>{x ? `점수 ≥ ${x}` : "전체 점수"}</option>)}</Select>
         <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>{[[0, "전체 기간"], [7, "최근 7일"], [30, "최근 30일"], [90, "최근 90일"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
-        <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} /> Verified Sources Only</label>
+        <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} /> 검증된 출처만</label>
         <Button variant="ghost" size="sm" onClick={reset}>초기화</Button>
       </div>
       <div className="px-3 py-2 text-xs text-slate-500">{filtered.length}개 프로젝트</div>
@@ -90,24 +90,24 @@ export function OpportunityTable({ rows, initial }: { rows: OppRow[]; initial: {
         <table className="w-full min-w-[1100px]">
           <thead>
             <tr>
-              <Th>{sortBtn("score", "Score")}</Th>
-              <Th>{sortBtn("company", "Company")}</Th>
-              <Th>Project</Th>
-              <Th>{sortBtn("country", "Country")}</Th>
-              <Th>{sortBtn("industry", "Industry")}</Th>
-              <Th>Signal Type</Th>
-              <Th>Investment</Th>
-              <Th>Potential Solutions</Th>
-              <Th>Stage</Th>
-              <Th>{sortBtn("latestPublishedAt", "Published")}</Th>
+              <Th>{sortBtn("score", "점수")}</Th>
+              <Th>{sortBtn("company", "기업")}</Th>
+              <Th>프로젝트</Th>
+              <Th>{sortBtn("country", "국가")}</Th>
+              <Th>{sortBtn("industry", "산업")}</Th>
+              <Th>투자 신호</Th>
+              <Th>투자 규모</Th>
+              <Th>검토 솔루션</Th>
+              <Th>진행 단계</Th>
+              <Th>{sortBtn("latestPublishedAt", "발행일")}</Th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50">
                 <Td><div className="flex flex-col items-start gap-1"><ScorePill score={r.score} /><PriorityBadge p={r.priority} /></div></Td>
-                <Td className="font-semibold text-slate-900"><Link href={`/opportunities/${r.id}`} className="hover:text-sky-700 hover:underline">{r.company}</Link>{r.isDemo && <Badge tone="violet" className="ml-1">DEMO</Badge>}</Td>
-                <Td className="max-w-64"><Link href={`/opportunities/${r.id}`} className="hover:underline">{r.projectName}</Link><div className="mt-1 flex gap-1"><ModeBadge mode={r.analysisMode} /><span className="text-[11px] text-slate-400">근거 {r.articleIds.length}건 · 검증 {r.verifiedSourceCount}</span></div></Td>
+                <Td className="min-w-36 font-semibold text-slate-900"><Link href={`/opportunities/${r.id}`} className="hover:text-sky-700 hover:underline">{r.company}</Link>{r.isDemo && <Badge tone="violet" className="ml-1">DEMO</Badge>}</Td>
+                <Td className="min-w-48 max-w-64"><Link href={`/opportunities/${r.id}`} className="hover:underline">{r.projectName}</Link><div className="mt-1 flex gap-1"><ModeBadge mode={r.analysisMode} /><span className="text-[11px] text-slate-400">근거 {r.articleIds.length}건 · 검증 {r.verifiedSourceCount}</span></div></Td>
                 <Td>{r.country}{r.city !== "Unknown" && <div className="text-xs text-slate-500">{r.city}</div>}</Td>
                 <Td className="text-xs">{r.industry}</Td>
                 <Td className="text-xs">{r.signalType}</Td>

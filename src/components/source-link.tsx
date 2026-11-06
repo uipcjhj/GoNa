@@ -7,12 +7,12 @@ export function SourceLink({ a, className, children, button }: { a: Pick<Article
   if (a.isDemo)
     return (
       <span className={cn(button ? "inline-flex h-8 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs text-slate-400" : "", className)} title="데모 데이터 — 원문 없음">
-        {children ?? "View Source"} {button && "(DEMO)"}
+        {children ?? "원문 보기"} {button && "(DEMO)"}
       </span>
     );
   return (
-    <a href={a.url} target="_blank" rel="noopener noreferrer" className={cn(button ? "inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50" : "hover:text-sky-700 hover:underline", className)}>
-      {children ?? "View Source"}
+    <a href={a.url} target="_blank" rel="noopener noreferrer" className={cn(button ? "inline-flex h-8 items-center gap-1 rounded-lg border border-slate-300 bg-surface-2 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50" : "hover:text-sky-700 hover:underline", className)}>
+      {children ?? "원문 보기"}
       <ExternalLink className="h-3 w-3 shrink-0" />
     </a>
   );

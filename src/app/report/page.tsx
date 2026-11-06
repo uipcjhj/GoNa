@@ -34,10 +34,10 @@ export default async function ReportPage({ searchParams }: PageProps<"/report">)
       <DemoBanner show={items.some((i) => i.isDemo)} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Weekly Report</h1>
+          <h1 className="text-xl font-bold text-slate-900">수주기회 간편 Excel</h1>
           <p className="text-sm text-slate-500">보고서에 포함할 기사를 선택하고 기존 주간동향 형식의 Excel로 다운로드합니다. (기준: 월~일, {settings.reportTimezone})</p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm">
+        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-surface-2 p-1 text-sm">
           <Link href={`/report?w=${offset - 1}`} className="rounded p-1 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></Link>
           <span className="px-2 font-medium tabular">{label}</span>
           {offset < 0 ? <Link href={`/report?w=${offset + 1}`} className="rounded p-1 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></Link> : <span className="p-1 text-slate-300"><ChevronRight className="h-4 w-4" /></span>}

@@ -1,19 +1,165 @@
 @import "tailwindcss";
 
+/*
+ * Global Opportunity Radar — Dark Navy + Neon Mint design system
+ *
+ * The neutral "slate" scale is inverted for the dark theme (50 = darkest surface tint, 900 = brightest text),
+ * so every screen built with slate utilities switches theme consistently.
+ * "sky" (the accent used for links, focus and progress) is remapped to neon mint.
+ * Light status tints (*-50/100/200) become translucent glows; dark status text (*-700/800/900) becomes light.
+ */
+@theme {
+  /* surfaces */
+  --color-ink: #050c18;
+  --color-surface: #0b1626;
+  --color-surface-2: #0f1e33;
+  --color-line: #1a2e4a;
+
+  /* brand */
+  --color-brand: #2ef2c4;
+  --color-brand-600: #1fd3a8;
+  --color-brand-ink: #03201a;
+  --color-navy-950: #040a15;
+  --color-navy-900: #071226;
+  --color-navy-800: #0c1b33;
+
+  /* neutral scale (inverted for dark UI) */
+  --color-slate-50: #0d1a2c;
+  --color-slate-100: #12233a;
+  --color-slate-200: #1b3150;
+  --color-slate-300: #2a4466;
+  --color-slate-400: #6e86a8;
+  --color-slate-500: #8ca2c0;
+  --color-slate-600: #a8bad3;
+  --color-slate-700: #c4d2e5;
+  --color-slate-800: #dbe5f2;
+  --color-slate-900: #eef4fb;
+  --color-slate-950: #f8fbff;
+
+  /* accent "sky" -> neon mint */
+  --color-sky-50: rgb(46 242 196 / 0.08);
+  --color-sky-100: rgb(46 242 196 / 0.14);
+  --color-sky-200: rgb(46 242 196 / 0.3);
+  --color-sky-300: #8ff8de;
+  --color-sky-400: #5ef5d1;
+  --color-sky-500: #2ef2c4;
+  --color-sky-600: #1fd3a8;
+  --color-sky-700: #5ef5d1;
+  --color-sky-800: #8ff8de;
+  --color-sky-900: #c6fcee;
+
+  /* status tints */
+  --color-red-50: rgb(248 113 113 / 0.1);
+  --color-red-100: rgb(248 113 113 / 0.18);
+  --color-red-200: rgb(248 113 113 / 0.32);
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+  --color-amber-50: rgb(251 191 36 / 0.1);
+  --color-amber-100: rgb(251 191 36 / 0.18);
+  --color-amber-200: rgb(251 191 36 / 0.32);
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-orange-50: rgb(251 146 60 / 0.1);
+  --color-orange-100: rgb(251 146 60 / 0.18);
+  --color-orange-200: rgb(251 146 60 / 0.32);
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-emerald-50: rgb(52 211 153 / 0.1);
+  --color-emerald-100: rgb(52 211 153 / 0.18);
+  --color-emerald-200: rgb(52 211 153 / 0.32);
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-green-50: rgb(74 222 128 / 0.1);
+  --color-green-700: #86efac;
+  --color-violet-50: rgb(167 139 250 / 0.1);
+  --color-violet-100: rgb(167 139 250 / 0.18);
+  --color-violet-200: rgb(167 139 250 / 0.32);
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+  --color-blue-50: rgb(96 165 250 / 0.1);
+  --color-blue-700: #93c5fd;
+}
+
 @theme inline {
-  --color-background: #f6f8fb;
-  --color-foreground: #0f172a;
-  --color-brand: #0b2a4a;
-  --color-brand-600: #12406f;
-  --color-accent: #0ea5e9;
+  --color-background: var(--color-ink);
+  --color-foreground: var(--color-slate-900);
   --font-sans: var(--font-geist-sans), "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
+:root {
+  color-scheme: dark;
 }
 
-.tabular { font-variant-numeric: tabular-nums; }
+html,
+body {
+  background-color: var(--color-ink);
+}
+
+body {
+  color: var(--color-slate-900);
+  font-family: var(--font-sans);
+  background-image:
+    radial-gradient(1200px 600px at 85% -10%, rgb(46 242 196 / 0.07), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgb(56 128 255 / 0.06), transparent 60%);
+  background-attachment: fixed;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgb(46 242 196 / 0.3);
+  color: #fff;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.glow-card {
+  box-shadow:
+    0 0 0 1px rgb(46 242 196 / 0.05),
+    0 12px 32px -14px rgb(0 0 0 / 0.7);
+}
+.glow-mint {
+  box-shadow: 0 0 18px -4px rgb(46 242 196 / 0.55);
+}
+.text-glow {
+  text-shadow: 0 0 14px rgb(46 242 196 / 0.45);
+}
+
+/* radar */
+@keyframes radar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.radar-sweep {
+  animation: radar-spin 7s linear infinite;
+}
+@keyframes radar-ping {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.8);
+  }
+}
+.radar-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radar-ping 2.4s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep,
+  .radar-ping {
+    animation: none;
+  }
+}
+
+* {
+  scrollbar-color: #1f3a5c transparent;
+}

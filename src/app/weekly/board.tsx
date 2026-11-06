@@ -41,13 +41,13 @@ function DateCell({ r }: { r: WeeklyRow }) {
 
 function RelevanceCell({ r }: { r: WeeklyRow }) {
   if (r.relevance == null) return <span className="text-xs text-slate-400">미분석</span>;
-  const tone = r.relevance >= 70 ? "bg-emerald-600" : r.relevance >= 50 ? "bg-sky-600" : "bg-slate-400";
+  const tone = r.relevance >= 70 ? "bg-brand text-brand-ink" : r.relevance >= 50 ? "bg-sky-100 text-sky-700 ring-1 ring-sky-200" : "bg-slate-100 text-slate-600";
   return (
     <details className="group relative">
       <summary className="cursor-pointer list-none">
-        <span className={cn("inline-flex h-6 w-9 items-center justify-center rounded text-xs font-bold text-white tabular", tone)}>{r.relevance}</span>
+        <span className={cn("inline-flex h-6 w-9 items-center justify-center rounded text-xs font-bold tabular", tone)}>{r.relevance}</span>
       </summary>
-      <div className="absolute left-0 z-30 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-xl">
+      <div className="absolute left-0 z-30 mt-1 w-72 rounded-lg border border-slate-200 bg-surface-2 p-3 text-[11px] shadow-xl">
         <div className="mb-1 font-semibold text-slate-700">Industry Relevance Score 근거 ({r.analysis === "ai" ? "AI" : "규칙 기반"})</div>
         {r.relevanceBreakdown && RELEVANCE_CRITERIA.map((c) => (
           <div key={c.key} className="mb-1">
@@ -345,7 +345,7 @@ export function WeeklyBoard({ period, view }: { period: Period; view: WeeklyView
                     <div className="flex gap-1">
                       <button title="보고서 선정" onClick={() => setRowStatus([r.id], r.reportStatus === "selected" ? "unreviewed" : "selected")} className={cn("rounded p-1", r.reportStatus === "selected" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50")}><CheckCircle2 className="h-4 w-4" /></button>
                       <button title="보류" onClick={() => setRowStatus([r.id], r.reportStatus === "hold" ? "unreviewed" : "hold")} className={cn("rounded p-1", r.reportStatus === "hold" ? "bg-amber-500 text-white" : "text-amber-600 hover:bg-amber-50")}><PauseCircle className="h-4 w-4" /></button>
-                      <button title="제외" onClick={() => setRowStatus([r.id], r.reportStatus === "excluded" ? "unreviewed" : "excluded")} className={cn("rounded p-1", r.reportStatus === "excluded" ? "bg-slate-600 text-white" : "text-slate-500 hover:bg-slate-100")}><CircleSlash className="h-4 w-4" /></button>
+                      <button title="제외" onClick={() => setRowStatus([r.id], r.reportStatus === "excluded" ? "unreviewed" : "excluded")} className={cn("rounded p-1", r.reportStatus === "excluded" ? "bg-slate-300 text-slate-900" : "text-slate-500 hover:bg-slate-100")}><CircleSlash className="h-4 w-4" /></button>
                     </div>
                   </Td>
                 </tr>
@@ -384,7 +384,7 @@ export function WeeklyBoard({ period, view }: { period: Period; view: WeeklyView
       {/* preview modal */}
       {preview && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-slate-900/50 p-4">
-          <div className="w-full max-w-6xl rounded-xl bg-white shadow-2xl">
+          <div className="w-full max-w-6xl rounded-xl bg-surface-2 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
               <b>Excel 미리보기 — {period.startDate} ~ {period.endDate}</b>
               <div className="flex gap-2"><Button size="sm" onClick={download} disabled={!preview.industry.length}><Download className="h-3.5 w-3.5" />엑셀 다운로드</Button><button onClick={() => setPreview(null)}><X className="h-5 w-5 text-slate-400" /></button></div>
@@ -397,12 +397,12 @@ export function WeeklyBoard({ period, view }: { period: Period; view: WeeklyView
             )}
             <div className="flex gap-1 px-5 pt-3">
               {([["industry", "시트1 주간 업계동향"], ["opportunity", "시트2 잠재 수주기회"], ["competitor", "시트3 경쟁사 동향"]] as const).map(([k, l]) => (
-                <button key={k} onClick={() => setPvTab(k)} className={cn("rounded-t px-3 py-1.5 text-sm", pvTab === k ? "bg-brand text-white" : "bg-slate-100 text-slate-600")}>{l} ({preview[k].length})</button>
+                <button key={k} onClick={() => setPvTab(k)} className={cn("rounded-t px-3 py-1.5 text-sm", pvTab === k ? "bg-brand text-brand-ink font-semibold" : "bg-slate-100 text-slate-600")}>{l} ({preview[k].length})</button>
               ))}
             </div>
             <div className="max-h-[65vh] overflow-auto px-5 pb-5">
               <table className="w-full border border-slate-200 text-xs">
-                <thead><tr className="bg-brand text-white">
+                <thead><tr className="bg-navy-800 text-sky-700">
                   <th className="p-2 text-left">{pvTab === "competitor" ? "경쟁사" : "카테고리"}</th><th className="p-2 text-left">날짜</th><th className="p-2 text-left">제목</th><th className="p-2 text-left">매체</th><th className="p-2 text-left">요약</th>
                   {pvTab === "opportunity" && <><th className="p-2">점수</th><th className="p-2 text-left">판단 근거</th><th className="p-2 text-left">연관 솔루션</th></>}
                   {pvTab === "competitor" && <th className="p-2 text-left">비고</th>}

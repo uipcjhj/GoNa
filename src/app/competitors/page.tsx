@@ -19,7 +19,7 @@ export default async function CompetitorsPage({ searchParams }: PageProps<"/comp
     <div className="space-y-4">
       <DemoBanner show={comp.some((a) => a.isDemo)} />
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Competitor Watch</h1>
+        <h1 className="text-xl font-bold text-slate-900">경쟁사 동향</h1>
         <p className="text-sm text-slate-500">경쟁사의 신규 수주, 공급 계약, 파트너십, 기술 발표, 투자, 구축 사례 (최근 120일). 잠재 수주기회와 연결된 경우 함께 표시됩니다.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

@@ -44,7 +44,7 @@ export default async function RunsPage({ searchParams }: PageProps<"/runs">) {
                   </tr>
                 );
               })}
-              {!jobs.length && <tr><Td colSpan={11} className="py-8 text-center text-slate-400">아직 실행 기록이 없습니다. 상단 Find Opportunities를 눌러 첫 수집을 실행하세요.</Td></tr>}
+              {!jobs.length && <tr><Td colSpan={11} className="py-8 text-center text-slate-400">아직 실행 기록이 없습니다. 상단 수주기회 탐색를 눌러 첫 수집을 실행하세요.</Td></tr>}
             </tbody>
           </table>
         </div>

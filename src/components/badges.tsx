@@ -8,9 +8,9 @@ export function PriorityBadge({ p }: { p: Priority }) {
 }
 
 export function ScorePill({ score, className }: { score: number; className?: string }) {
-  const color = score >= 80 ? "bg-red-600" : score >= 60 ? "bg-amber-500" : "bg-slate-400";
+  const color = score >= 80 ? "bg-red-500/20 text-red-300 ring-1 ring-red-400/60" : score >= 60 ? "bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/50" : "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
   return (
-    <span className={cn("inline-flex h-7 w-10 items-center justify-center rounded-md text-sm font-bold text-white tabular", color, className)} title="Opportunity Score (우선순위 지표, 수주확률 아님)">
+    <span className={cn("inline-flex h-7 w-10 items-center justify-center rounded-md text-sm font-bold tabular", color, className)} title="Opportunity Score (우선순위 지표, 수주확률 아님)">
       {score}
     </span>
   );

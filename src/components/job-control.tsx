@@ -1,5 +1,5 @@
 "use client";
-// "Find Opportunities" button + live status of the server-side job (polls; survives page reloads).
+// "수주기회 탐색" button + live status of the server-side job (polls; survives page reloads).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Radar, CheckCircle2, AlertTriangle, XCircle, ChevronDown } from "lucide-react";
@@ -70,18 +70,19 @@ export function JobControl({ aiConnected }: { aiConnected: boolean }) {
   return (
     <div className="relative flex items-center gap-2">
       {job && (
-        <button onClick={() => setOpen(!open)} className="hidden items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 md:flex">
+        <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600" /> : job.status === "completed" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : job.status === "failed" ? <XCircle className="h-3.5 w-3.5 text-red-600" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
-          {running ? `${PHASE[job.phase]} · ${job.phase === "discover" ? `${s?.queriesDone}/${s?.queriesTotal}` : `${job.analyzeIndex}/${job.analyzeQueue.length}`}` : `마지막 수집 ${timeAgo(job.finishedAt ?? job.startedAt)}`}
+          <span className="hidden md:inline">{running ? `${PHASE[job.phase]} · ${job.phase === "discover" ? `${s?.queriesDone}/${s?.queriesTotal}` : `${job.analyzeIndex}/${job.analyzeQueue.length}`}` : `마지막 수집 ${timeAgo(job.finishedAt ?? job.startedAt)}`}</span>
           <ChevronDown className="h-3 w-3" />
         </button>
       )}
       <Button onClick={start} disabled={busy || running}>
         {busy || running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
-        Find Opportunities
+        <span className="hidden sm:inline">수주기회 탐색</span>
+        <span className="sm:hidden">탐색</span>
       </Button>
       {(open || err) && (
-        <div className="absolute right-0 top-11 z-50 w-[22rem] rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-xl">
+        <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4rem)] z-50 max-h-[75vh] overflow-y-auto rounded-xl border border-line bg-navy-900 p-4 text-sm shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[22rem]">
           {err && <div className="mb-2 rounded bg-red-50 p-2 text-xs text-red-700">{err}</div>}
           {job && s && (
             <>
