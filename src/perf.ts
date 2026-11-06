@@ -28,6 +28,19 @@ export interface LongFrame {
 const LONG_MS = 25;
 const HISTORY = 240;
 
+/** 구간(장면)별 프레임 기록 — 오프닝 문장마다·타이틀·게임 등 (perf.section 으로 바꿈) */
+export interface PerfSection {
+  name: string;
+  frames: number;
+  sum: number;
+  max: number;
+  over25: number;
+  over50: number;
+  over100: number;
+  /** p95 계산용 (최대 600개) */
+  dts: number[];
+}
+
 class Perf {
   enabled: boolean;
   /** 저사양 모드: 계속 느리면 자동으로 켜짐 (먼지 꼬리·반짝이 줄임) */
@@ -51,6 +64,9 @@ class Perf {
   private sumN = 0;
   private sumDt = 0;
   maxDt = 0;
+  /** 구간별 기록 (최근 24개) */
+  readonly sectionLog: PerfSection[] = [];
+  private sec: PerfSection | null = null;
 
   constructor() {
     const q = new URLSearchParams(window.location.search);
@@ -87,6 +103,24 @@ class Perf {
     }
   }
 
+  /** 지금부터 새 구간 (예: '오프닝 1/10') — 프레임 시간·끊김을 구간별로 모음 */
+  section(name: string): void {
+    if (this.sec?.name === name) return;
+    this.sec = { name, frames: 0, sum: 0, max: 0, over25: 0, over50: 0, over100: 0, dts: [] };
+    this.sectionLog.push(this.sec);
+    if (this.sectionLog.length > 24) this.sectionLog.shift();
+    this.mark(`▶ ${name}`);
+  }
+
+  /** 구간별 요약 */
+  sections(): { name: string; frames: number; fps: number; avg: number; p95: number; max: number; over25: number; over50: number; over100: number }[] {
+    return this.sectionLog.map((c) => {
+      const d = [...c.dts].sort((a, b) => a - b);
+      const avg = c.sum / Math.max(1, c.frames);
+      return { name: c.name, frames: c.frames, fps: Math.round(1000 / Math.max(1, avg)), avg: r1(avg), p95: r1(d[Math.floor(d.length * 0.95)] ?? 0), max: r1(c.max), over25: c.over25, over50: c.over50, over100: c.over100 };
+    });
+  }
+
   /** Phaser 게임 루프에 연결 (main.ts) */
   attach(events: { on: (e: string, fn: () => void) => void }): void {
     events.on('prestep', () => (this.stepStart = performance.now()));
@@ -97,6 +131,16 @@ class Perf {
 
   private onFrame(dt: number): void {
     this.frames++;
+    const sc = this.sec;
+    if (sc && dt < 1000) {
+      sc.frames++;
+      sc.sum += dt;
+      if (dt > sc.max) sc.max = dt;
+      if (dt > 25) sc.over25++;
+      if (dt > 50) sc.over50++;
+      if (dt > 100) sc.over100++;
+      if (sc.dts.length < 600) sc.dts.push(dt);
+    }
     this.dts.push(dt);
     this.sumDt += dt;
     if (this.dts.length > HISTORY) this.sumDt -= this.dts.shift()!;
@@ -157,6 +201,12 @@ class Perf {
   report(): string {
     const s = this.stats();
     const lines = [`FPS ${s.fps} · 평균 ${s.avg}ms · 95% ${s.p95}ms · 최대 ${s.max}ms · 끊김(>${LONG_MS}ms) ${s.long}회 · 저사양 ${s.low ? '켜짐' : '꺼짐'}`, navigator.userAgent];
+    const secs = this.sections();
+    if (secs.length) {
+      lines.push('— 구간별 (프레임 · 평균 · 95% · 최대 ms · 끊김 >25/>50/>100ms) —');
+      for (const c of secs) lines.push(`${c.name}: ${c.frames}f · ${c.avg} · ${c.p95} · ${c.max} · ${c.over25}/${c.over50}/${c.over100}`);
+      lines.push('— 최근 끊긴 프레임 —');
+    }
     for (const f of this.long) {
       const ev = f.events.map((e) => (e.ms ? `${e.name} ${e.ms}ms` : e.name)).join(', ');
       lines.push(`${f.dt}ms = step ${f.step} + render ${f.render} + 바깥 ${r1(f.dt - f.step - f.render)} | ${ev || '-'}`);
@@ -204,7 +254,8 @@ class Perf {
 
   private renderPanel(): void {
     const s = this.stats();
-    const head = `FPS ${s.fps} · avg ${s.avg} · p95 ${s.p95} · max ${s.max}ms${s.low ? ' · LOW' : ''}`;
+    const c = this.sec;
+    const head = `FPS ${s.fps} · avg ${s.avg} · p95 ${s.p95} · max ${s.max}ms${s.low ? ' · LOW' : ''}${c ? `\n[${c.name}] max ${r1(c.max)} · >50ms ${c.over50}` : ''}`;
     const rows = this.long
       .slice(0, 6)
       .map((f) => {

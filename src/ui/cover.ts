@@ -133,6 +133,7 @@ export class CoverScreen {
       requestAnimationFrame(() => this.root.classList.add('revealed'));
     }
     this.title.start();
+    perf.section('타이틀');
     // 페이드인이 끝나고(알 부화 장면도 멈춘 뒤) 뒤의 게임 그리기를 쉼
     clearTimeout(this.pauseTimer);
     this.pauseTimer = window.setTimeout(() => {
@@ -209,7 +210,8 @@ export class CoverScreen {
   start(opt?: RestartOptions): void {
     if (this.started || !this.shown) return;
     this.started = true;
-    // 게임 화면을 바로 다시 그리기 시작 (버튼이 사라지며 게임이 보이기 전에)
+    perf.section('게임');
+    // 게임 화면을 다시 그리기 시작 (버튼이 사라지며 게임이 보이기 전에)
     clearTimeout(this.pauseTimer);
     this.onRenderPause?.(false);
     sound.unlock();

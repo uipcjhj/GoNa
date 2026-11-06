@@ -70,13 +70,13 @@ export const MUSIC_FILES: Record<MusicMode, string> = { title: 'bgm-title.mp3', 
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
-  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage',
+  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart',
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 /** 효과음 메서드 (성능 기록용) */
 const SFX_METHODS = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'pickup', 'hit', 'gameOver', 'evolve',
-  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage',
+  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart',
 ] as const;
 
 /** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
@@ -298,15 +298,9 @@ class Sound {
       a.addEventListener('pause', () => this.emit());
       this.music[m] = a;
     });
-    for (const n of SFX_NAMES) {
-      const list = [0, 1].map(() => {
-        const a = mk(`${AUDIO_DIR}sfx-${n}.mp3`, false);
-        // 첫 재생 때 내려받느라 멈칫하지 않게 미리 받아 둠 (아주 작은 파일)
-        a.preload = 'auto';
-        return a;
-      });
-      this.sfxEls[n] = list;
-    }
+    this.mkEl = mk;
+    // 효과음 파일(<audio>)은 Web Audio 가 안 될 때만 쓰는 예비 수단 → 처음부터 54개를 만들지 않음
+    // (예전: 시작할 때 54개 다운로드 + 첫 터치 때 전부 재생→정지 = 아이폰에서 프롤로그 첫 화면이 크게 멈칫)
     try {
       this.keepAliveEl = mk(silentWavUrl(), true);
     } catch (e) {
@@ -314,15 +308,39 @@ class Sound {
     }
   }
 
-  /** 사용자 입력 안에서: 모든 <audio> 를 음소거로 한 번 재생→정지 (iOS 는 이후 터치 없이 재생 허용) */
+  private mkEl: ((src: string, loop: boolean) => HTMLAudioElement) | null = null;
+  private sfxFallbackReady = false;
+
+  /** 효과음 예비 <audio> 만들기 (Web Audio 를 쓸 수 없을 때만, 사용자 입력 안에서) */
+  private ensureSfxFallback(): void {
+    if (this.sfxFallbackReady || !this.mkEl) return;
+    this.sfxFallbackReady = true;
+    const made: HTMLAudioElement[] = [];
+    for (const n of SFX_NAMES) {
+      const list = [0, 1].map(() => {
+        const a = this.mkEl!(`${AUDIO_DIR}sfx-${n}.mp3`, false);
+        a.preload = 'auto';
+        return a;
+      });
+      this.sfxEls[n] = list;
+      made.push(...list);
+    }
+    this.primeList(made);
+  }
+
+  /** 사용자 입력 안에서: 배경음악 <audio> 를 음소거로 한 번 재생→정지 (iOS 는 이후 터치 없이 재생 허용) */
   private primeElements(): void {
     if (this.keepAliveEl && this.keepAliveEl.paused) {
       this.keepAliveEl.play().then(() => this.emit(), (e) => this.log('무음 유지 재생', e));
     }
+    // Web Audio 를 못 쓰는 브라우저 / 앞선 터치에서 켜지지 않았으면 효과음 예비 파일 준비
+    if (!this.ctx || (this.primed && this.ctx.state !== 'running')) this.ensureSfxFallback();
     if (this.primed) return;
     this.primed = true;
-    const all: HTMLAudioElement[] = [...(Object.values(this.music) as HTMLAudioElement[])];
-    for (const list of Object.values(this.sfxEls)) all.push(...(list as HTMLAudioElement[]));
+    this.primeList([...(Object.values(this.music) as HTMLAudioElement[])]);
+  }
+
+  private primeList(all: HTMLAudioElement[]): void {
     for (const a of all) {
       if (!a.paused) continue;
       a.muted = true;
@@ -446,6 +464,7 @@ class Sound {
   /** 소리 테스트: 효과음 파일 (HTML audio) 직접 재생 */
   testSfxFile(): void {
     this.unlock();
+    this.ensureSfxFallback();
     const a = this.sfxEls.pickup30?.[0];
     if (!a) return;
     a.currentTime = 0;
@@ -628,6 +647,14 @@ class Sound {
     if (this.sfxFile('puff')) return;
     this.noise(0.22, 0.45, 0, 'lowpass', 700);
     this.tone(140, 0.2, 'sine', 0.25, 0, 80);
+  }
+  /** 배불뚝이 아저씨몹 방귀 '뿌웅' — 짧고 우스꽝스럽게 (낮은 부르릉 + 피식 바람) */
+  fart(): void {
+    if (this.sfxFile('fart')) return;
+    this.tone(118, 0.11, 'sawtooth', 0.22, 0, 84);
+    this.tone(92, 0.12, 'sawtooth', 0.24, 0.1, 128);
+    this.tone(124, 0.16, 'square', 0.14, 0.21, 66);
+    this.noise(0.34, 0.3, 0.02, 'lowpass', 520);
   }
   /** 필살기 */
   special(): void {

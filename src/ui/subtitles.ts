@@ -16,6 +16,9 @@ export class Subtitles {
   readonly root: HTMLDivElement;
   private box: HTMLDivElement;
   private textEl: HTMLParagraphElement;
+  /** 타이핑: 문장 전체를 한 번만 배치해 두고, 보이는 부분(shown)과 아직 안 보이는 부분(rest)만 바꿈 */
+  private shownEl: HTMLSpanElement;
+  private restEl: HTMLSpanElement;
   private pageEl: HTMLSpanElement;
   private gate: HTMLDivElement;
   private typeTimer = 0;
@@ -35,6 +38,9 @@ export class Subtitles {
     // 자막 상자
     this.box = el('div', 'pr-box hidden');
     this.textEl = el('p', 'pr-text');
+    this.shownEl = el('span', 'pr-shown');
+    this.restEl = el('span', 'pr-rest');
+    this.textEl.append(this.shownEl, this.restEl);
     this.pageEl = el('span', 'pr-page');
     const more = el('span', 'pr-more', '▼');
     this.box.append(this.textEl, this.pageEl, more);
@@ -60,8 +66,9 @@ export class Subtitles {
     this.root.classList.add('hidden');
   }
 
+  /** 지금 화면에 보이는(타이핑된) 자막 */
   get text(): string {
-    return this.textEl.textContent ?? '';
+    return this.shownEl.textContent ?? '';
   }
 
   private showLine(l: LineInfo): void {
@@ -74,10 +81,13 @@ export class Subtitles {
     const step = Math.max(28, Math.min(70, (l.seconds * 1000 * 0.55) / chars.length));
     let n = 0;
     clearInterval(this.typeTimer);
-    this.textEl.textContent = '';
+    // 줄바꿈 위치가 타이핑 중에 바뀌지 않도록 문장 전체를 미리 배치 (안 보이는 부분은 visibility:hidden)
+    this.shownEl.textContent = '';
+    this.restEl.textContent = l.text;
     this.typeTimer = window.setInterval(() => {
       n++;
-      this.textEl.textContent = chars.slice(0, n).join('');
+      this.shownEl.textContent = chars.slice(0, n).join('');
+      this.restEl.textContent = chars.slice(n).join('');
       if (n >= chars.length) {
         clearInterval(this.typeTimer);
         this.box.classList.add('typed');

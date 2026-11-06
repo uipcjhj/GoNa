@@ -1,13 +1,13 @@
 /**
  * 일반 몬스터 임시 도트 (정식 PNG 가 들어오면 MONSTER_ASSETS 로 자동 교체 — src/game/monsters.ts)
  *   안경잽이몹: 커다란 동그란 안경, 잘난 척하는 표정, 짧은 다리 — 프레임 0 걷기 · 1 걷기(발 바꿈) · 2 안경 반짝(발사 직전)
- *   방구할배몹: 굽은 허리, 하얀 수염, 지팡이 — 프레임 0 걷기 · 1 걷기 · 2 엉덩이 들썩(방귀 직전)
+ *   배불뚝이 아저씨몹(예전 방구할배몹): 볼록 나온 배 · 짧은 머리 · 처진 눈 · 작은 콧수염 — 프레임 0·1 뒤뚱 걷기(배 출렁) · 2 엉덩이 뒤로 쑥(방귀 직전)
  * 모두 왼쪽(고나 쪽)을 바라봄.
  */
 import { PixelCanvas } from './PixelCanvas';
 
 export const GLASSES_FRAME = { w: 20, h: 20 };
-export const FARTER_FRAME = { w: 22, h: 22 };
+export const FARTER_FRAME = { w: 24, h: 24 };
 
 function glassesFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   const { w, h } = GLASSES_FRAME;
@@ -40,39 +40,85 @@ function glassesFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   return pc.canvas;
 }
 
-function farterFrame(f: 0 | 1 | 2): HTMLCanvasElement {
+/**
+ * 배불뚝이 아저씨몹 (40~50대 · 볼록 나온 배 · 짧은 머리 + 정수리 살짝 벗겨짐 · 처진 눈 · 작은 콧수염 · 런닝셔츠)
+ *   프레임 0·1 = 뒤뚱 걷기 (배가 통통 · 발 바꿈) · 2 = 멈춰서 엉덩이를 뒤로 쑥 (방귀 직전)
+ *   왼쪽(고나 쪽)을 바라봄. 지팡이·흰 수염·굽은 허리 없음.
+ */
+function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   const { w, h } = FARTER_FRAME;
   const pc = new PixelCanvas(w, h);
-  const step = f === 1 ? 1 : 0;
-  const lift = f === 2 ? 1 : 0;
-  // 지팡이 (앞쪽 = 왼쪽)
-  pc.rect(2, 9, 1, 12, '#8a5a30');
-  pc.rect(2, 9, 3, 1, '#8a5a30');
-  // 다리
-  pc.rect(8 - step, 18, 3, 3, '#6b4a2e');
-  pc.rect(13 + step, 18 - lift, 3, 3, '#6b4a2e');
-  // 굽은 몸 (조끼)
-  pc.disc(13, 13 - lift, 6, '#c98a4a');
-  pc.disc(12, 12 - lift, 5, '#e0a35e');
-  pc.rect(9, 15 - lift, 9, 2, '#8a5a30');
-  // 머리 (앞으로 숙임)
-  pc.disc(7, 7, 4, '#f2c79a');
-  pc.disc(6, 6, 2, '#f8dcb8');
-  // 대머리 + 흰 머리
-  pc.rect(9, 3, 3, 2, '#e8e8e8');
-  // 눈 (실눈) + 볼
-  pc.rect(4, 6, 2, 1, '#3a2418');
-  pc.px(8, 8, '#f0a080');
-  // 하얀 수염
-  pc.rect(3, 9, 5, 2, '#ffffff');
-  pc.rect(4, 11, 3, 1, '#e6e6e6');
-  pc.px(5, 12, '#e6e6e6');
+  const bounce = f === 1 ? 1 : 0; // 걸을 때 배가 출렁
+  const lean = f === 2 ? 1 : 0; // 엉덩이 내밀 때 몸을 앞으로 살짝
+  const SKIN = '#f2c79a';
+  const SKIN_D = '#dca476';
+  const SHIRT = '#f6f2e6';
+  const SHIRT_D = '#d6cdb8';
+  const PANTS = '#5d6f9e';
+  const PANTS_D = '#46557c';
+  const HAIR = '#4a3426';
+  const DARK = '#3a2418';
+  // 다리 (짧고 통통) + 신발
+  const step = f === 1 ? 1 : f === 2 ? 0 : -1;
+  pc.rect(8 + step, 19, 4, 3, PANTS);
+  pc.rect(13 - step, 19, 4, 3, PANTS_D);
+  pc.rect(7 + step, 22, 5, 1, '#6b4a2e');
+  pc.rect(13 - step, 22, 5, 1, '#6b4a2e');
+  // 엉덩이 (2번 프레임: 뒤로 쑥)
   if (f === 2) {
-    // 엉덩이 쪽 방귀 기운
-    pc.px(20, 10, '#b8c46a');
-    pc.px(21, 12, '#9aa64e');
+    pc.disc(18, 16, 4, PANTS);
+    pc.disc(19, 15, 2, '#7487b8');
   }
-  pc.outline('#4a2a14');
+  // 바지 허리 (배 아래 띠)
+  pc.rect(6, 17 + bounce, 12, 3, PANTS);
+  pc.rect(6, 17 + bounce, 12, 1, '#3c4a6c');
+  // 뒤쪽 팔 (몸 오른쪽, 살색)
+  pc.rect(16 - lean, 10 + bounce, 2, 5, SKIN_D);
+  // 배 (앞=왼쪽으로 볼록) — 런닝셔츠
+  pc.disc(12 - lean, 13 + bounce, 5, SHIRT);
+  pc.disc(9 - lean, 14 + bounce, 5, SHIRT);
+  pc.disc(8 - lean, 13 + bounce, 2, '#ffffff'); // 배 하이라이트
+  pc.rect(5 - lean, 17 + bounce, 4, 1, SHIRT_D); // 배 아래 그늘
+  pc.px(7 - lean, 15 + bounce, SHIRT_D); // 배꼽
+  // 런닝셔츠 어깨끈
+  pc.rect(10 - lean, 8 + bounce, 1, 2, SHIRT);
+  pc.rect(13 - lean, 8 + bounce, 1, 2, SHIRT);
+  // 앞 팔 (배 옆에 툭)
+  pc.rect(13 - lean, 11 + bounce, 2, 4, SKIN);
+  pc.px(13 - lean, 15 + bounce, SKIN_D);
+  // 머리 (조금 크게, 앞으로 살짝)
+  const hx = 10 - lean * 2;
+  const hy = 5 + lean;
+  pc.disc(hx, hy, 5, SKIN);
+  pc.rect(hx - 4, hy + 3, 7, 2, SKIN); // 턱살 (후덕)
+  // 짧은 머리 (뒤·옆) + 정수리는 살짝 벗겨짐
+  pc.rect(hx + 2, hy - 4, 3, 3, HAIR);
+  pc.rect(hx + 4, hy - 1, 1, 3, HAIR);
+  pc.px(hx - 3, hy - 4, HAIR);
+  pc.px(hx - 2, hy - 5, HAIR);
+  pc.px(hx + 1, hy - 5, HAIR);
+  pc.rect(hx - 1, hy - 5, 2, 1, '#fbe3c4'); // 반짝 정수리
+  // 귀
+  pc.px(hx + 3, hy + 1, SKIN_D);
+  // 처진 눈 (눈꺼풀이 바깥쪽으로 처짐) — 2번 프레임은 눈을 질끈(능청)
+  if (f === 2) {
+    pc.rect(hx - 3, hy, 3, 1, DARK);
+  } else {
+    pc.rect(hx - 3, hy - 1, 3, 1, SKIN_D);
+    pc.px(hx - 2, hy, DARK);
+    pc.px(hx - 1, hy, DARK);
+  }
+  // 코 · 볼 · 작은 콧수염 · 능청스러운 입
+  pc.rect(hx - 5, hy + 1, 2, 2, SKIN_D);
+  pc.px(hx, hy + 2, '#f0a080');
+  pc.rect(hx - 4, hy + 3, 3, 1, HAIR);
+  pc.rect(hx - 3, hy + 4, 2, 1, '#b0504a');
+  if (f === 2) {
+    // 엉덩이 쪽 '뿌' 기운 (연두 점)
+    pc.px(22, 13, '#b8d850');
+    pc.px(23, 16, '#9fbe3a');
+  }
+  pc.outline(DARK);
   return pc.canvas;
 }
 
@@ -80,30 +126,74 @@ function farterFrame(f: 0 | 1 | 2): HTMLCanvasElement {
 export function monsterSheet(kind: 'glasses' | 'farter'): { canvas: HTMLCanvasElement; fw: number; fh: number } {
   const f = kind === 'glasses' ? GLASSES_FRAME : FARTER_FRAME;
   const pc = new PixelCanvas(f.w * 3, f.h);
-  ([0, 1, 2] as const).forEach((i) => pc.ctx.drawImage(kind === 'glasses' ? glassesFrame(i) : farterFrame(i), i * f.w, 0));
+  ([0, 1, 2] as const).forEach((i) => pc.ctx.drawImage(kind === 'glasses' ? glassesFrame(i) : uncleFrame(i), i * f.w, 0));
   return { canvas: pc.canvas, fw: f.w, fh: f.h };
 }
 
-/** 안경 반짝이 투사체 7x7 */
-export function sparkShot(): HTMLCanvasElement {
-  const pc = new PixelCanvas(7, 7);
-  pc.rect(3, 0, 1, 7, '#fff6a0');
-  pc.rect(0, 3, 7, 1, '#fff6a0');
-  pc.rect(2, 2, 3, 3, '#ffe060');
-  pc.px(3, 3, '#ffffff');
-  pc.outline('#b07a10');
+/** 안경잽이몹 지폐 14x9 — 4프레임(앞 · 기울어짐 · 옆면 · 반대로 기울어짐)을 돌려 '빙글빙글' (회전 연산 없이 또렷) */
+export const BILL_FRAME = { w: 14, h: 9 };
+export function billSheet(): HTMLCanvasElement {
+  const { w, h } = BILL_FRAME;
+  const pc = new PixelCanvas(w * 4, h);
+  const draw = (ox: number, bw: number, flip: boolean): void => {
+    const x0 = ox + Math.floor((w - bw) / 2);
+    if (bw <= 2) {
+      pc.rect(x0, 0, bw, h, '#2f8a3a');
+      pc.rect(x0, 1, 1, h - 2, '#b8f09a');
+      return;
+    }
+    pc.rect(x0, 0, bw, h, '#1f5a2a'); // 테두리
+    pc.rect(x0 + 1, 1, bw - 2, h - 2, '#7ed36a'); // 연한 초록
+    pc.rect(x0 + 1, 1, bw - 2, 1, '#b8f09a'); // 위 반짝
+    const cx = x0 + Math.floor(bw / 2);
+    // 가운데 동그라미 + 돈 표시
+    if (bw >= 8) {
+      pc.rect(cx - 2, 2, 4, 5, '#3f9a44');
+      pc.rect(cx - 1, 3, 2, 3, '#d8ffb0');
+      pc.px(cx - 1 + (flip ? 1 : 0), 4, '#1f5a2a');
+      // 모서리 장식
+      pc.px(x0 + 2, 2, '#3f9a44');
+      pc.px(x0 + bw - 3, h - 3, '#3f9a44');
+    } else {
+      pc.rect(cx - 1, 3, 2, 3, '#3f9a44');
+    }
+  };
+  draw(0, 14, false);
+  draw(w, 9, false);
+  draw(w * 2, 2, false);
+  draw(w * 3, 9, true);
   return pc.canvas;
 }
 
-/** 방귀 구름 (땅에 잠시 남음) 18x12 */
-export function fartCloud(): HTMLCanvasElement {
-  const pc = new PixelCanvas(18, 12);
-  pc.disc(5, 7, 4, '#a9b45c');
-  pc.disc(12, 7, 4, '#a9b45c');
-  pc.disc(9, 4, 4, '#c3cd78');
-  pc.disc(7, 3, 1, '#e8eec0');
-  pc.px(10, 8, '#7f8a38');
-  pc.px(14, 6, '#7f8a38');
+/** 방귀 구름 '더러운 공기 팡!' 22x16 — 3프레임(팡! 작게 → 뭉게 → 크게 퍼짐), 연두·황록 */
+export const CLOUD_FRAME = { w: 22, h: 16 };
+export function fartCloudSheet(): HTMLCanvasElement {
+  const { w, h } = CLOUD_FRAME;
+  const pc = new PixelCanvas(w * 3, h);
+  const L = '#c8e070'; // 연두
+  const Y = '#b9c24a'; // 황록
+  const D = '#8a9a32';
+  const HI = '#eef7c0';
+  const puffs: [number, number, number][][] = [
+    [[11, 11, 3], [8, 12, 2], [14, 12, 2]],
+    [[7, 11, 3], [11, 9, 4], [15, 11, 3], [11, 12, 3]],
+    [[6, 11, 4], [11, 8, 5], [16, 11, 4], [9, 12, 4], [14, 12, 4]],
+  ];
+  puffs.forEach((list, f) => {
+    const ox = f * w;
+    for (const [x, y, r] of list) pc.disc(ox + x, y + 1, r, D);
+    for (const [x, y, r] of list) pc.disc(ox + x, y, r, f === 1 ? Y : L);
+    for (const [x, y, r] of list) if (r >= 3) pc.disc(ox + x - 1, y - 1, Math.max(1, r - 2), f === 0 ? Y : L);
+    for (const [x, y, r] of list) if (r >= 3) pc.px(ox + x - 1, y - r + 1, HI);
+    if (f === 0) {
+      // '팡!' 튀는 조각
+      pc.px(ox + 3, 7, Y);
+      pc.px(ox + 18, 6, Y);
+      pc.px(ox + 11, 4, L);
+      pc.px(ox + 5, 4, HI);
+      pc.px(ox + 17, 3, HI);
+    }
+  });
   pc.outline('#56602a');
   return pc.canvas;
 }

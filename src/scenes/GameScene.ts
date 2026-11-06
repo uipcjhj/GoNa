@@ -12,7 +12,7 @@ import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
 import { clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../game/checkpoint';
 import { MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
-import { dizzyStar, fartCloud, monsterSheet, pathArrow, sparkShot } from '../art/monsterArt';
+import { BILL_FRAME, billSheet, CLOUD_FRAME, dizzyStar, fartCloudSheet, monsterSheet, pathArrow } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
@@ -50,7 +50,9 @@ interface Entity {
   dmg?: number;
   /** 이미 고나를 맞힘 (구름은 한 번만) */
   hit?: boolean;
-  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; hold: number };
+  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number };
+  /** 투사체·구름 애니메이션 시간(초) */
+  age?: number;
 }
 
 const FONT = 'Galmuri11, monospace';
@@ -936,7 +938,17 @@ export class GameScene extends Phaser.Scene {
           continue;
         }
       }
-      const bob = e.type === 'snack' ? Math.round(Math.sin(time * 0.006 + e.phase) * 1.5) : 0;
+      let bob = e.type === 'snack' ? Math.round(Math.sin(time * 0.006 + e.phase) * 1.5) : 0;
+      if (e.age !== undefined) {
+        e.age += dt;
+        const spr = e.sprite as unknown as Phaser.GameObjects.Sprite;
+        if (e.type === 'mshot') spr.setFrame(Math.floor(e.age / 0.07) % 4); // 지폐 빙글빙글
+        else if (e.type === 'cloud') {
+          // 팡! 작게 → 뭉게 → 크게 퍼진 뒤 살짝 둥실
+          spr.setFrame(e.age < 0.1 ? 0 : e.age < 0.26 ? 1 : 2);
+          if (e.age >= 0.26) bob = Math.round(Math.sin(e.age * 5)) ;
+        }
+      }
       e.sprite.setPosition(Math.round(e.x * VIEW.renderScale) / VIEW.renderScale, Math.round(this.groundY - e.alt + bob));
 
       if (this.state === 'playing') {
@@ -947,7 +959,15 @@ export class GameScene extends Phaser.Scene {
         if (right > p.left && left < p.right && top > p.bottom && bottom < p.top) {
           if (e.type === 'snack') this.collect(e);
           else if (e.type === 'rock') this.hitRock(e);
-          else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
+          else if (!e.hit && this.shieldOn && (e.type === 'mshot' || e.type === 'cloud')) {
+            // 방패로 막음: 지폐는 튕겨 사라지고, 구름은 이번엔 안 아픔
+            e.hit = true;
+            this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x, this.groundY - e.alt - e.h / 2);
+            if (e.type === 'mshot') {
+              e.done = true;
+              e.sprite.destroy();
+            }
+          } else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
             if (e.type === 'mshot') {
               e.done = true;
               e.sprite.destroy();
@@ -984,26 +1004,23 @@ export class GameScene extends Phaser.Scene {
     const sprite = this.add.image(x, 0, `mon-${kind}`, 0).setOrigin(0.5, 1).setDepth(6);
     this.spawned++;
     this.sinceMonster = 0;
-    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.25, tele: 0, flash: 0, id: this.monsterSeq++, hold: -1 } });
+    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.8, tele: 0, flash: 0, id: this.monsterSeq++, burst: 0, burstT: 0 } });
   }
 
   private updateMonster(e: Entity, dt: number, time: number): void {
     const m = e.mon!;
     const d = MONSTERS[m.kind];
     const dx = e.x - this.playerX;
-    // 화면 안에 들어오면 걸어옴 — 앞(왼쪽)에 바위가 가까우면 멈춤 (바위·몬스터가 겹쳐 못 피하는 일 방지)
-    const rockAhead = this.entities.some((o) => o !== e && !o.done && (o.type === 'rock' || o.type === 'monster') && o.x < e.x && e.x - o.x < 46);
-    e.vx = e.x < this.W - 4 && dx > 30 && !rockAhead ? d.walk : 0;
-    // 가까이 오면 잠시 화면에 머묾 (제자리 = 땅 흐름만큼 거슬러 감) — 그동안 공격하고, 고나는 부메랑으로 잡을 수 있음
-    // 머무는 자리는 화면 안쪽 (세로 화면은 폭이 좁아 오른쪽 끝에 반쯤 걸리지 않게)
-    const holdAt = Math.min(d.holdAt, this.W - this.playerX - e.w / 2 - 10);
-    if (m.hold < 0 && dx <= holdAt && this.state === 'playing' && !this.battle) m.hold = d.holdSec;
-    if (m.hold > 0) {
-      m.hold = Math.max(0, m.hold - dt);
-      e.vx = -this.speed;
-    }
-    // 걷기 2프레임 · 맞으면 하얗게
-    const frame = m.tele > 0 ? 2 : Math.floor(time / 220) % 2;
+    const onScreen = e.x < this.W - 6;
+    // 이동 (vx = 땅 흐름보다 더 왼쪽으로 가는 속도 → 화면 속도 = -(speed + vx))
+    //   화면 밖: 빨리 들어옴 · 화면 안: 고나 쪽으로 계속 천천히 (예고 때만 잠깐 멈춤) · 고나를 지나치면 땅과 함께 지나감
+    const approach = Math.max(d.approach, (this.W - this.playerX) / d.travelSec);
+    if (m.tele > 0) e.vx = -this.speed;
+    else if (!onScreen) e.vx = d.walk;
+    else if (dx < -4) e.vx = 0;
+    else e.vx = approach - this.speed;
+    // 그림: 걷기 2프레임(아저씨는 배가 출렁) · 예고 프레임 · 맞으면 하얗게
+    const frame = m.tele > 0 ? 2 : Math.floor(time / (m.kind === 'farter' ? 260 : 200)) % 2;
     e.sprite.setFrame(frame);
     if (m.flash > 0) {
       m.flash -= dt;
@@ -1011,38 +1028,66 @@ export class GameScene extends Phaser.Scene {
       if (m.flash <= 0) e.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
     }
     if (this.state !== 'playing' || this.battle) return;
-    // 공격: 예고(반짝·들썩) 동안은 화면에서 제자리 (고나가 피할 시간 · 부메랑 맞힐 기회) → 발사
+    // 강화 패턴: 지폐 2장째
+    if (m.burst > 0) {
+      m.burstT -= dt;
+      if (m.burstT <= 0) {
+        m.burst--;
+        this.fireBill(e);
+      }
+    }
+    // 공격 예고(안경 반짝 / 엉덩이 뒤로) 동안 잠깐 멈춤 → 공격
     if (m.tele > 0) {
-      e.vx = -this.speed;
       m.tele -= dt;
       if (m.tele <= 0) this.monsterAttack(e);
       return;
     }
     m.cd -= dt;
-    const inRange = dx >= d.attackFrom && dx <= d.attackTo;
-    // 고나와 몬스터 사이에 바위가 있으면 쏘지 않음 (바위 + 탄을 한 번에 못 피하는 상황 방지)
-    const rockBetween = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud') && o.x > this.playerX - 10 && o.x < e.x);
-    if (m.cd <= 0 && inRange && !rockBetween) {
+    if (!onScreen || dx < d.minDist || m.burst > 0) return;
+    // 고나와 몬스터 사이에 바위·다른 공격이 있으면 쏘지 않음 (한 번에 못 피하는 상황 방지)
+    const blocked = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud') && o.x > this.playerX - 10 && o.x < e.x);
+    if (m.cd <= 0 && !blocked) {
       m.tele = d.telegraph;
-      if (m.kind === 'glasses') this.sparkleEmitter.explode(perf.low ? 1 : 3, e.x - 6, this.groundY - 10);
+      if (m.kind === 'glasses') {
+        sound.boing();
+        this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x - 4, this.groundY - 12);
+      }
     }
   }
 
   private monsterAttack(e: Entity): void {
     const m = e.mon!;
     const d = MONSTERS[m.kind];
-    m.cd = d.cooldown;
+    // 가까울수록 자주 (멀 때 cooldownFar → 가까울 때 cooldownNear)
+    const span = Math.max(1, this.W - this.playerX - d.minDist);
+    const near = Phaser.Math.Clamp(1 - (e.x - this.playerX - d.minDist) / span, 0, 1);
+    m.cd = d.cooldownFar + (d.cooldownNear - d.cooldownFar) * near;
     if (m.kind === 'glasses') {
-      // 낮게 날아오는 반짝이 → 점프 (부메랑으로 부술 수도 있음)
-      sound.boing();
-      const sprite = this.add.image(e.x - 8, 0, 'mon-spark').setOrigin(0.5, 1).setDepth(6.5);
-      this.entities.push({ sprite, type: 'mshot', x: e.x - 8, alt: 4, w: 6, h: 6, phase: 0, done: false, vx: 55, dmg: d.shotDamage });
+      // 지폐 1장 (강화: 0.32초 뒤 1장 더)
+      this.fireBill(e);
+      const chance = d.doubleChance[this.growth.stageIndex >= 3 ? 1 : 0];
+      if (Math.random() < chance) {
+        m.burst = 1;
+        m.burstT = 0.32;
+      }
     } else {
-      // 방귀 구름: 할배 바로 앞 땅에 잠시 남음 → 점프로 넘기
-      sound.puff();
-      const sprite = this.add.image(e.x - 14, 0, 'mon-cloud').setOrigin(0.5, 1).setDepth(6.5).setAlpha(0.95);
-      this.entities.push({ sprite, type: 'cloud', x: e.x - 14, alt: 0, w: 14, h: 11, phase: 0, done: false, vx: 0, life: 2.4, dmg: d.shotDamage });
+      // 더러운 공기 팡! — 엉덩이(뒤쪽)에서 터져 땅에 잠시 남음 → 땅이 흐르며 고나 쪽으로 (점프·방패)
+      sound.fart();
+      const x = e.x + 10;
+      const sprite = this.add.sprite(x, 0, 'mon-cloud', 0).setOrigin(0.5, 1).setDepth(6.5);
+      this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'cloud', x, alt: 0, w: 17, h: 12, phase: 0, done: false, vx: 0, life: 3.0, dmg: d.shotDamage, age: 0 });
+      this.dustEmitter.explode(perf.low ? 2 : 5, x + 4, this.groundY - 6);
     }
+  }
+
+  /** 안경잽이몹 지폐: 낮게 빙글빙글 날아옴 → 점프·방패 (부메랑으로 부술 수도 있음) */
+  private fireBill(e: Entity): void {
+    if (e.done) return;
+    const d = MONSTERS.glasses;
+    sound.throw();
+    const x = e.x - 9;
+    const sprite = this.add.sprite(x, 0, 'mon-bill', 0).setOrigin(0.5, 1).setDepth(6.5);
+    this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'mshot', x, alt: 4, w: 11, h: 8, phase: 0, done: false, vx: 48, dmg: d.shotDamage, age: 0 });
   }
 
   /** 부메랑에 맞음 → 체력 -1, 0 이면 처치 (점수·필살 게이지·간식) */
@@ -1137,8 +1182,9 @@ export class GameScene extends Phaser.Scene {
 
   // ───────────────────────── 보스전 체력 · 방패 ─────────────────────────
 
+  /** 방패: 보스전 + (뽀뽀괴물을 이긴 뒤) 일반 스테이지 — 몬스터 공격용. 바위는 막지 않음(점프 장애물) */
   private get shieldOn(): boolean {
-    return !!this.battle && this.time.now < this.shieldUntil;
+    return (!!this.battle || this.canThrow) && this.time.now < this.shieldUntil;
   }
 
   /**
@@ -1160,7 +1206,7 @@ export class GameScene extends Phaser.Scene {
    */
   private hurtHp(damage: number, source = '?'): boolean {
     if (this.state !== 'playing') return false;
-    if (this.shieldOn) return false;
+    if (this.shieldOn && source !== 'rock') return false;
     if (this.time.now < this.invincibleUntil) return false;
     this.damageLog.push(`${source}:${damage}`);
     if (this.damageLog.length > 60) this.damageLog.shift();
@@ -1194,7 +1240,8 @@ export class GameScene extends Phaser.Scene {
 
   /** 방패 버튼: 고나 앞에 1초 동안 반투명 방패 */
   private raiseShield(): void {
-    if (!this.battle || this.state !== 'playing' || this.battle.frozen || this.battle.mode === 'victory') return;
+    if (this.state !== 'playing') return;
+    if (this.battle ? this.battle.frozen || this.battle.mode === 'victory' : !this.canThrow) return;
     if (this.time.now < this.shieldReadyAt) return;
     this.shieldUntil = this.time.now + SHIELD.activeMs;
     this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
@@ -1454,11 +1501,11 @@ export class GameScene extends Phaser.Scene {
         addSheet(this, key, sh.canvas, sh.fw, sh.fh);
       }
     }
-    if (!tm.exists('mon-spark')) addCanvas(this, 'mon-spark', sparkShot());
+    if (!tm.exists('mon-bill')) addSheet(this, 'mon-bill', billSheet(), BILL_FRAME.w, BILL_FRAME.h);
     if (!tm.exists('boss-star')) addCanvas(this, 'boss-star', dizzyStar());
     if (!tm.exists('boss-arrow')) addCanvas(this, 'boss-arrow', pathArrow('#ff6f9f'));
     if (!tm.exists('boss-wind')) addCanvas(this, 'boss-wind', pathArrow('#f0ffc8', '#3c5a14'));
-    if (!tm.exists('mon-cloud')) addCanvas(this, 'mon-cloud', fartCloud());
+    if (!tm.exists('mon-cloud')) addSheet(this, 'mon-cloud', fartCloudSheet(), CLOUD_FRAME.w, CLOUD_FRAME.h);
 
     const done = new Set<string>();
     for (const v of Object.values(this.visuals)) {
@@ -1619,7 +1666,8 @@ export class GameScene extends Phaser.Scene {
     if (this.battle) {
       this.battle.checkBoomerang(b);
     }
-    // 평소: 바위를 깨고 · 몬스터를 때리고 · 반짝이탄을 부수고 · 간식은 주워 옴
+    // 평소: 몬스터를 때리고 · 몬스터 투사체를 부수고 · 간식은 주워 옴
+    // 바위는 부메랑과 상관없음(그대로 통과 — 깨지지 않고 점수·필살 게이지도 없음). 바위는 점프로 피하는 장애물
     for (const e of this.entities) {
       if (e.done) continue;
       const y = this.groundY - e.alt - e.h / 2;
@@ -1636,20 +1684,9 @@ export class GameScene extends Phaser.Scene {
           this.sparkleEmitter.explode(3, e.x, y);
           e.sprite.destroy();
           b.bounce();
-        } else if (e.type === 'rock' && !this.battle) {
-          this.breakRock(e);
-          b.bounce();
         }
       }
     }
-  }
-
-  private breakRock(e: Entity): void {
-    e.done = true;
-    sound.bossHit();
-    this.dustEmitter.explode(8, e.x, this.groundY - 4);
-    this.tweens.add({ targets: e.sprite, scaleX: 1.6, scaleY: 0.3, alpha: 0, duration: 200, onComplete: () => e.sprite.destroy() });
-    this.addPoints(5, e.x, this.groundY - 14);
   }
 
   private addPoints(points: number, x: number, y: number): void {
@@ -1788,7 +1825,7 @@ export class GameScene extends Phaser.Scene {
     const enabled = this.state === 'playing' && !b?.frozen && b?.mode !== 'victory' && b?.mode !== 'done';
     const attack: AttackState = mode === 'none' ? 'hidden' : !this.canThrow ? 'locked' : this.boomerang.isOut ? 'out' : 'ready';
     const now = this.time.now;
-    const shield: CombatHud['shield'] = !b ? 'hidden' : now < this.shieldUntil ? 'active' : now < this.shieldReadyAt ? 'cool' : 'ready';
+    const shield: CombatHud['shield'] = mode === 'none' ? 'hidden' : now < this.shieldUntil ? 'active' : now < this.shieldReadyAt ? 'cool' : 'ready';
     const hud: CombatHud = {
       mode,
       enabled,

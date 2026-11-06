@@ -1891,6 +1891,12 @@ h2 {
     inset 0 3px 0 rgba(255, 255, 255, 0.6);
   image-rendering: pixelated;
   animation: pr-pop 0.25s steps(3, end);
+  /* 글자가 바뀔 때 자막 상자 안만 다시 그리게 (게임 캔버스와 분리된 레이어) */
+  contain: layout paint;
+  will-change: transform;
+}
+.pr-rest {
+  visibility: hidden;
 }
 .pr-text {
   margin: 0;
@@ -1969,7 +1975,6 @@ h2 {
   right: max(2px, env(safe-area-inset-right));
 }
 .battle-pad.mode-none,
-.battle-pad.mode-run .bt-left,
 .boss-bar.hidden,
 .bt-grow.hidden,
 .battle-top.hidden,

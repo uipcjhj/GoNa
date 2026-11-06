@@ -3,7 +3,7 @@
  *
  * 흐름 (src/scenes/GameScene.ts):
  *   1단계 갓난아기 → 2단계 기어 다니는 고나 ─(게이지 가득)→ ⚔ 뽀뽀괴물 → (승리) 3단계 직립보행
- *   → 4단계 빅베이비 곤룡 ─(게이지 가득)→ ⚔ 킁카괴물 → (승리) 엔딩
+ *   → 4단계 자이언트 곤룡 고나 ─(게이지 가득)→ ⚔ 킁카괴물 → (승리) 엔딩
  * 보스 행동(공격 패턴)은 src/scenes/battle/KissBattle.ts · SniffBattle.ts
  */
 import type { BossId } from '../events';
@@ -42,8 +42,9 @@ export const BOSSES: Record<BossId, BossDef> = {
     id: 'kiss',
     name: '뽀뽀괴물',
     intro: '쪽쪽! 뽀뽀로 괴롭히는 장난꾸러기',
-    // 튜토리얼 보스: 처음 하는 사람도 몇 번 안에 이기게 (12 → 8)
-    maxHp: 8,
+    // 첫 보스: 일반 → 1차 분노(70%) → 2차 분노(35%) → 왕뽀뽀 → 지침 을 모두 겪도록 (8 → 28, 전투 약 1~2분)
+    // 한 번에 분노 단계를 건너뛰지 않고(BossBattle.hpFloor), 왕뽀뽀→지침을 보여 주기 전엔 쓰러지지 않음(KissBattle.hpFloor)
+    maxHp: 28,
     phase2At: 0.5,
     specialDamage: 3,
     scoreBonus: 300,

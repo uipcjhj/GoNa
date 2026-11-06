@@ -21,6 +21,8 @@ export class KissBattle extends BossBattle {
   private dashing = false;
   private dashHit = false;
   private royalTurn = true;
+  /** 왕뽀뽀를 쏘고 지쳐서 약점을 보이기 시작했는지 (그 전에는 2차 분노에서 쓰러지지 않음 — 필살기·약점 연출 보장) */
+  private royalShown = false;
   private aura: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
 
   constructor(
@@ -256,7 +258,16 @@ export class KissBattle extends BossBattle {
       h.sprite.setScale(3);
     });
     const pass = (m.x - this.host.basePlayerX) / speed;
-    this.after(1.7 + pass + 0.4, () => this.stun(2.2, 1.5, '뽀뽀괴물이 지쳤어요!'));
+    this.after(1.7 + pass + 0.4, () => {
+      this.royalShown = true;
+      this.stun(2.2, 1.5, '뽀뽀괴물이 지쳤어요!');
+    });
+  }
+
+  /** 2차 분노에 들어온 뒤 왕뽀뽀(예고·발사) → 지침까지 보여 주기 전에는 HP 1 을 남김 (약 4초 · 맞으면 피해 숫자는 그대로 보임) */
+  protected hpFloor(): number {
+    const base = super.hpFloor();
+    return this.rage === 2 && !this.royalShown ? Math.max(base, 1) : base;
   }
 
   protected onRage(level: 1 | 2): void {

@@ -1,7 +1,10 @@
 /**
  * 일반 몬스터 (3단계부터 — 뽀뽀괴물을 이기고 머리카락 부메랑을 얻은 뒤)
- *   안경잽이몹: 고나를 보면 다가오고, 가끔 안경에서 반짝이를 낮게 쏨 → 점프 / 부메랑 2번
- *   방구할배몹: 느릿느릿, 가까워지면 방귀 구름을 땅에 남김(잠시 머묾) → 점프 / 부메랑 3번
+ * 둘 다 화면 오른쪽에서 들어와 고나 쪽으로 '계속' 천천히 다가옴 (공격 예고 때만 잠깐 멈춤).
+ * 처치하지 못하면 고나와 부딪혀 HP 피해 (점프로 넘을 수 있음).
+ *   안경잽이몹: 안경이 반짝(예고) → 초록 지폐 발사 (기본 1장 · 강화 2장 연속), 빙글빙글 날아옴 → 점프·방패 / 부메랑 2번
+ *   배불뚝이 아저씨몹: 뒤뚱뒤뚱(배 출렁) → 멈춰서 엉덩이 뒤로(예고) → '뿡' 더러운 공기 팡! (땅에 잠시 남음)
+ *                     가까울수록 자주 → 점프·방패 / 부메랑 3번
  * 정식 그림: public/assets/monsters/{glasses,farter}-sheet.png (프레임 3장 가로, 왼쪽을 봄) — 없으면 코드 도트
  */
 export type MonsterKind = 'glasses' | 'farter';
@@ -10,14 +13,19 @@ export interface MonsterDef {
   kind: MonsterKind;
   name: string;
   hp: number;
-  /** 땅보다 더 빨리 다가오는 속도(px/s) */
+  /** 화면에 들어오기 전: 땅보다 더 빨리 다가오는 속도(px/s) */
   walk: number;
-  /** 공격을 시작하는 거리 (고나와의 x 거리, px) */
-  attackFrom: number;
-  attackTo: number;
-  /** 공격 예고(초 — 이동안 화면에서 제자리에 서서 반짝/들썩) · 다시 공격까지(초) */
+  /** 화면 안: 고나 쪽으로 다가오는 화면 속도(px/s) — 화면 오른쪽 끝에서 고나까지 약 travelSec 초 (가로 화면도 같은 시간) */
+  approach: number;
+  travelSec: number;
+  /** 이 거리(고나와의 x, px)보다 가까우면 공격하지 않음 (몸으로 부딪힘) */
+  minDist: number;
+  /** 공격 예고(초 — 이때만 잠깐 멈춤) · 다시 공격까지(초, 멀 때 → 가까울 때) */
   telegraph: number;
-  cooldown: number;
+  cooldownFar: number;
+  cooldownNear: number;
+  /** 강화 패턴(지폐 2장) 확률: [3단계, 4단계] */
+  doubleChance: [number, number];
   /** 몸에 닿으면 · 공격에 맞으면 HP 피해 */
   bodyDamage: number;
   shotDamage: number;
@@ -29,9 +37,6 @@ export interface MonsterDef {
   sheetUrl: string;
   /** 충돌 박스 (도트) */
   box: { w: number; h: number };
-  /** 가까이 오면(holdAt px) 이 시간(초) 동안 화면에 머물며 공격 → 부메랑으로 잡을 시간 */
-  holdAt: number;
-  holdSec: number;
 }
 
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
@@ -40,10 +45,13 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     name: '안경잽이몹',
     hp: 2,
     walk: 20,
-    attackFrom: 80,
-    attackTo: 150,
-    telegraph: 0.7,
-    cooldown: 1.8,
+    approach: 14,
+    travelSec: 9,
+    minDist: 40,
+    telegraph: 0.55,
+    cooldownFar: 2.4,
+    cooldownNear: 1.9,
+    doubleChance: [0.3, 0.55],
     bodyDamage: 25,
     shotDamage: 20,
     score: 40,
@@ -51,27 +59,26 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     special: 0.15,
     sheetUrl: 'assets/monsters/glasses-sheet.png',
     box: { w: 14, h: 15 },
-    holdAt: 120,
-    holdSec: 3.5,
   },
   farter: {
     kind: 'farter',
-    name: '방구할배몹',
+    name: '배불뚝이 아저씨몹',
     hp: 3,
-    walk: 6,
-    attackFrom: 75,
-    attackTo: 150,
-    telegraph: 0.8,
-    cooldown: 2.4,
+    walk: 8,
+    approach: 9,
+    travelSec: 13,
+    minDist: 34,
+    telegraph: 0.65,
+    cooldownFar: 3.4,
+    cooldownNear: 1.6,
+    doubleChance: [0, 0],
     bodyDamage: 25,
     shotDamage: 20,
     score: 60,
     dropChance: 1,
     special: 0.2,
     sheetUrl: 'assets/monsters/farter-sheet.png',
-    box: { w: 15, h: 17 },
-    holdAt: 115,
-    holdSec: 4.5,
+    box: { w: 16, h: 18 },
   },
 };
 

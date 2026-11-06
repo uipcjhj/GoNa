@@ -430,9 +430,25 @@ export abstract class BossBattle {
     });
   }
 
+  /** 분노 단계 문턱 (HP 비율) */
+  static readonly RAGE_AT = [0.7, 0.35] as const;
+
+  /**
+   * 한 번의 공격으로 내려갈 수 있는 최저 HP.
+   * 분노 단계를 건너뛰지 않도록 다음 문턱까지만 깎임 (1차 분노 전 → 1차 문턱, 1차 분노 중 → 2차 문턱).
+   * 하위 클래스는 필살기를 보여 주기 전까지 1 을 남기는 등 더 올릴 수 있음.
+   */
+  protected hpFloor(): number {
+    const max = this.def.maxHp;
+    if (this.rage === 0) return Math.floor(max * BossBattle.RAGE_AT[0]);
+    if (this.rage === 1) return Math.floor(max * BossBattle.RAGE_AT[1]);
+    return 0;
+  }
+
   protected damage(n: number): void {
     if (this.mode === 'victory' || this.mode === 'done') return;
-    this.hp = Math.max(0, this.hp - n);
+    // 문턱 아래로는 한 번에 못 내려감 (단, 이미 문턱 아래면 그대로 깎임 — 문턱 때문에 HP 가 올라가는 일은 없음)
+    this.hp = Math.max(0, Math.min(this.hp, this.hpFloor()), this.hp - n);
     this.hurtT = 0.12;
     sound.bossHit();
     const r = this.bossRect();
@@ -444,7 +460,7 @@ export abstract class BossBattle {
     }
     // 분노 단계 (HP 비율)
     const ratio = this.hp / this.def.maxHp;
-    const want = ratio <= 0.35 ? 2 : ratio <= 0.7 ? 1 : 0;
+    const want = ratio <= BossBattle.RAGE_AT[1] ? 2 : ratio <= BossBattle.RAGE_AT[0] ? 1 : 0;
     if (want > this.rage) {
       this.rage = want as 1 | 2;
       this.applyTint();

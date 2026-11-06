@@ -4,7 +4,7 @@
  *   1. 갓난아기 고나   (엎드려 꼬물거림)
  *   2. 기어 다니는 고나 (네 발로 기어감)
  *   3. 직립보행 고나   (두 발로 달림 — 지금까지의 고나)
- *   4. 빅베이비 곤룡   (몸집이 커진 최종 진화)
+ *   4. 자이언트 곤룡 고나   (Giant Gonryong GONA · 몸집이 커진 최종 진화)
  *
  * ▸ 점수(score)와 성장 게이지(gauge)는 완전히 따로 관리합니다.
  *   간식을 먹으면 둘 다 오르지만, 서로의 값을 참조하지 않습니다.
@@ -43,6 +43,8 @@ export interface GrowthStageDef {
   /** 1부터 시작하는 단계 번호 */
   level: number;
   name: string;
+  /** 영문 이름 (필요할 때만) */
+  nameEn?: string;
   /** 진화 연출에 표시할 한 줄 설명 */
   description: string;
   /**
@@ -118,7 +120,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
   {
     id: 'bigbaby',
     level: 4,
-    name: '빅베이비 곤룡',
+    name: '자이언트 곤룡 고나',
+    nameEn: 'Giant Gonryong GONA',
     description: '쿵쿵! 최종 진화 완료!',
     // 마지막 단계: 게이지가 가득 차면 최종 보스 킁카괴물 → 엔딩
     gaugeToNext: 60, // 4단계 → 최종 보스 (기존 30 → 2배)

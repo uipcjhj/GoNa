@@ -23,6 +23,7 @@ import { PixelCanvas } from '../art/PixelCanvas';
 import { cherryTree, exclaim, kissMonster, monsterEyes, sniffMonster } from '../art/prologueArt';
 import { bus, EV } from '../events';
 import { sound } from '../audio';
+import { perf } from '../perf';
 import { LINE_GAP, PROLOGUE } from '../game/prologue';
 import type { StageVisual } from './BootScene';
 
@@ -82,6 +83,8 @@ export class OpeningScene extends Phaser.Scene {
   }
 
   create(): void {
+    const tCreate = performance.now();
+    perf.section('오프닝 대기 (이야기 시작 전)');
     this.done = false;
     this.begun = false;
     this.line = -1;
@@ -116,6 +119,7 @@ export class OpeningScene extends Phaser.Scene {
     this.applyView();
     this.track(this.tweens.add({ targets: this.view, cx: 210, duration: 6000, yoyo: true, repeat: -1, ease: 'Sine.InOut', onUpdate: () => this.applyView() }));
     this.cameras.main.fadeIn(600, 255, 248, 230);
+    perf.mark('opening:create', performance.now() - tCreate);
     bus.emit(EV.openingStart);
   }
 
@@ -181,8 +185,9 @@ export class OpeningScene extends Phaser.Scene {
     }
     // 숲 전체에 흩날리는 벚꽃잎 (두 겹)
     for (const [tex, freq, sp] of [
-      ['op-petal', 90, 1],
-      ['op-petal2', 140, 0.7],
+      // 성능: 예전 90/140ms 마다 → 살아 있는 꽃잎 약 200개. 지금 약 120개 (보이는 느낌은 비슷)
+      ['op-petal', 150, 1],
+      ['op-petal2', 230, 0.7],
     ] as const) {
       this.add
         .particles(0, 0, tex, {
@@ -341,6 +346,7 @@ export class OpeningScene extends Phaser.Scene {
 
   private playLine(i: number): void {
     this.line = i;
+    perf.section(`오프닝 ${i + 1}/${PROLOGUE.length}`);
     const l = PROLOGUE[i];
     // 내레이션(음성) 없음: 문장 길이로 시간 계산 (자막 타이핑 그대로)
     const sec = Math.max(l.minSec, 0.8 + l.text.length * 0.12 + LINE_GAP);
