@@ -9,6 +9,7 @@
  */
 import Phaser from 'phaser';
 import { sound } from '../../audio';
+import { perf } from '../../perf';
 import { DAMAGE } from '../../game/boss';
 import { BossBattle } from './BossBattle';
 import type { BattleHost } from './types';
@@ -239,25 +240,62 @@ export class KissBattle extends BossBattle {
     const m = this.lips();
     const y = this.host.groundY - 12;
     this.warn(1.6);
-    this.setPose(2, 1.7);
-    this.banner({ top: '💗 필살기', name: '왕뽀뽀!', desc: '분홍 화살표 길로 큰 하트가 와요 — 점프하거나 방패!', ms: 1700, tone: 'boss' });
+    this.setPose(2, 1.7); // 입술 쭉 (오므림)
+    this.banner({ top: '💗 필살기', name: '초대형 왕뽀뽀!', desc: '분홍 화살표 길로 거대한 하트가 와요 — 점프하거나 방패!', ms: 1700, tone: 'boss' });
+    // 예고 1.6초: 크게 부풀어 오름 · 분홍 오라 · 화면이 어두워짐(보스만 밝게) · 차오르는 소리
+    scene.tweens.add({ targets: this.boss, scaleX: 1.3, scaleY: 1.3, duration: 1400, ease: 'Sine.In' });
+    this.specialTelegraph('sp-ring-pink', 1.6);
     // 경로 미리 보기 (깜빡이는 화살표)
     const arrows: Phaser.GameObjects.Image[] = [];
     for (let x = m.x - 16; x > -8; x -= 15) arrows.push(this.fx(scene.add.image(x, y, 'boss-arrow').setDepth(10.8).setScale(1.3).setAlpha(0.2)));
     scene.tweens.add({ targets: arrows, alpha: 0.95, duration: 200, yoyo: true, repeat: 3 });
-    // 입술 앞에 하트가 점점 커짐
-    const charge = this.fx(scene.add.image(m.x - 4, y, 'boss-heart').setDepth(11).setScale(0.5));
-    scene.tweens.add({ targets: charge, scale: 3, duration: 1500, ease: 'Sine.In' });
+    // 입술 앞에 거대한 하트가 점점 커짐
+    const charge = this.fx(scene.add.image(m.x - 6, this.host.groundY - 4, 'sp-heart').setOrigin(0.5, 1).setDepth(11).setScale(0.3));
+    scene.tweens.add({ targets: charge, scale: 2.2, duration: 1500, ease: 'Sine.In' });
     const speed = 105;
     this.after(1.7, () => {
       arrows.forEach((a) => a.destroy());
       charge.destroy();
+      scene.tweens.add({ targets: this.boss, scaleX: 1, scaleY: 1, duration: 140 });
+      // 발사 순간: 화면이 분홍으로 번쩍 + 아주 짧은 흔들림 + 쾅
+      this.specialRelease([255, 120, 190]);
       sound.smooch();
-      scene.cameras.main.shake(160, 0.006);
-      const h = this.spawn('boss-heart', m.x - 4, y, { vx: -speed, shape: 'box', w: 22, h: 20, pierce: true, breakable: false, life: 5, dmg: DAMAGE.kissRoyal });
-      h.sprite.setScale(3);
+      // 거대한 하트 (그림 약 40x35 = 일반 하트탄의 4배) — 충돌 판정은 예전과 같은 22x20 (한 번 점프로 넘을 수 있게)
+      const h = this.spawn('sp-heart', m.x - 6, y, { vx: -speed, shape: 'box', w: 22, h: 20, pierce: true, breakable: false, life: 5, dmg: DAMAGE.kissRoyal });
+      h.sprite.setScale(2.2).setOrigin(0.5, 0.66); // 그림 아래가 땅에 닿게 (판정 중심은 그대로)
+      h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-heart', [255, 150, 200], blocked);
+      // 하트 주위를 도는 작은 하트 4개 + 지나가며 흩어지는 분홍 반짝이·하트 (개수 제한)
+      const orbit = [0, 1, 2, 3].map(() => this.fx(scene.add.image(h.x, h.y, 'boss-heart').setDepth(11.2)));
+      const trail = this.fx(
+        scene.add
+          .particles(0, 0, 'boss-heart', { follow: h.sprite, followOffset: { x: 12, y: -6 }, lifespan: 450, frequency: perf.low ? 140 : 70, speedX: { min: 20, max: 70 }, speedY: { min: -40, max: 30 }, scale: { start: 0.9, end: 0.3 }, alpha: { start: 1, end: 0 } })
+          .setDepth(10.9),
+      );
+      const spin = scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: 5000,
+        onUpdate: (tw) => {
+          if (h.dead || !h.sprite.active) {
+            orbit.forEach((o) => o.active && o.destroy());
+            if (trail.active) {
+              trail.stop();
+              scene.time.delayedCall(500, () => trail.active && trail.destroy());
+            }
+            tw.stop();
+            return;
+          }
+          const a0 = (tw.getValue() ?? 0) * Math.PI * 2 * 7;
+          orbit.forEach((o, i) => {
+            const a = a0 + (i * Math.PI) / 2;
+            o.setPosition(Math.round((h.x + Math.cos(a) * 26) * 5) / 5, Math.round((h.y - 12 + Math.sin(a) * 18) * 5) / 5);
+          });
+        },
+      });
+      this.after(5.2, () => spin.stop(), true);
     });
     const pass = (m.x - this.host.basePlayerX) / speed;
+    // 지나간 뒤: 어지러워하며 약점 노출 (2.2초 · 1.5배)
     this.after(1.7 + pass + 0.4, () => {
       this.royalShown = true;
       this.stun(2.2, 1.5, '뽀뽀괴물이 지쳤어요!');

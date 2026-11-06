@@ -2506,3 +2506,16 @@ body.has-pad .touch-hint {
 .cover.instant .t4-logo {
   transition: none;
 }
+
+/* 일반 스테이지(3·4단계): 부메랑 공격 버튼만. 보스전이 끝나면 방패·필살 버튼이 살짝 사라짐 */
+.battle-pad .bt-left,
+.battle-pad .bt-special {
+  transition: opacity 0.35s ease, visibility 0s linear 0s;
+}
+.battle-pad.mode-run .bt-left,
+.battle-pad.mode-run .bt-special {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}

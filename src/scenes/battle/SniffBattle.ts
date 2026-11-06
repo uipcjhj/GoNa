@@ -8,6 +8,7 @@
  */
 import Phaser from 'phaser';
 import { sound } from '../../audio';
+import { perf } from '../../perf';
 import { DAMAGE } from '../../game/boss';
 import { BossBattle } from './BossBattle';
 import type { BattleHost } from './types';
@@ -220,41 +221,97 @@ export class SniffBattle extends BossBattle {
    */
   private storm(): void {
     const scene = this.host.scene;
+    const gy = this.host.groundY;
     this.warn(1.4);
     this.setPose(1, 3.6);
     sound.warn();
-    this.banner({ top: '🌪 필살기', name: '킁카 폭풍!', desc: '빨려 들어가요 — 계속 점프! 그다음 냄새 파동을 넘어요', ms: 1800, tone: 'boss' });
-    scene.tweens.add({ targets: this.boss, scaleX: 1.22, scaleY: 1.18, duration: 1300, ease: 'Sine.In' });
+    this.banner({ top: '🌪 필살기', name: '초강력 킁카 폭풍!', desc: '빨려 들어가요 — 초록 화살표 자리에서 계속 점프! 그다음 냄새 파동을 넘어요', ms: 1800, tone: 'boss' });
+    // 예고: 크게 숨을 들이마시며 몸·코가 부풀어 오름 · 초록 오라 · 화면 어둡게
+    scene.tweens.add({ targets: this.boss, scaleX: 1.26, scaleY: 1.22, duration: 1300, ease: 'Sine.In' });
+    this.specialTelegraph('sp-ring-green', 1.4);
+    const m0 = this.nose();
+    const noseRing = this.fx(scene.add.image(m0.x, m0.y, 'sp-ring-green').setDepth(9.75).setScale(0.3).setAlpha(0.9));
+    scene.tweens.add({ targets: noseRing, scale: 0.9, duration: 500, yoyo: true, repeat: 3 });
+    // 보스 둘레 거대한 황록 회오리 (미리 그린 3프레임, 나뭇잎·냄새 구름이 함께 돎)
+    const tornado = this.fx(scene.add.sprite(this.bx, gy, 'sp-tornado', 0).setOrigin(0.5, 1).setDepth(9.68).setScale(0.4).setAlpha(0.85));
+    scene.tweens.add({ targets: tornado, scale: 1.8, duration: 1400, ease: 'Sine.Out' });
+    const turn = scene.tweens.addCounter({
+      from: 0,
+      to: 60,
+      duration: 6000,
+      onUpdate: (tw) => {
+        if (!tornado.active) return void tw.stop();
+        tornado.setFrame(Math.floor(tw.getValue() ?? 0) % 3);
+      },
+    });
     // 바람 방향 화살표 (화면 왼쪽 → 킁카괴물 쪽으로 흘러감)
     const arrows: Phaser.GameObjects.Image[] = [];
     for (const alt of [16, 40]) {
       for (let x = 10; x < this.bx - 20; x += 34) {
-        const a = this.fx(scene.add.image(x, this.host.groundY - alt, 'boss-wind').setDepth(10.7).setFlipX(true).setScale(1.4).setAlpha(0.85));
+        const a = this.fx(scene.add.image(x, gy - alt, 'boss-wind').setDepth(10.7).setFlipX(true).setScale(1.4).setAlpha(0.85));
         arrows.push(a);
         scene.tweens.add({ targets: a, x: x + 34, alpha: { from: 0.85, to: 0.2 }, duration: 600, repeat: -1 });
       }
     }
+    // 안전한 회피 구간: 고나 자리 발밑 초록 '여기서 점프!' 표시 (흡입~파동이 지나갈 때까지)
+    const safe = this.fx(scene.add.image(this.host.basePlayerX, gy + 1, 'sp-safe').setOrigin(0.5, 1).setDepth(10.75).setAlpha(0));
+    scene.tweens.add({ targets: safe, alpha: { from: 0.4, to: 1 }, duration: 260, yoyo: true, repeat: -1, delay: 900 });
+    // 주변 나뭇잎·먼지가 보스 쪽으로 빨려 들어감 (흡입 동안만, 개수 제한)
+    const suck = this.fx(
+      scene.add
+        .particles(0, 0, 'sp-leaf', {
+          x: { min: 0, max: Math.max(20, this.bx - 40) },
+          y: { min: gy - 46, max: gy - 4 },
+          speedX: { min: 110, max: 180 },
+          speedY: { min: -10, max: 10 },
+          rotate: { min: 0, max: 360 },
+          lifespan: 900,
+          frequency: perf.low ? 160 : 90,
+          scale: 1.8,
+          alpha: { start: 1, end: 0.3 },
+          emitting: false,
+        })
+        .setDepth(10.6),
+    );
     this.after(1.4, () => {
       this.inhaling = 2.0;
       this.inhalePower = 2.2;
       this.inhaleSnd = 0;
+      suck.start();
     });
     this.after(3.5, () => {
       this.inhaling = 0;
+      suck.stop();
       arrows.forEach((a) => a.destroy());
+      noseRing.destroy();
       scene.tweens.add({ targets: this.boss, scaleX: 1, scaleY: 1, duration: 200 });
       this.setPose(2, 0.5);
+      // 발사 순간: 황록으로 번쩍 + 짧은 흔들림 + 쾅
+      this.specialRelease([200, 255, 120]);
       sound.puff();
-      sound.hit();
-      scene.cameras.main.shake(300, 0.012);
       const m = this.nose();
-      const h = this.spawn('boss-bigcloud', m.x, this.host.groundY - 9, { vx: -140, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3, dmg: DAMAGE.sniffStorm });
-      h.sprite.setScale(1.4);
+      // 초대형 냄새 파동 (그림 2.4배 — 판정은 예전 그대로 14x18: 한 번 점프로 넘음)
+      const h = this.spawn('boss-bigcloud', m.x, gy - 9, { vx: -140, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3, dmg: DAMAGE.sniffStorm });
+      h.sprite.setScale(2.4).setOrigin(0.5, 0.65);
+      h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-dot', [200, 255, 120], blocked);
+      // 파동 뒤로 작은 냄새 구름이 흩어짐 (개수 제한)
+      const tail = this.fx(
+        scene.add
+          .particles(0, 0, 'boss-dot', { follow: h.sprite, lifespan: 500, frequency: perf.low ? 140 : 70, speedX: { min: 30, max: 90 }, speedY: { min: -30, max: 10 }, scale: { start: 2, end: 0.6 }, alpha: { start: 0.9, end: 0 } })
+          .setDepth(10.8),
+      );
+      this.after(1.6, () => tail.stop(), true);
+      // 회오리는 파동과 함께 흩어짐
+      scene.tweens.add({ targets: tornado, alpha: 0, scale: 2.2, duration: 500, onComplete: () => tornado.destroy() });
     });
     const pass = (this.bx - this.host.basePlayerX) / 140;
-    this.after(3.5 + pass + 0.3, () => this.stun(2.6, 2, '킁카괴물이 기절했어요! 코가 약점!'));
-    // 중간에 끊기면 화살표 정리
-    this.after(6, () => arrows.forEach((a) => a.active && a.destroy()), true);
+    this.after(3.5 + pass + 0.3, () => {
+      safe.destroy();
+      turn.stop();
+      this.stun(2.6, 2, '킁카괴물이 기절했어요! 코가 약점!');
+    });
+    // 중간에 끊기면 정리
+    this.after(6.5, () => [...arrows, safe, noseRing, tornado].forEach((a) => a.active && a.destroy()), true);
   }
 
   protected onRage(level: 1 | 2): void {

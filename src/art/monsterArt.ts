@@ -45,11 +45,13 @@ function glassesFrame(f: 0 | 1 | 2): HTMLCanvasElement {
  *   프레임 0·1 = 뒤뚱 걷기 (배가 통통 · 발 바꿈) · 2 = 멈춰서 엉덩이를 뒤로 쑥 (방귀 직전)
  *   왼쪽(고나 쪽)을 바라봄. 지팡이·흰 수염·굽은 허리 없음.
  */
-function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
+/** 프레임: 0·1 걷기 · 2 엉덩이 뒤로 쭉 · 3 엉덩이 씰룩(위로 한 칸) · 4 능청스러운 만족 표정 */
+function uncleFrame(f: 0 | 1 | 2 | 3 | 4): HTMLCanvasElement {
   const { w, h } = FARTER_FRAME;
   const pc = new PixelCanvas(w, h);
+  const butt = f === 2 || f === 3;
   const bounce = f === 1 ? 1 : 0; // 걸을 때 배가 출렁
-  const lean = f === 2 ? 1 : 0; // 엉덩이 내밀 때 몸을 앞으로 살짝
+  const lean = butt ? 1 : 0; // 엉덩이 내밀 때 몸을 앞으로 살짝
   const SKIN = '#f2c79a';
   const SKIN_D = '#dca476';
   const SHIRT = '#f6f2e6';
@@ -59,15 +61,16 @@ function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   const HAIR = '#4a3426';
   const DARK = '#3a2418';
   // 다리 (짧고 통통) + 신발
-  const step = f === 1 ? 1 : f === 2 ? 0 : -1;
+  const step = f === 1 ? 1 : butt || f === 4 ? 0 : -1;
   pc.rect(8 + step, 19, 4, 3, PANTS);
   pc.rect(13 - step, 19, 4, 3, PANTS_D);
   pc.rect(7 + step, 22, 5, 1, '#6b4a2e');
   pc.rect(13 - step, 22, 5, 1, '#6b4a2e');
-  // 엉덩이 (2번 프레임: 뒤로 쑥)
-  if (f === 2) {
-    pc.disc(18, 16, 4, PANTS);
-    pc.disc(19, 15, 2, '#7487b8');
+  // 엉덩이 (2: 뒤로 쭉 · 3: 씰룩 — 한 칸 위·뒤로)
+  if (butt) {
+    const wig = f === 3 ? 1 : 0;
+    pc.disc(18 + wig, 16 - wig, 4, PANTS);
+    pc.disc(19 + wig, 15 - wig, 2, '#7487b8');
   }
   // 바지 허리 (배 아래 띠)
   pc.rect(6, 17 + bounce, 12, 3, PANTS);
@@ -100,9 +103,13 @@ function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   pc.rect(hx - 1, hy - 5, 2, 1, '#fbe3c4'); // 반짝 정수리
   // 귀
   pc.px(hx + 3, hy + 1, SKIN_D);
-  // 처진 눈 (눈꺼풀이 바깥쪽으로 처짐) — 2번 프레임은 눈을 질끈(능청)
-  if (f === 2) {
+  // 처진 눈 (눈꺼풀이 바깥쪽으로 처짐) — 엉덩이 내밀 땐 질끈, 뀐 뒤엔 만족스러운 ^ 눈
+  if (butt) {
     pc.rect(hx - 3, hy, 3, 1, DARK);
+  } else if (f === 4) {
+    pc.px(hx - 3, hy, DARK);
+    pc.px(hx - 2, hy - 1, DARK);
+    pc.px(hx - 1, hy, DARK);
   } else {
     pc.rect(hx - 3, hy - 1, 3, 1, SKIN_D);
     pc.px(hx - 2, hy, DARK);
@@ -112,11 +119,13 @@ function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
   pc.rect(hx - 5, hy + 1, 2, 2, SKIN_D);
   pc.px(hx, hy + 2, '#f0a080');
   pc.rect(hx - 4, hy + 3, 3, 1, HAIR);
-  pc.rect(hx - 3, hy + 4, 2, 1, '#b0504a');
-  if (f === 2) {
-    // 엉덩이 쪽 '뿌' 기운 (연두 점)
-    pc.px(22, 13, '#b8d850');
-    pc.px(23, 16, '#9fbe3a');
+  if (f === 4) {
+    // 능청스럽게 씨익
+    pc.rect(hx - 4, hy + 4, 4, 1, '#b0504a');
+    pc.px(hx, hy + 3, '#b0504a');
+    pc.px(hx - 1, hy + 2, '#f08a70');
+  } else {
+    pc.rect(hx - 3, hy + 4, 2, 1, '#b0504a');
   }
   pc.outline(DARK);
   return pc.canvas;
@@ -125,76 +134,130 @@ function uncleFrame(f: 0 | 1 | 2): HTMLCanvasElement {
 /** 시트 (프레임 3장 가로) */
 export function monsterSheet(kind: 'glasses' | 'farter'): { canvas: HTMLCanvasElement; fw: number; fh: number } {
   const f = kind === 'glasses' ? GLASSES_FRAME : FARTER_FRAME;
-  const pc = new PixelCanvas(f.w * 3, f.h);
-  ([0, 1, 2] as const).forEach((i) => pc.ctx.drawImage(kind === 'glasses' ? glassesFrame(i) : uncleFrame(i), i * f.w, 0));
+  const n = kind === 'glasses' ? 3 : 5;
+  const pc = new PixelCanvas(f.w * n, f.h);
+  for (let i = 0; i < n; i++) pc.ctx.drawImage(kind === 'glasses' ? glassesFrame(i as 0 | 1 | 2) : uncleFrame(i as 0 | 1 | 2 | 3 | 4), i * f.w, 0);
   return { canvas: pc.canvas, fw: f.w, fh: f.h };
 }
 
-/** 안경잽이몹 지폐 14x9 — 4프레임(앞 · 기울어짐 · 옆면 · 반대로 기울어짐)을 돌려 '빙글빙글' (회전 연산 없이 또렷) */
-export const BILL_FRAME = { w: 14, h: 9 };
-export function billSheet(): HTMLCanvasElement {
-  const { w, h } = BILL_FRAME;
-  const pc = new PixelCanvas(w * 4, h);
-  const draw = (ox: number, bw: number, flip: boolean): void => {
-    const x0 = ox + Math.floor((w - bw) / 2);
-    if (bw <= 2) {
-      pc.rect(x0, 0, bw, h, '#2f8a3a');
-      pc.rect(x0, 1, 1, h - 2, '#b8f09a');
-      return;
-    }
-    pc.rect(x0, 0, bw, h, '#1f5a2a'); // 테두리
-    pc.rect(x0 + 1, 1, bw - 2, h - 2, '#7ed36a'); // 연한 초록
-    pc.rect(x0 + 1, 1, bw - 2, 1, '#b8f09a'); // 위 반짝
-    const cx = x0 + Math.floor(bw / 2);
-    // 가운데 동그라미 + 돈 표시
-    if (bw >= 8) {
-      pc.rect(cx - 2, 2, 4, 5, '#3f9a44');
-      pc.rect(cx - 1, 3, 2, 3, '#d8ffb0');
-      pc.px(cx - 1 + (flip ? 1 : 0), 4, '#1f5a2a');
-      // 모서리 장식
-      pc.px(x0 + 2, 2, '#3f9a44');
-      pc.px(x0 + bw - 3, h - 3, '#3f9a44');
-    } else {
-      pc.rect(cx - 1, 3, 2, 3, '#3f9a44');
-    }
-  };
-  draw(0, 14, false);
-  draw(w, 9, false);
-  draw(w * 2, 2, false);
-  draw(w * 3, 9, true);
+/**
+ * 안경잽이몹 현금다발 20x14 — 두툼하게 겹친 지폐(가장자리 층) + 가운데 큰 $ + 노란 띠
+ * 프레임 0 = 반듯 · 1 = 살짝 기울어짐 (날아갈 때 번갈아 → 흔들흔들). 기울인 그림은 미리 그려 둠
+ */
+export const CASH_FRAME = { w: 22, h: 16 };
+function cashBundle(): HTMLCanvasElement {
+  const pc = new PixelCanvas(20, 14);
+  const DK = '#1b4d22';
+  // 뒤쪽 지폐 층 (오른쪽 아래로 한 칸씩 — 두께)
+  pc.rect(3, 4, 17, 10, DK);
+  pc.rect(3, 4, 16, 9, '#3f8f3c');
+  pc.rect(2, 3, 17, 10, DK);
+  pc.rect(2, 3, 16, 9, '#5aae4c');
+  // 맨 앞 지폐
+  pc.rect(0, 0, 18, 11, DK);
+  pc.rect(1, 1, 16, 9, '#9be46f');
+  pc.rect(1, 1, 16, 1, '#d6ffb0');
+  pc.rect(2, 2, 14, 7, '#86d65e');
+  pc.rect(3, 3, 12, 5, '#9be46f');
+  // 가장자리 지폐 층 (아래·오른쪽 밝은 줄)
+  for (let x = 3; x < 19; x += 2) pc.px(x, 12, '#c8f0a0');
+  for (let y = 5; y < 13; y += 2) pc.px(19, y, '#c8f0a0');
+  // 노란 띠
+  pc.rect(4, 0, 3, 11, '#e0a83a');
+  pc.rect(4, 0, 1, 11, '#f7d070');
+  pc.rect(6, 0, 1, 11, '#a8701e');
+  // 큰 $ (진한 초록)
+  const S = '#145a1e';
+  pc.rect(11, 1, 1, 9, S);
+  pc.rect(9, 2, 4, 1, S);
+  pc.rect(9, 3, 1, 2, S);
+  pc.rect(9, 5, 4, 1, S);
+  pc.rect(13, 6, 1, 2, S);
+  pc.rect(9, 8, 5, 1, S);
+  pc.px(14, 2, S);
+  return pc.canvas;
+}
+export function cashSheet(): HTMLCanvasElement {
+  const { w, h } = CASH_FRAME;
+  const pc = new PixelCanvas(w * 2, h);
+  const b = cashBundle();
+  pc.ctx.imageSmoothingEnabled = false;
+  pc.ctx.drawImage(b, 1, 1);
+  // 1번 프레임: 오른쪽으로 갈수록 한 칸씩 올라감 (회전 대신 도트 기울임 — 또렷)
+  for (let x = 0; x < b.width; x++) pc.ctx.drawImage(b, x, 0, 1, b.height, w + 1 + x, 2 - Math.floor(x / 7), 1, b.height);
   return pc.canvas;
 }
 
-/** 방귀 구름 '더러운 공기 팡!' 22x16 — 3프레임(팡! 작게 → 뭉게 → 크게 퍼짐), 연두·황록 */
-export const CLOUD_FRAME = { w: 22, h: 16 };
+/** 안경잽이몹 돈가방 12x12 — 공격 준비 때 앞에 '짠' 나타나 현금다발을 뽑아냄 */
+export function moneyBag(): HTMLCanvasElement {
+  const pc = new PixelCanvas(12, 12);
+  pc.disc(6, 7, 4, '#b07a3a');
+  pc.disc(5, 6, 2, '#cf9a52');
+  pc.rect(4, 1, 4, 2, '#8a5a26');
+  pc.rect(3, 3, 6, 1, '#6b4218');
+  // $ (S 모양 + 세로줄)
+  const S = '#2f6a22';
+  pc.rect(6, 4, 1, 7, S);
+  pc.rect(5, 5, 3, 1, S);
+  pc.px(4, 6, S);
+  pc.rect(5, 7, 3, 1, S);
+  pc.px(8, 8, S);
+  pc.rect(4, 9, 3, 1, S);
+  pc.outline('#4a2a10');
+  return pc.canvas;
+}
+
+/** 방귀 '팡!' 충격선 14x14 (2프레임: 작게 → 크게 퍼짐) */
+export const POP_FRAME = { w: 14, h: 14 };
+export function popSheet(): HTMLCanvasElement {
+  const pc = new PixelCanvas(28, 14);
+  // 굵은 충격선 8방향 (밝은 노랑) — 1프레임 가깝게, 2프레임 멀리
+  const rays: [number, number][] = [[1, 0], [0.7, 0.7], [0, 1], [-0.7, 0.7], [-1, 0], [-0.7, -0.7], [0, -1], [0.7, -0.7]];
+  [2, 4].forEach((r0, f) => {
+    for (const [dx, dy] of rays) {
+      for (let k = 0; k < 3; k++) pc.px(Math.round(7 + dx * (r0 + k)) + f * 14, Math.round(7 + dy * (r0 + k)), k === 2 ? '#fff8c0' : '#ffe680');
+    }
+  });
+  pc.outline('#7a6a1a');
+  return pc.canvas;
+}
+
+/**
+ * 방귀 구름 '더러운 공기 팡!' 26x20 — 4프레임: 0 팡(작게) · 1 부풀어 오름 · 2·3 크게 뭉게뭉게(번갈아 끓듯이)
+ * 둥근 황록 구름 + 가운데 짙은 초록 음영 + 위로 피어오르는 냄새 줄(~) → 바람(흰 화살표)과 확실히 구별
+ */
+export const CLOUD_FRAME = { w: 26, h: 20 };
 export function fartCloudSheet(): HTMLCanvasElement {
   const { w, h } = CLOUD_FRAME;
-  const pc = new PixelCanvas(w * 3, h);
-  const L = '#c8e070'; // 연두
-  const Y = '#b9c24a'; // 황록
-  const D = '#8a9a32';
-  const HI = '#eef7c0';
+  const pc = new PixelCanvas(w * 4, h);
+  const L = '#c6dc5c';
+  const M = '#a8bf3c';
+  const D = '#5f7a1e';
+  const HI = '#eaf3b0';
   const puffs: [number, number, number][][] = [
-    [[11, 11, 3], [8, 12, 2], [14, 12, 2]],
-    [[7, 11, 3], [11, 9, 4], [15, 11, 3], [11, 12, 3]],
-    [[6, 11, 4], [11, 8, 5], [16, 11, 4], [9, 12, 4], [14, 12, 4]],
+    [[13, 14, 3], [10, 15, 2], [16, 15, 2]],
+    [[9, 14, 4], [13, 12, 5], [17, 14, 4], [13, 15, 4]],
+    [[7, 14, 5], [13, 11, 6], [19, 14, 5], [10, 16, 4], [16, 16, 4]],
+    [[8, 13, 5], [13, 12, 6], [18, 13, 5], [11, 16, 4], [15, 16, 4]],
   ];
   puffs.forEach((list, f) => {
     const ox = f * w;
     for (const [x, y, r] of list) pc.disc(ox + x, y + 1, r, D);
-    for (const [x, y, r] of list) pc.disc(ox + x, y, r, f === 1 ? Y : L);
-    for (const [x, y, r] of list) if (r >= 3) pc.disc(ox + x - 1, y - 1, Math.max(1, r - 2), f === 0 ? Y : L);
-    for (const [x, y, r] of list) if (r >= 3) pc.px(ox + x - 1, y - r + 1, HI);
-    if (f === 0) {
-      // '팡!' 튀는 조각
-      pc.px(ox + 3, 7, Y);
-      pc.px(ox + 18, 6, Y);
-      pc.px(ox + 11, 4, L);
-      pc.px(ox + 5, 4, HI);
-      pc.px(ox + 17, 3, HI);
-    }
+    for (const [x, y, r] of list) pc.disc(ox + x, y, r, f === 0 ? M : L);
+    if (f >= 1) pc.disc(ox + 13, 14, f >= 2 ? 3 : 2, M);
+    if (f >= 2) pc.disc(ox + 13, 15, 2, D);
+    for (const [x, y, r] of list) if (r >= 4) pc.px(ox + x - 2, y - r + 2, HI);
   });
-  pc.outline('#56602a');
+  pc.outline('#46561a');
+  // 냄새 줄 (위로 피어오르는 꼬불꼬불 ~) — 외곽선 없이 짙은 초록, 2·3 프레임은 위치를 바꿔 일렁임
+  for (const f of [2, 3]) {
+    const ox = f * w;
+    const lift = f === 2 ? 0 : 1;
+    for (const sx of [7, 13, 19]) {
+      const zig = (sx + f) % 2;
+      for (let k = 0; k < 4; k++) pc.px(ox + sx + ((k + zig) % 2), 4 - k - lift, D);
+    }
+  }
   return pc.canvas;
 }
 

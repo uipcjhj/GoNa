@@ -49,11 +49,21 @@ export const PHYSICS = {
   jumpBuffer: 130,
 };
 
+/**
+ * 달리기 속도 (px/s). 오래 달릴수록 조금씩 빨라짐 (보스전은 start 로 고정, 끝나면 원래 속도로 부드럽게 복귀)
+ *   stepSec 초마다 배율 +stepEarly(1·2단계) / +stepLate(3·4단계)
+ *   단계별 하한(stageFloor) · 상한(stageCap) — 4단계 상한 1.85 = 약 203px/s (예전 최고 215 보다 조금 낮게: 회피 가능 유지)
+ *   체크포인트 이어하기: 그 단계 하한부터 다시 (예: 3단계 1.3배)
+ *   장애물 간격·몬스터 투사체는 속도에 비례해 계산되므로 빨라져도 최소 반응 시간 유지
+ */
 export const SPEED = {
   start: 110,
   max: 215,
-  /** 초당 증가량 */
-  accel: 2.2,
+  stepSec: 20,
+  stepEarly: 0.03,
+  stepLate: 0.05,
+  stageFloor: [1, 1.1, 1.3, 1.5],
+  stageCap: [1.15, 1.3, 1.6, 1.85],
 };
 
 export const PLAYER = {

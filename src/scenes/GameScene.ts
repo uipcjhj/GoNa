@@ -12,8 +12,10 @@ import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
 import { clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../game/checkpoint';
 import { MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
-import { BILL_FRAME, billSheet, CLOUD_FRAME, dizzyStar, fartCloudSheet, monsterSheet, pathArrow } from '../art/monsterArt';
+import { CASH_FRAME, cashSheet, CLOUD_FRAME, dizzyStar, fartCloudSheet, moneyBag, monsterSheet, pathArrow, POP_FRAME, popSheet } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
+import { hurtFace } from '../art/hurtFace';
+import { auraRing, leaf, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
@@ -30,8 +32,11 @@ const EVO_TOTAL = 2.5;
 
 interface Entity {
   sprite: Phaser.GameObjects.Image;
-  /** rock 바위 · snack 간식 · monster 일반 몬스터 · mshot 몬스터 투사체 · cloud 방귀 구름(땅에 잠시 남음) */
-  type: 'rock' | 'snack' | 'monster' | 'mshot' | 'cloud';
+  /** rock 바위 · snack 간식 · monster 일반 몬스터 · mshot 몬스터 투사체 · cloud 방귀 구름(땅에 잠시 남음) · fx 연출(충돌 없음) */
+  type: 'rock' | 'snack' | 'monster' | 'mshot' | 'cloud' | 'fx';
+  /** fx: 따라다닐 대상과 x 간격 (대상이 사라지면 같이 사라짐) */
+  follow?: Entity;
+  fxOff?: number;
   snack?: SnackKind;
   /** 화면 x (중심) */
   x: number;
@@ -50,7 +55,7 @@ interface Entity {
   dmg?: number;
   /** 이미 고나를 맞힘 (구름은 한 번만) */
   hit?: boolean;
-  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number };
+  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number; post: number };
   /** 투사체·구름 애니메이션 시간(초) */
   age?: number;
 }
@@ -159,6 +164,10 @@ export class GameScene extends Phaser.Scene {
   private lastPressAt = -9999;
   private invincibleUntil = 0;
   private squash = 1;
+  /** 아파! 표정: 이 시각까지 hurt-<단계> 프레임 · 맞은 시각 · 뒤로 밀림(표시만) */
+  private hurtUntil = 0;
+  private hurtAt = 0;
+  private hurtKick = 0;
   /** 표정 연출: 이 시각까지 exprFrame 을 보여줌 (-1 = 없음) */
   private exprFrame = -1;
   private exprUntil = 0;
@@ -166,6 +175,9 @@ export class GameScene extends Phaser.Scene {
   // 진행
   private entities: Entity[] = [];
   private speed = SPEED.start;
+  /** 달리기 속도 배율 (SPEED.start 기준) — 20초마다 조금씩 오름, 단계별 하한·상한 */
+  private speedMul = 1;
+  private speedStepT = 0;
   private elapsed = 0;
   private distance = 0;
   private distToNext = 0;
@@ -190,6 +202,8 @@ export class GameScene extends Phaser.Scene {
     this.heartIcons = [];
     this.speed = SPEED.start;
     this.elapsed = 0;
+    this.speedStepT = 0;
+    this.speedMul = 1;
     this.distance = 0;
     this.distToNext = 140;
     this.score = 0;
@@ -203,6 +217,8 @@ export class GameScene extends Phaser.Scene {
     this.squash = 1;
     this.exprFrame = -1;
     this.exprUntil = 0;
+    this.hurtUntil = 0;
+    this.hurtKick = 0;
     // 게임 오버 후 규칙: 한 판 = 한 번의 성장 여정 → 다시하기는 항상 갓난아기부터 (GROWTH_ON_GAME_OVER)
     this.growth.reset();
     this.stageMgr.reset();
@@ -617,7 +633,17 @@ export class GameScene extends Phaser.Scene {
       this.speed += (SPEED.start - this.speed) * Math.min(1, dt * 2);
     } else if (this.state === 'playing') {
       this.elapsed += dt;
-      this.speed = Math.min(SPEED.max, SPEED.start + SPEED.accel * this.elapsed);
+      // 오래 달릴수록 조금씩 빨라짐: SPEED.stepSec 마다 +3%(1·2단계) / +5%(3·4단계), 단계별 하한·상한 (보스전 시간은 세지 않음)
+      const si = this.growth.stageIndex;
+      this.speedStepT += dt;
+      if (this.speedStepT >= SPEED.stepSec) {
+        this.speedStepT -= SPEED.stepSec;
+        this.speedMul += si >= 2 ? SPEED.stepLate : SPEED.stepEarly;
+      }
+      this.speedMul = Phaser.Math.Clamp(this.speedMul, SPEED.stageFloor[si], SPEED.stageCap[si]);
+      // 목표 속도로 부드럽게 (갑자기 휙 빨라지지 않게 약 1초)
+      const target = SPEED.start * this.speedMul;
+      this.speed += (target - this.speed) * Math.min(1, dt * 1.2);
     } else if (this.state === 'cleared') {
       this.speed = SPEED.start * 0.8;
     } else if (this.state === 'dead') {
@@ -684,7 +710,18 @@ export class GameScene extends Phaser.Scene {
     // 머리카락 부메랑을 던진 동안은 머리카락이 빠진 그림 (-bald)
     const bald = this.isBald();
     const wantAnim = (this.grounded ? this.vis.runAnim : this.vis.jumpAnim) + (bald ? '-bald' : '');
-    if (this.exprFrame >= 0) {
+    if (time < this.hurtUntil && this.textures.exists(`hurt-${this.vis.id}`)) {
+      // 아파! 표정 (같은 단계·같은 포즈 그림에 얼굴만 찡그림) — 처음 0.26초는 머리카락이 흔들
+      if (this.player.anims.isPlaying) this.player.anims.stop();
+      const t = time - this.hurtAt;
+      const jig = t < 260 ? Math.floor(t / 65) % 2 : 0;
+      this.player.setTexture(`hurt-${this.vis.id}`, (bald ? 2 : 0) + jig);
+    } else if (this.hurtUntil > 0) {
+      // 끝나면 지금 상태(달리기/점프)로 복귀
+      this.hurtUntil = 0;
+      this.exprFrame = -1;
+      this.player.play(wantAnim);
+    } else if (this.exprFrame >= 0) {
       if (time < this.exprUntil) {
         // 표정 연출 중: 그림만 바꾸고 위치·물리·충돌 박스는 그대로
         if (this.player.anims.isPlaying) this.player.anims.stop();
@@ -747,8 +784,9 @@ export class GameScene extends Phaser.Scene {
       feetY = snap(nestBottom - (NEST_H - NEST_SINK - 1) * nsy + this.babyOff);
       this.player.setPosition(snap(this.playerX + shakeX), feetY - halfH);
     } else {
-      this.player.setPosition(this.playerX, feetY - halfH);
+      this.player.setPosition(snap(this.playerX - this.hurtKick * 4), feetY - halfH);
     }
+    this.hurtKick = Math.max(0, this.hurtKick - dt / 0.3);
 
     if (nest) feetY = snap(this.groundY - this.alt); // 화면 위 여유 계산은 둥지 기준
     // 아주 높은 더블 점프로 머리가 화면 위로 나가면, 그만큼만 카메라를 살짝 올림 (물리·판정은 그대로)
@@ -761,7 +799,7 @@ export class GameScene extends Phaser.Scene {
     this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * shadowW, 1);
 
     // 무적 깜빡임
-    if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 80) % 2 ? 0.35 : 1);
+    if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 110) % 2 ? 0.55 : 1); // 은은하게
     else this.player.setAlpha(1);
   }
 
@@ -929,6 +967,14 @@ export class GameScene extends Phaser.Scene {
       e.x -= move + (e.vx ?? 0) * dt;
       if (e.done) continue;
       if (e.type === 'monster') this.updateMonster(e, dt, time);
+      if (e.follow) {
+        if (e.follow.done) {
+          e.done = true;
+          e.sprite.destroy();
+          continue;
+        }
+        e.x = e.follow.x + (e.fxOff ?? 0);
+      }
       if (e.life !== undefined) {
         e.life -= dt;
         if (e.life < 0.4) e.sprite.setAlpha(Math.max(0, e.life / 0.4));
@@ -942,16 +988,19 @@ export class GameScene extends Phaser.Scene {
       if (e.age !== undefined) {
         e.age += dt;
         const spr = e.sprite as unknown as Phaser.GameObjects.Sprite;
-        if (e.type === 'mshot') spr.setFrame(Math.floor(e.age / 0.07) % 4); // 지폐 빙글빙글
-        else if (e.type === 'cloud') {
-          // 팡! 작게 → 뭉게 → 크게 퍼진 뒤 살짝 둥실
-          spr.setFrame(e.age < 0.1 ? 0 : e.age < 0.26 ? 1 : 2);
-          if (e.age >= 0.26) bob = Math.round(Math.sin(e.age * 5)) ;
-        }
+        if (e.type === 'mshot') {
+          // 현금다발: 반듯 ↔ 기울어짐 번갈아 (흔들흔들) + 살짝 출렁
+          spr.setFrame(Math.floor(e.age / 0.12) % 2);
+          bob = Math.round(Math.sin(e.age * 14));
+        } else if (e.type === 'cloud') {
+          // 팡! 작게 → 부풀어 오름 → 크게 뭉게뭉게(끓듯이 두 장 번갈아)
+          spr.setFrame(e.age < 0.08 ? 0 : e.age < 0.22 ? 1 : 2 + (Math.floor(e.age / 0.25) % 2));
+        } else if (e.type === 'fx' && spr.texture.key === 'mon-pop') spr.setFrame(e.age < 0.09 ? 0 : 1);
+        else if (e.type === 'fx' && e.age < 0.15) bob = 2 - Math.round(e.age / 0.075); // 돈가방 '짠'
       }
       e.sprite.setPosition(Math.round(e.x * VIEW.renderScale) / VIEW.renderScale, Math.round(this.groundY - e.alt + bob));
 
-      if (this.state === 'playing') {
+      if (this.state === 'playing' && e.type !== 'fx') {
         const left = e.x - e.w / 2;
         const right = e.x + e.w / 2;
         const bottom = e.alt;
@@ -959,15 +1008,7 @@ export class GameScene extends Phaser.Scene {
         if (right > p.left && left < p.right && top > p.bottom && bottom < p.top) {
           if (e.type === 'snack') this.collect(e);
           else if (e.type === 'rock') this.hitRock(e);
-          else if (!e.hit && this.shieldOn && (e.type === 'mshot' || e.type === 'cloud')) {
-            // 방패로 막음: 지폐는 튕겨 사라지고, 구름은 이번엔 안 아픔
-            e.hit = true;
-            this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x, this.groundY - e.alt - e.h / 2);
-            if (e.type === 'mshot') {
-              e.done = true;
-              e.sprite.destroy();
-            }
-          } else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
+          else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
             if (e.type === 'mshot') {
               e.done = true;
               e.sprite.destroy();
@@ -1004,7 +1045,7 @@ export class GameScene extends Phaser.Scene {
     const sprite = this.add.image(x, 0, `mon-${kind}`, 0).setOrigin(0.5, 1).setDepth(6);
     this.spawned++;
     this.sinceMonster = 0;
-    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.8, tele: 0, flash: 0, id: this.monsterSeq++, burst: 0, burstT: 0 } });
+    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.8, tele: 0, flash: 0, id: this.monsterSeq++, burst: 0, burstT: 0, post: 0 } });
   }
 
   private updateMonster(e: Entity, dt: number, time: number): void {
@@ -1012,47 +1053,74 @@ export class GameScene extends Phaser.Scene {
     const d = MONSTERS[m.kind];
     const dx = e.x - this.playerX;
     const onScreen = e.x < this.W - 6;
+    const stopped = m.tele > 0 || m.post > 0;
     // 이동 (vx = 땅 흐름보다 더 왼쪽으로 가는 속도 → 화면 속도 = -(speed + vx))
-    //   화면 밖: 빨리 들어옴 · 화면 안: 고나 쪽으로 계속 천천히 (예고 때만 잠깐 멈춤) · 고나를 지나치면 땅과 함께 지나감
-    const approach = Math.max(d.approach, (this.W - this.playerX) / d.travelSec);
-    if (m.tele > 0) e.vx = -this.speed;
+    //   화면 밖: 빨리 들어옴 · 화면 안: 고나 쪽으로 계속 천천히 · 예고·뀐 직후만 잠깐 멈춤
+    //   안경잽이는 현금다발을 쏘는 동안에도 조금씩(절반 속도) 다가옴 · 고나를 지나치면 땅과 함께 지나감
+    const approach = Math.max(d.approach, (this.W - this.playerX) / d.travelSec) * (m.burst > 0 ? 0.5 : 1);
+    if (stopped) e.vx = -this.speed;
     else if (!onScreen) e.vx = d.walk;
     else if (dx < -4) e.vx = 0;
     else e.vx = approach - this.speed;
     // 그림: 걷기 2프레임(아저씨는 배가 출렁) · 예고 프레임 · 맞으면 하얗게
-    const frame = m.tele > 0 ? 2 : Math.floor(time / (m.kind === 'farter' ? 260 : 200)) % 2;
-    e.sprite.setFrame(frame);
+    let frame = Math.floor(time / (m.kind === 'farter' ? 260 : 200)) % 2;
+    if (m.kind === 'glasses' && (m.tele > 0 || m.burst > 0)) frame = 2; // 안경 번쩍
+    if (m.kind === 'farter') {
+      if (m.tele > 0) {
+        // 엉덩이 뒤로 쭉(0.35초) → 씰룩 씰룩
+        const t = d.telegraph - m.tele;
+        frame = t < 0.35 ? 2 : 2 + (Math.floor((t - 0.35) / 0.1) % 2);
+      } else if (m.post > 0) frame = 4; // 능청스러운 만족 표정
+    }
+    const total = e.sprite.texture.frameTotal - 1;
+    e.sprite.setFrame(Math.min(frame, total - 1));
     if (m.flash > 0) {
       m.flash -= dt;
       e.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
       if (m.flash <= 0) e.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
     }
     if (this.state !== 'playing' || this.battle) return;
-    // 강화 패턴: 지폐 2장째
+    if (m.post > 0) {
+      m.post -= dt;
+      return;
+    }
+    // 현금다발 연속 발사 (뽑! 뽑! 뽑!)
     if (m.burst > 0) {
       m.burstT -= dt;
       if (m.burstT <= 0) {
         m.burst--;
-        this.fireBill(e);
+        m.burstT = 0.8;
+        this.fireCash(e);
       }
+      return;
     }
-    // 공격 예고(안경 반짝 / 엉덩이 뒤로) 동안 잠깐 멈춤 → 공격
+    // 공격 예고(안경 번쩍 / 엉덩이 내밀기) 동안 멈춤 → 공격
     if (m.tele > 0) {
       m.tele -= dt;
       if (m.tele <= 0) this.monsterAttack(e);
       return;
     }
     m.cd -= dt;
-    if (!onScreen || dx < d.minDist || m.burst > 0) return;
+    if (!onScreen || dx < d.minDist) return;
     // 고나와 몬스터 사이에 바위·다른 공격이 있으면 쏘지 않음 (한 번에 못 피하는 상황 방지)
     const blocked = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud') && o.x > this.playerX - 10 && o.x < e.x);
     if (m.cd <= 0 && !blocked) {
       m.tele = d.telegraph;
       if (m.kind === 'glasses') {
+        // 안경 번쩍 + 앞에 돈가방 '짠'
         sound.boing();
-        this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x - 4, this.groundY - 12);
+        this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x - 4, this.groundY - 14);
+        this.addFx('mon-bag', e, -12, 0, d.telegraph + 0.8 * (d.burstCount - 1) + 0.4);
       }
     }
+  }
+
+  /** 연출용 그림 (충돌 없음 · 대상을 따라다니고 대상이 사라지면 같이 사라짐) */
+  private addFx(tex: string, follow: Entity, off: number, alt: number, life: number): Entity {
+    const sprite = this.add.sprite(follow.x + off, 0, tex, 0).setOrigin(0.5, 1).setDepth(6.4);
+    const fx: Entity = { sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'fx', x: follow.x + off, alt, w: 1, h: 1, phase: 0, done: false, vx: 0, life, age: 0, hit: true, follow, fxOff: off };
+    this.entities.push(fx);
+    return fx;
   }
 
   private monsterAttack(e: Entity): void {
@@ -1063,31 +1131,31 @@ export class GameScene extends Phaser.Scene {
     const near = Phaser.Math.Clamp(1 - (e.x - this.playerX - d.minDist) / span, 0, 1);
     m.cd = d.cooldownFar + (d.cooldownNear - d.cooldownFar) * near;
     if (m.kind === 'glasses') {
-      // 지폐 1장 (강화: 0.32초 뒤 1장 더)
-      this.fireBill(e);
-      const chance = d.doubleChance[this.growth.stageIndex >= 3 ? 1 : 0];
-      if (Math.random() < chance) {
-        m.burst = 1;
-        m.burstT = 0.32;
-      }
+      // 현금다발 3개 연속 (0.8초 간격 — 하나씩 점프로 넘을 수 있게)
+      this.fireCash(e);
+      m.burst = d.burstCount - 1;
+      m.burstT = 0.8;
     } else {
-      // 더러운 공기 팡! — 엉덩이(뒤쪽)에서 터져 땅에 잠시 남음 → 땅이 흐르며 고나 쪽으로 (점프·방패)
+      // 더러운 공기 팡! — 반드시 엉덩이(몸 뒤쪽 아래)에서 터짐 → 황록 구름이 부풀며 고나 쪽으로 퍼짐
       sound.fart();
-      const x = e.x + 10;
-      const sprite = this.add.sprite(x, 0, 'mon-cloud', 0).setOrigin(0.5, 1).setDepth(6.5);
-      this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'cloud', x, alt: 0, w: 17, h: 12, phase: 0, done: false, vx: 0, life: 3.0, dmg: d.shotDamage, age: 0 });
-      this.dustEmitter.explode(perf.low ? 2 : 5, x + 4, this.groundY - 6);
+      const buttX = e.x + 8;
+      const sprite = this.add.sprite(buttX, 0, 'mon-cloud', 0).setOrigin(0.5, 1).setDepth(6.5);
+      this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'cloud', x: buttX, alt: 1, w: 18, h: 13, phase: 0, done: false, vx: 16, life: 3.0, dmg: d.shotDamage, age: 0 });
+      const pop = this.addFx('mon-pop', e, 10, 3, 0.22);
+      pop.follow = undefined; // 터진 자리에 남음
+      this.dustEmitter.explode(perf.low ? 2 : 4, buttX + 3, this.groundY - 6);
+      m.post = 0.7;
     }
   }
 
-  /** 안경잽이몹 지폐: 낮게 빙글빙글 날아옴 → 점프·방패 (부메랑으로 부술 수도 있음) */
-  private fireBill(e: Entity): void {
+  /** 안경잽이몹 현금다발: 돈가방에서 '뽑!' 낮게 날아옴 → 점프 (부메랑으로 부술 수도 있음). 그림은 크지만 충돌은 작게 */
+  private fireCash(e: Entity): void {
     if (e.done) return;
     const d = MONSTERS.glasses;
-    sound.throw();
-    const x = e.x - 9;
-    const sprite = this.add.sprite(x, 0, 'mon-bill', 0).setOrigin(0.5, 1).setDepth(6.5);
-    this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'mshot', x, alt: 4, w: 11, h: 8, phase: 0, done: false, vx: 48, dmg: d.shotDamage, age: 0 });
+    sound.cashPop();
+    const x = e.x - 14;
+    const sprite = this.add.sprite(x, 0, 'mon-cash', 0).setOrigin(0.5, 1).setDepth(6.5);
+    this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'mshot', x, alt: 3, w: 12, h: 8, phase: 0, done: false, vx: 40, dmg: d.shotDamage, age: 0 });
   }
 
   /** 부메랑에 맞음 → 체력 -1, 0 이면 처치 (점수·필살 게이지·간식) */
@@ -1182,9 +1250,9 @@ export class GameScene extends Phaser.Scene {
 
   // ───────────────────────── 보스전 체력 · 방패 ─────────────────────────
 
-  /** 방패: 보스전 + (뽀뽀괴물을 이긴 뒤) 일반 스테이지 — 몬스터 공격용. 바위는 막지 않음(점프 장애물) */
+  /** 방패: 보스전 전용 (일반 스테이지에선 버튼도 입력도 없음) */
   private get shieldOn(): boolean {
-    return (!!this.battle || this.canThrow) && this.time.now < this.shieldUntil;
+    return !!this.battle && this.time.now < this.shieldUntil;
   }
 
   /**
@@ -1206,13 +1274,17 @@ export class GameScene extends Phaser.Scene {
    */
   private hurtHp(damage: number, source = '?'): boolean {
     if (this.state !== 'playing') return false;
-    if (this.shieldOn && source !== 'rock') return false;
+    if (this.shieldOn) return false;
     if (this.time.now < this.invincibleUntil) return false;
     this.damageLog.push(`${source}:${damage}`);
     if (this.damageLog.length > 60) this.damageLog.shift();
     this.hp = Math.max(0, this.hp - damage);
     sound.hit();
-    this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
+    // 아파! — 단계별 찡그린 표정 0.5초 + 움찔(찌그러짐) + 살짝 뒤로 밀림 + 머리카락 흔들
+    this.hurtUntil = this.time.now + 500;
+    this.hurtAt = this.time.now;
+    this.hurtKick = 1;
+    this.squash = 0.8;
     this.floatText(`-${damage}`, this.playerX, this.player.y - this.player.displayHeight / 2 - 4, '#ff8f8f');
     if (this.inNest) {
       this.nestShake = 0.35; // 둥지가 덜컹
@@ -1240,8 +1312,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 방패 버튼: 고나 앞에 1초 동안 반투명 방패 */
   private raiseShield(): void {
-    if (this.state !== 'playing') return;
-    if (this.battle ? this.battle.frozen || this.battle.mode === 'victory' : !this.canThrow) return;
+    if (!this.battle || this.state !== 'playing' || this.battle.frozen || this.battle.mode === 'victory') return;
     if (this.time.now < this.shieldReadyAt) return;
     this.shieldUntil = this.time.now + SHIELD.activeMs;
     this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
@@ -1501,12 +1572,31 @@ export class GameScene extends Phaser.Scene {
         addSheet(this, key, sh.canvas, sh.fw, sh.fh);
       }
     }
-    if (!tm.exists('mon-bill')) addSheet(this, 'mon-bill', billSheet(), BILL_FRAME.w, BILL_FRAME.h);
+    // 보스 필살기 전용 도트 (한 번 만들어 재사용)
+    if (!tm.exists('sp-heart')) addCanvas(this, 'sp-heart', royalHeart());
+    if (!tm.exists('sp-ring-pink')) addCanvas(this, 'sp-ring-pink', auraRing('#ff5fa2', '#ffd0e6'));
+    if (!tm.exists('sp-ring-green')) addCanvas(this, 'sp-ring-green', auraRing('#a8d040', '#efffb0'));
+    if (!tm.exists('sp-tornado')) addSheet(this, 'sp-tornado', tornadoSheet(), TORNADO_FRAME.w, TORNADO_FRAME.h);
+    if (!tm.exists('sp-leaf')) addCanvas(this, 'sp-leaf', leaf());
+    if (!tm.exists('sp-safe')) addCanvas(this, 'sp-safe', safeMark());
+    if (!tm.exists('mon-cash')) addSheet(this, 'mon-cash', cashSheet(), CASH_FRAME.w, CASH_FRAME.h);
+    if (!tm.exists('mon-bag')) addCanvas(this, 'mon-bag', moneyBag());
+    if (!tm.exists('mon-pop')) addSheet(this, 'mon-pop', popSheet(), POP_FRAME.w, POP_FRAME.h);
     if (!tm.exists('boss-star')) addCanvas(this, 'boss-star', dizzyStar());
     if (!tm.exists('boss-arrow')) addCanvas(this, 'boss-arrow', pathArrow('#ff6f9f'));
     if (!tm.exists('boss-wind')) addCanvas(this, 'boss-wind', pathArrow('#f0ffc8', '#3c5a14'));
     if (!tm.exists('mon-cloud')) addSheet(this, 'mon-cloud', fartCloudSheet(), CLOUD_FRAME.w, CLOUD_FRAME.h);
 
+    for (const v of Object.values(this.visuals)) {
+      const key = `hurt-${v.id}`;
+      if (tm.exists(key)) continue;
+      const base = this.frameCanvas(v.texture, v.runFrames[0]);
+      const bald = v.id === 'newborn' ? base : removeHair(base);
+      const frames = [hurtFace(base, -1), hurtFace(base, 1), hurtFace(bald, 0), hurtFace(bald, 0)];
+      const pc = new PixelCanvas(base.width * 4, base.height);
+      frames.forEach((f, i) => pc.ctx.drawImage(f, i * base.width, 0));
+      addSheet(this, key, pc.canvas, base.width, base.height);
+    }
     const done = new Set<string>();
     for (const v of Object.values(this.visuals)) {
       if (v.id === 'newborn' || done.has(v.texture)) continue;
@@ -1758,7 +1848,7 @@ export class GameScene extends Phaser.Scene {
     this.specialCarry = 0;
     // 화면의 몬스터·투사체는 퇴장
     for (const e of this.entities) {
-      if (!e.done && (e.type === 'monster' || e.type === 'mshot' || e.type === 'cloud')) {
+      if (!e.done && (e.type === 'monster' || e.type === 'mshot' || e.type === 'cloud' || e.type === 'fx')) {
         e.done = true;
         this.tweens.add({ targets: e.sprite, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
       }
@@ -1825,7 +1915,7 @@ export class GameScene extends Phaser.Scene {
     const enabled = this.state === 'playing' && !b?.frozen && b?.mode !== 'victory' && b?.mode !== 'done';
     const attack: AttackState = mode === 'none' ? 'hidden' : !this.canThrow ? 'locked' : this.boomerang.isOut ? 'out' : 'ready';
     const now = this.time.now;
-    const shield: CombatHud['shield'] = mode === 'none' ? 'hidden' : now < this.shieldUntil ? 'active' : now < this.shieldReadyAt ? 'cool' : 'ready';
+    const shield: CombatHud['shield'] = !b ? 'hidden' : now < this.shieldUntil ? 'active' : now < this.shieldReadyAt ? 'cool' : 'ready';
     const hud: CombatHud = {
       mode,
       enabled,

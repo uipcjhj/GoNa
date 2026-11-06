@@ -40,7 +40,7 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   const isRun = (f) => info.run.map(String).includes(String(f)) || String(f) === String(info.idle);
   check(`${label}: game started`, info.state === 'playing', `${info.stage} ${JSON.stringify(info.run)}`);
   await ev((sc) => { sc.distToNext = 1e9; sc.entities.forEach(e => { e.sprite.destroy(); }); sc.entities = []; });
-  const frame = () => ev((sc) => ({ f: sc.player.frame.name, y: sc.player.y, alt: sc.alt, score: sc.score, hearts: sc.hearts, hp: sc.hp, inv: sc.invincibleUntil - sc.time.now, grounded: sc.grounded }));
+  const frame = () => ev((sc) => ({ tex: sc.player.texture.key, f: sc.player.frame.name, y: sc.player.y, alt: sc.alt, score: sc.score, hearts: sc.hearts, hp: sc.hp, inv: sc.invincibleUntil - sc.time.now, grounded: sc.grounded }));
 
   // 간식 획득 + 점수
   for (const [kind, pts] of [['strawberry', 10], ['banana', 20], ['cookie', 30]]) {
@@ -90,7 +90,9 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   check(`${label}: no damage while invincible`, (await frame()).hp === r.hp, `hp ${(await frame()).hp}`);
   await page.waitForTimeout(120);
   const sface = await frame();
-  if (info.sur >= 0) { check(`${label}: surprised face on hit`, String(sface.f) === String(info.sur), `frame ${sface.f}`); await page.screenshot({ path: `${S}/t5-${label}-surprised.png` }); }
+  // 맞으면 (예전 '놀람' 대신) 같은 단계 그림의 '아파!' 찡그린 표정
+  check(`${label}: hurt face on hit`, String(sface.tex).startsWith('hurt-'), `tex ${sface.tex}#${sface.f}`);
+  await page.screenshot({ path: `${S}/t5-${label}-hurt.png` });
   await page.waitForTimeout(300);
   const r3 = await frame();
   check(`${label}: back to run after surprised`, isRun(r3.f) || !r3.grounded, `frame ${r3.f}`);
@@ -396,7 +398,10 @@ async function bossTests(label, device) {
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
   // (필살 버튼은 평소에도 보임 — 몬스터 처치로 모은 게이지를 다음 보스전으로)
-  check(`${label}: boss UI hidden after battle (boss bar gone; attack + shield stay for monsters)`, !(await page.locator('.boss-bar').isVisible()) && (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()));
+  check(`${label}: boss UI hidden after battle (boss bar · shield · special gone, attack stays)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && !(await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-attack').isVisible()));
+  // 일반 스테이지: 방패·필살 입력도 꺼짐 (버튼 숨김뿐 아니라)
+  const sh0 = await G(() => { const g = window.__gona.scene.getScene('Game'); const { bus } = window; g.raiseShield(); return { shieldOn: g.shieldOn, special: g.debugBattle() }; });
+  check(`${label}: shield input ignored outside boss fights`, sh0.shieldOn === false && sh0.special === null, JSON.stringify(sh0));
   // 평소 달리기: 부메랑은 바위를 통과 (깨지지 않음 · 점수·필살 게이지 그대로)
   const st0 = await G(() => { const sc = window.__gona.scene.getScene('Game'); return { score: sc.score, carry: sc.specialCarry, throws: sc.boomerang.throws }; });
   await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.debugGod(); sc.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); sc.entities = []; sc.addRock(sc.playerX + 60); sc.distToNext = 9999; });
@@ -640,11 +645,30 @@ async function featureTests(label, device) {
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.invincibleUntil = 0; g.addMonster('glasses', g.W + 5); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'mshot'), null, { timeout: 8000 }).catch(() => {});
   const shotDist = await G(() => { const g = window.__gona.scene.getScene('Game'); const sh = g.entities.find((e) => !e.done && e.type === 'mshot'); return sh ? Math.round(sh.x - g.playerX) : -1; });
-  check(`${label}: glasses fires a dodgeable shot from distance`, shotDist > 70, `shot at +${shotDist}px`);
+  check(`${label}: glasses fires a dodgeable cash bundle from distance`, shotDist > 70, `shot at +${shotDist}px`);
+  // 현금다발 3개 연속 (돈가방에서 뽑! 뽑! 뽑!) — 그림은 크지만 판정은 작게
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); window.__cash = 0; const seen = new Set(); g.events.on('postupdate', window.__cashFn = () => { for (const e of g.entities) if (e.type === 'mshot' && !seen.has(e)) { seen.add(e); window.__cash++; window.__cashTex = e.sprite.texture.key; window.__cashBox = [e.w, e.h, e.sprite.displayWidth]; } }); });
+  await page.waitForTimeout(2200);
+  const cash = await G(() => { window.__gona.scene.getScene('Game').events.off('postupdate', window.__cashFn); return { n: window.__cash, tex: window.__cashTex, box: window.__cashBox }; });
+  check(`${label}: glasses fires 3 cash bundles in a row (big sprite, small hitbox)`, cash.n >= 2 && cash.tex === 'mon-cash' && cash.box[2] > cash.box[0] * 1.5, JSON.stringify(cash));
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.invincibleUntil = 0; });
   const k0 = await G(() => window.__gona.scene.getScene('Game').kills);
   // (몬스터는 화면 오른쪽에서 걸어 들어옴 — 부메랑 사거리에 올 때까지 계속 던짐)
   for (let i = 0; i < 30; i++) { if (!(await G(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'monster')))) break; await page.keyboard.press('KeyX'); await page.waitForTimeout(500); }
   const kd = await G(() => { const g = window.__gona.scene.getScene('Game'); return { kills: g.kills, special: g.specialCarry, score: g.score }; });
+  // 배불뚝이 아저씨: 엉덩이(몸 뒤쪽)에서 방귀 구름
+  const fart = await G(() => new Promise((res) => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.addMonster('farter', g.W - 30);
+    const m = g.entities.find((e) => e.type === 'monster'); m.mon.cd = 0;
+    const fn = () => { const c = g.entities.find((e) => e.type === 'cloud'); if (c) { g.events.off('postupdate', fn); res({ relX: Math.round((c.x - m.x) * 10) / 10, frame: m.sprite.frame.name, alt: c.alt }); } };
+    g.events.on('postupdate', fn); setTimeout(() => { g.events.off('postupdate', fn); res(null); }, 6000); }));
+  check(`${label}: uncle farts from his butt (cloud spawns behind, not face)`, !!fart && fart.relX > 0, JSON.stringify(fart));
+  // 고나 아파! 표정: 4단계 모두 전용 프레임이 있고, 맞으면 같은 단계 그림의 찡그린 표정 → 0.5초 뒤 원래대로
+  const hurt = await G(() => new Promise((res) => { const g = window.__gona.scene.getScene('Game'); const ids = ['newborn', 'crawler', 'walker', 'bigbaby'];
+    const tex = ids.map((id) => g.textures.exists(`hurt-${id}`) && g.textures.get(`hurt-${id}`).frameTotal - 1 === 4);
+    g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.distToNext = 1e9; g.sinceMonster = -1e9;
+    g.debugGod(false); g.invincibleUntil = 0; g.hearts = 3; g.hp = 100; g.hurtHp(10, 'test');
+    setTimeout(() => { const a = g.player.texture.key; setTimeout(() => res({ tex, during: a, after: g.player.texture.key, stage: g.vis.id }), 650); }, 120); }));
+  check(`${label}: GONA hurt face for all 4 stages, shown on hit then restored`, hurt.tex.every(Boolean) && hurt.during === `hurt-${hurt.stage}` && !hurt.after.startsWith('hurt-'), JSON.stringify(hurt));
   check(`${label}: boomerang kills monster → score + special gauge`, kd.kills > k0 && kd.special > 0, JSON.stringify(kd));
   // 체크포인트
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.boomerangAwake = true; g.debugStartBoss('kiss'); });

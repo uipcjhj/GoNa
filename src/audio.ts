@@ -648,6 +648,28 @@ class Sound {
     this.noise(0.22, 0.45, 0, 'lowpass', 700);
     this.tone(140, 0.2, 'sine', 0.25, 0, 80);
   }
+  /** 보스 필살기 예고: 긴장감 있게 차오르는 소리 (sec 초) */
+  specialCharge(sec = 1.4): void {
+    if (this.sfxFile('warn')) return;
+    this.tone(160, sec, 'sawtooth', 0.14, 0, 640);
+    this.tone(240, sec, 'square', 0.08, 0.05, 960);
+    this.noise(sec, 0.22, 0, 'bandpass', 1400);
+  }
+  /** 보스 필살기 발동: 쾅 + 휘잉 */
+  specialBlast(): void {
+    if (this.sfxFile('bossDown')) return;
+    this.tone(90, 0.45, 'sine', 0.45, 0, 40);
+    this.tone(180, 0.25, 'square', 0.18, 0, 70);
+    this.noise(0.5, 0.55, 0, 'lowpass', 900);
+    this.noise(0.35, 0.25, 0.08, 'highpass', 2500);
+  }
+  /** 안경잽이몹 현금다발 '뽑!' — 짧고 통통 튀는 소리 (현금다발마다) */
+  cashPop(): void {
+    if (this.sfxFile('boing')) return;
+    this.tone(660, 0.07, 'square', 0.16, 0, 990);
+    this.tone(1320, 0.05, 'triangle', 0.12, 0.04);
+    this.noise(0.05, 0.18, 0, 'highpass', 3000);
+  }
   /** 배불뚝이 아저씨몹 방귀 '뿌웅' — 짧고 우스꽝스럽게 (낮은 부르릉 + 피식 바람) */
   fart(): void {
     if (this.sfxFile('fart')) return;

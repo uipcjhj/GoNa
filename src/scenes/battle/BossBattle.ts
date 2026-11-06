@@ -12,6 +12,7 @@
 import Phaser from 'phaser';
 import { bus, EV, type BannerInfo, type BossId } from '../../events';
 import { sound } from '../../audio';
+import { perf } from '../../perf';
 import { BOSSES, SPECIAL_GAIN, type BossDef } from '../../game/boss';
 import type { SnackKind } from '../../config';
 import { circleRect, type BattleHost, type Rect } from './types';
@@ -48,6 +49,8 @@ export interface Hostile {
   dmg: number;
   /** 땅에 닿으면 (포물선 탄 → 장판) */
   onLand: ((h: Hostile) => void) | null;
+  /** 고나에게 맞거나 방패에 막혔을 때 (필살기 충격 연출) */
+  onHit?: ((h: Hostile, blocked: boolean) => void) | null;
   dead: boolean;
 }
 
@@ -547,6 +550,7 @@ export abstract class BossBattle {
         if (blocked) {
           h.hitPlayer = true;
           this.host.onShieldBlock(h.x, h.y);
+          h.onHit?.(h, true);
           this.gain(SPECIAL_GAIN.dodge);
           if (!h.pierce) this.pop(h);
           continue;
@@ -560,6 +564,7 @@ export abstract class BossBattle {
             : h.x - h.w / 2 < p.x1 && h.x + h.w / 2 > p.x0 && h.y - h.h / 2 < p.y1 && h.y + h.h / 2 > p.y0;
         if (hit && this.host.hurtPlayer(h.dmg, h.sprite.texture.key)) {
           h.hitPlayer = true;
+          h.onHit?.(h, false);
           if (!h.pierce) this.pop(h);
         }
       }
@@ -658,6 +663,45 @@ export abstract class BossBattle {
     return true;
   }
 
+  // ───────────────────────── 보스 필살기 공통 연출 ─────────────────────────
+
+  /**
+   * 필살기 예고 (sec 초): 화면이 어두워지고(보스만 밝게), 보스 주위에 오라 고리가 맥박치듯 퍼지고, 긴장되는 소리가 차오름.
+   * 오라 고리는 미리 만든 도트 1장(fx 등록 → 정리 보장).
+   */
+  protected specialTelegraph(ring: string, sec: number): void {
+    const scene = this.host.scene;
+    scene.tweens.killTweensOf(this.dim);
+    scene.tweens.add({ targets: this.dim, fillAlpha: 0.4, duration: 280 });
+    this.boss.setDepth(9.7);
+    sound.specialCharge(sec);
+    const r = this.bossRect();
+    const aura = this.fx(scene.add.image((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, ring).setDepth(9.65).setScale(1.4).setAlpha(0.95));
+    scene.tweens.add({ targets: aura, scale: 2.8, alpha: 0.15, duration: 450, repeat: Math.max(0, Math.ceil(sec / 0.45) - 1) });
+    this.after(sec, () => aura.destroy(), true);
+  }
+
+  /** 필살기 발동 순간: 화면 원래대로 + 색 번쩍 + 아주 짧은 흔들림 + 쾅 */
+  protected specialRelease(rgb: [number, number, number]): void {
+    const scene = this.host.scene;
+    scene.tweens.killTweensOf(this.dim);
+    scene.tweens.add({ targets: this.dim, fillAlpha: 0, duration: 160 });
+    this.boss.setDepth(8);
+    scene.cameras.main.flash(220, rgb[0], rgb[1], rgb[2]);
+    scene.cameras.main.shake(150, 0.012);
+    sound.specialBlast();
+  }
+
+  /** 필살기 타격 (고나에게 맞음/방패에 막힘): 강한 충격 + 파편 한 번 (개수 제한) */
+  protected specialImpact(x: number, y: number, tex: string, rgb: [number, number, number], blocked: boolean): void {
+    const scene = this.host.scene;
+    scene.cameras.main.shake(blocked ? 140 : 240, blocked ? 0.01 : 0.018);
+    if (!blocked) scene.cameras.main.flash(160, rgb[0], rgb[1], rgb[2]);
+    const burst = this.fx(scene.add.particles(x, y, tex, { speed: { min: 50, max: 140 }, lifespan: 500, scale: { start: 1.6, end: 0.4 }, alpha: { start: 1, end: 0 }, emitting: false }).setDepth(12.5));
+    burst.explode(perf.low ? 6 : 12);
+    this.after(0.7, () => burst.destroy(), true);
+  }
+
   /** 연출 (세상 멈춤) — ms 동안 fn 들이 진행되고 끝나면 전투 재개 */
   protected cutscene(sec: number, end?: () => void): void {
     this.mode = 'cutscene';
@@ -735,6 +779,7 @@ export abstract class BossBattle {
    */
   cleanupCombat(): void {
     const tw = this.host.scene.tweens;
+    if (this.boss?.active) this.boss.setDepth(8); // 필살기 예고 중(어두운 화면 위로 올림)이었으면 원래대로
     this.ai = [];
     this.cine = [];
     this.busy = true;
