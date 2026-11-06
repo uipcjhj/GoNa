@@ -13,7 +13,7 @@
  *  9 카메라가 물러나며 → 대표 타이틀
  *
  * 첫 화면은 '이야기 시작' 대기(소리는 사용자가 터치해야 켤 수 있음) → EV.prologueBegin 으로 시작.
- * 문장마다 내레이션 파일(audio.ts) 재생 + EV.prologueLine 으로 자막(ui/subtitles.ts) 표시.
+ * 문장마다 EV.prologueLine 으로 자막(ui/subtitles.ts, 한 글자씩 타이핑) 표시. 음성 내레이션은 없음(배경음악·효과음만).
  * 화면 터치 = 다음 문장(EV.prologueNext), 건너뛰기 = 바로 타이틀(EV.skipOpening).
  */
 import Phaser from 'phaser';
@@ -72,7 +72,7 @@ export class OpeningScene extends Phaser.Scene {
   private shots: Shot[] = [];
   private tracked: Tracked[] = [];
   private line = -1;
-  /** 다음 문장 타이머 — 실제 시간(setTimeout)으로: 화면이 느려져도 내레이션·자막과 맞게 */
+  /** 다음 문장 타이머 — 실제 시간(setTimeout)으로: 화면이 느려져도 자막과 맞게 */
   private nextTimer = 0;
   private begun = false;
   private done = false;
@@ -109,8 +109,6 @@ export class OpeningScene extends Phaser.Scene {
       bus.off(EV.prologueBegin, onBegin);
       bus.off(EV.prologueNext, onNext);
       clearTimeout(this.nextTimer);
-      sound.stopNarration();
-      sound.duck(false);
     });
 
     // 대기 화면: 하늘 쪽 벚꽃 숲이 천천히 흘러감
@@ -344,25 +342,13 @@ export class OpeningScene extends Phaser.Scene {
   private playLine(i: number): void {
     this.line = i;
     const l = PROLOGUE[i];
-    sound.narrate(i);
-    const nd = sound.narrationDuration(i);
-    const sec = Math.max(l.minSec, (nd ?? 0.8 + l.text.length * 0.12) + LINE_GAP);
+    // 내레이션(음성) 없음: 문장 길이로 시간 계산 (자막 타이핑 그대로)
+    const sec = Math.max(l.minSec, 0.8 + l.text.length * 0.12 + LINE_GAP);
     bus.emit(EV.prologueLine, { index: i, total: PROLOGUE.length, text: l.text, seconds: sec });
     this.shots[i].play(sec);
-    // 자동으로 다음 문장 (내레이션이 아직 나오고 있으면 끝날 때까지 기다림, 멈춰 있으면 넘어감)
-    let waited = 0;
-    let lastT = -1;
-    let still = 0;
+    // 자동으로 다음 문장
     const tick = (): void => {
       if (this.done || this.line !== i || !this.scene.isActive()) return;
-      const t = sound.narrationTime(i);
-      still = t === lastT ? still + 1 : 0;
-      lastT = t;
-      if (sound.narrationPlaying(i) && waited < 5000 && still < 4) {
-        waited += 250;
-        this.nextTimer = window.setTimeout(tick, 250);
-        return;
-      }
       this.next();
     };
     this.nextTimer = window.setTimeout(tick, sec * 1000);
@@ -373,8 +359,6 @@ export class OpeningScene extends Phaser.Scene {
     if (this.done) return;
     this.done = true;
     this.finishLine();
-    sound.stopNarration();
-    sound.duck(false);
     bus.emit(EV.prologueEnd);
     bus.emit(EV.openingDone, { instant: false });
     this.time.delayedCall(1100, () => this.scene.stop());
@@ -386,8 +370,6 @@ export class OpeningScene extends Phaser.Scene {
     this.done = true;
     this.clearTracked();
     clearTimeout(this.nextTimer);
-    sound.stopNarration();
-    sound.duck(false);
     bus.emit(EV.prologueEnd);
     bus.emit(EV.openingDone, { instant: true });
     this.scene.stop();

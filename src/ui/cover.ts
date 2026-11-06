@@ -3,60 +3,19 @@ import { perf, setPerfOverlay } from '../perf';
 import type { RestartOptions } from '../events';
 import { CHECKPOINT_LABEL, loadCheckpoint } from '../game/checkpoint';
 /**
- * 대표 타이틀 화면 — 알 부화 시네마틱이 끝나면 카메라가 물러나며 나타남.
+ * 대표 타이틀 화면 — 알 부화 스토리(OpeningScene)가 끝나면 나타남.
  *
- * 원칙: 대표 그림(art-src/title/gona-cover-original.png)은 **원본 그대로 정적으로** 씁니다.
- *   그림 속 고나·버섯을 오려내거나 뒤를 메우지 않습니다 (움직일 때 메운 자국이 드러나므로).
- *   움직임은 그림 위에 따로 얹는 것만: 폭포(같은 자리 물줄기 프레임), 반딧불, 꽃잎·잎, 구름, 버튼 반짝임.
- *
- * ▸ 세로: 위 로고(하늘 위에 따로) · 가운데 원본 장면(고나·버섯숲, 로고 아래 부분) · 아래 풀밭 위 시작 버튼
- *         남는 위·아래는 원본 색·도트 크기로 새로 그린 하늘·풀밭으로 이어 붙임
- * ▸ 가로: 원본 전체, 남는 양옆은 숲 그늘색 그라데이션 액자 (미러링·흐림 없음)
- * (레이어는 tools/build_cover_layers.py 로 생성)
+ * 그림·움직임은 ui/titleScene.ts (오프닝 4종 에셋을 레이어로: 배경 · 고나 · 곤충·과일 · 버섯·덩굴·잎 · 로고).
+ * 이 파일은 그 위의 HTML: 게임 시작 / 이어하기 버튼, 안내 문구, 소리 테스트 · 오프닝 다시 보기 · 개발 메뉴.
  */
 import { GAME_TITLE } from '../config';
 import { sound } from '../audio';
-import { el, tryLoadImage } from './dom';
-import L from './cover-layers.json';
-
-const DIR = 'assets/title/cover/';
-const [IW, IH] = L.size as [number, number];
-const P = L.portrait;
-/** 세로 구도에서 화면 가운데에 둘 원본 x (고나와 폭포 사이) */
-const PORTRAIT_CENTER_X = 790;
-const SCENE_TOP = P.cropTop;
-const SCENE_H = IH - SCENE_TOP;
-/** 그림 속 고나 위치 (카메라가 물러날 때의 중심) */
-const GONA = { x: 561, y: 548, w: 380, h: 468 };
-
-type Rect = { x: number; y: number; w: number; h: number };
-
-function img(src: string, cls: string, r?: Rect): HTMLImageElement {
-  const i = new Image();
-  i.src = DIR + src;
-  i.className = `cv-px ${cls}`;
-  i.alt = '';
-  i.draggable = false;
-  if (r) place(i, r);
-  return i;
-}
-
-function place(e: HTMLElement, r: Rect): void {
-  Object.assign(e.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
-}
+import { el } from './dom';
+import { TitleScene } from './titleScene';
 
 export class CoverScreen {
   private root: HTMLElement;
-  private cam: HTMLElement;
-  private stage: HTMLElement;
-  private scene: HTMLElement;
-  private clip: HTMLElement;
-  private sky: HTMLElement;
-  private ground: HTMLElement;
-  private clouds: HTMLElement;
-  private logoTop: HTMLImageElement;
-  private gonaMark: HTMLElement;
-  private sides: HTMLElement[] = [];
+  private title = new TitleScene();
   private ui: HTMLElement;
   private btn: HTMLButtonElement;
   private btnLabel!: HTMLSpanElement;
@@ -64,11 +23,16 @@ export class CoverScreen {
   private hint!: HTMLElement;
   private started = false;
   private shown = false;
-  private fallTimer = 0;
   /** 소리 테스트 화면 열기 (main 에서 연결) */
   onAudioTest: (() => void) | null = null;
   /** 오프닝 다시 보기 (main 에서 연결) */
   onReplay: (() => void) | null = null;
+  /**
+   * 게임 화면(Phaser) 그리기 쉬기/다시 (main 에서 연결).
+   * 타이틀이 화면을 완전히 덮고 있는 동안 뒤의 게임 캔버스를 매 프레임 그릴 필요가 없음 → 타이틀 애니메이션이 부드러워짐
+   */
+  onRenderPause: ((paused: boolean) => void) | null = null;
+  private pauseTimer = 0;
 
   constructor(
     parent: HTMLElement,
@@ -76,48 +40,6 @@ export class CoverScreen {
   ) {
     this.root = el('section', 'cover hidden');
     this.root.setAttribute('aria-label', GAME_TITLE);
-    this.stage = el('div', 'cv-stage');
-    this.clip = el('div', 'cv-clip');
-    this.scene = el('div', 'cv-scene');
-    this.sky = el('div', 'cv-sky');
-    this.ground = el('div', 'cv-ground');
-    this.logoTop = img('logo.webp', 'cv-logo-top');
-
-    // 원본 장면 (정적) + 폭포 물줄기 프레임 + 고나 위치 표시(보이지 않음)
-    Object.assign(this.scene.style, { width: `${IW}px`, height: `${IH}px` });
-    this.scene.append(img('scene.webp', 'cv-base', { x: 0, y: 0, w: IW, h: IH }));
-    const fall = el('div', 'cv-fall');
-    place(fall, L.fall);
-    for (let k = 0; k < 4; k++) fall.append(img(`fall-${k}.webp`, `cv-fall-f${k ? ' off' : ''}`, { x: 0, y: 0, w: L.fall.w, h: L.fall.h }));
-    this.scene.append(fall);
-    this.gonaMark = el('div', 'cv-gona-mark');
-    place(this.gonaMark, GONA);
-    this.scene.append(this.gonaMark);
-    this.clip.append(this.scene);
-
-    // 천천히 흘러가는 구름 (하늘에만)
-    this.clouds = el('div', 'cv-clouds');
-    for (let i = 0; i < 4; i++) {
-      const c = new Image();
-      c.src = cloudCanvas(i).toDataURL();
-      c.className = 'cv-cloud';
-      c.style.animationDuration = `${70 + i * 18}s`;
-      c.style.animationDelay = `${-i * 23}s`;
-      c.style.top = `${[8, 44, 22, 62][i]}%`;
-      this.clouds.append(c);
-    }
-    this.stage.append(this.sky, this.ground, this.clip, this.clouds, this.logoTop);
-    this.buildFireflies();
-    this.buildLeaves();
-
-    // 가로 화면 양옆 (원본 가장자리 색 띠)
-    for (const side of ['left', 'right'] as const) {
-      const s = el('div', `cv-side cv-side-${side}`);
-      // 그림 쪽은 원본 숲 색, 바깥으로 갈수록 깊은 숲 그늘 (미러링·흐림·줄무늬 없음)
-      s.style.backgroundImage = `linear-gradient(${side === 'left' ? 'to left' : 'to right'}, #cfe9b4 0%, #a9d58a 35%, #86bd6c 100%)`;
-      this.sides.push(s);
-    }
-
     this.btn = el('button', 'start-btn cover-btn');
     this.btn.type = 'button';
     this.btnLabel = el('span', '', '게임 시작');
@@ -165,10 +87,7 @@ export class CoverScreen {
       });
     }
 
-    // 사이드·무대를 한 번에 확대/축소하는 '카메라' 묶음 (알 부화 장면에서 물러나며 등장)
-    this.cam = el('div', 'cv-cam');
-    this.cam.append(...this.sides, this.stage);
-    this.root.append(this.cam, this.ui, test, replay, dev);
+    this.root.append(this.title.root, this.ui, test, replay, dev);
     // 테스트 배포(GitHub Pages)에서만: 빌드 때 VITE_BUILD_LABEL 이 주어지면 버전·커밋 표시 (평소 빌드·미리보기엔 없음)
     const buildLabel = import.meta.env.VITE_BUILD_LABEL as string | undefined;
     if (buildLabel) this.root.append(el('div', 'build-badge', buildLabel));
@@ -183,49 +102,11 @@ export class CoverScreen {
     window.addEventListener('resize', () => this.layout());
     // 앱 안 미리보기 창처럼 window 크기와 실제 보이는 크기가 다를 수 있어, 실제 요소 크기가 바뀔 때마다 다시 배치
     if ('ResizeObserver' in window) new ResizeObserver(() => this.layout()).observe(this.root);
-    void this.load();
+    void this.title.init().then(() => this.layout());
   }
 
   get isVisible(): boolean {
     return this.shown && !this.started;
-  }
-
-  private buildFireflies(): void {
-    const box = el('div', 'cv-flies');
-    for (let i = 0; i < 16; i++) {
-      const f = el('span', 'cv-fly');
-      f.style.left = `${Math.random() * 100}%`;
-      f.style.top = `${25 + Math.random() * 65}%`;
-      f.style.animationDuration = `${11 + Math.random() * 8}s, ${1.6 + Math.random() * 1.8}s`;
-      f.style.animationDelay = `${-Math.random() * 14}s, ${-Math.random() * 3}s`;
-      if (i % 3 === 0) f.classList.add('big');
-      box.append(f);
-    }
-    this.stage.append(box);
-  }
-
-  private buildLeaves(): void {
-    const box = el('div', 'cv-leaves');
-    const cols = ['#ffc8d8', '#9fd36a', '#ffe08a', '#f7a6b8', '#7fbf4a'];
-    for (let i = 0; i < 8; i++) {
-      const l = el('span', 'cv-leaf');
-      l.style.left = `${Math.random() * 100}%`;
-      l.style.background = cols[i % cols.length];
-      l.style.animationDuration = `${10 + Math.random() * 7}s`;
-      l.style.animationDelay = `${-Math.random() * 14}s`;
-      box.append(l);
-    }
-    this.stage.append(box);
-  }
-
-  private async load(): Promise<void> {
-    const base = await tryLoadImage(DIR + 'scene.webp');
-    if (base) {
-      this.sky.style.backgroundImage = `url(${DIR}sky-ext.webp)`;
-      this.ground.style.backgroundImage = `url(${DIR}ground-ext.webp)`;
-    } else {
-      this.root.classList.add('no-art');
-    }
   }
 
   /**
@@ -251,21 +132,26 @@ export class CoverScreen {
       void this.root.offsetWidth;
       requestAnimationFrame(() => this.root.classList.add('revealed'));
     }
-    if (!this.fallTimer) {
-      let k = 0;
-      const frames = this.scene.querySelectorAll<HTMLElement>('.cv-fall-f');
-      this.fallTimer = window.setInterval(() => {
-        frames[k].classList.add('off');
-        k = (k + 1) % frames.length;
-        frames[k].classList.remove('off');
-      }, 140);
-    }
+    this.title.start();
+    // 페이드인이 끝나고(알 부화 장면도 멈춘 뒤) 뒤의 게임 그리기를 쉼
+    clearTimeout(this.pauseTimer);
+    this.pauseTimer = window.setTimeout(() => {
+      if (this.isVisible) this.onRenderPause?.(true);
+    }, 1400);
   }
 
   /** 오프닝 다시 보기: 잠시 숨김 */
   hide(): void {
+    clearTimeout(this.pauseTimer);
+    this.onRenderPause?.(false);
     this.root.classList.add('hidden');
     this.shown = false;
+    this.title.stop();
+  }
+
+  /** (테스트용) 타이틀 애니메이션 상태 */
+  debugTitle(): ReturnType<TitleScene['debug']> {
+    return this.title.debug();
   }
 
   // ───────────────────────── 배치 ─────────────────────────
@@ -277,84 +163,44 @@ export class CoverScreen {
     const vh = this.root.clientHeight || window.innerHeight;
     const portrait = vw / vh < 1;
     this.root.classList.toggle('portrait', portrait);
-    if (portrait) this.layoutPortrait(vw, vh);
-    else this.layoutLandscape(vw, vh);
-  }
-
-  private layoutPortrait(vw: number, vh: number): void {
-    // 원본 장면을 보여 줄 폭: 로고+장면+풀밭이 화면 높이에 맞도록 (560~728)
-    const unitsW = Math.min(P.w - 4, Math.max(560, (vw * 1350) / vh));
-    const s = vw / unitsW;
-    const Hs = vh / s;
-    const x0 = Math.min(P.cropX0 + P.w - unitsW, Math.max(P.cropX0, PORTRAIT_CENTER_X - unitsW / 2));
+    this.root.classList.toggle('side', !portrait);
     const probe = document.createElement('div');
     probe.style.cssText =
-      'position:absolute;top:0;left:0;height:env(safe-area-inset-top);width:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);visibility:hidden';
+      'position:absolute;top:0;left:0;height:env(safe-area-inset-top);width:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);visibility:hidden';
     document.body.append(probe);
-    const inset = probe.offsetHeight;
-    const insetX = Math.max(probe.offsetWidth, 0);
+    const safe = { top: probe.offsetHeight, left: probe.offsetWidth, right: 0, bottom: 0 };
+    const cs = getComputedStyle(probe);
+    safe.right = parseFloat(cs.paddingRight) || 0;
+    safe.bottom = parseFloat(cs.paddingBottom) || 0;
     probe.remove();
-    const safeTop = Math.max(vh * 0.04, inset + 8) / s;
-
-    Object.assign(this.stage.style, { width: `${unitsW}px`, height: `${Hs}px`, transform: `scale(${s})`, left: '0px', top: '0px', background: 'rgb(150,190,238)' });
-    // 로고: 위쪽 하늘 위
-    // 세로 화면 전용 로고 크기: 보이는 폭의 80% 이하 + 양옆 최소 20px(안전 영역 포함) — 양옆 장식 잎·열매까지 절대 안 잘리게
-    // (높이는 폭에 맞춰 원본 비율 그대로)
-    const sideCss = Math.max(20, insetX + 14);
-    const logoW = Math.min(unitsW * 0.8, (vw - sideCss * 2) / s);
-    const logoH = (logoW / L.logo.w) * L.logo.h;
-    place(this.logoTop, { x: (unitsW - logoW) / 2, y: safeTop, w: logoW, h: logoH });
-    this.logoTop.style.display = '';
-    // 장면 (원본 458줄 아래): 고나 머리(원본 y≈548)가 로고 아래 오도록
-    const hairTop = GONA.y - SCENE_TOP;
-    const sceneTop = Math.max(safeTop + logoH - hairTop + 30, Hs * 0.2);
-    const groundTop = sceneTop + SCENE_H;
-    Object.assign(this.clip.style, { left: '0px', top: `${sceneTop}px`, width: `${unitsW}px`, height: `${SCENE_H}px` });
-    this.scene.style.transform = `translate(${-x0}px, ${-SCENE_TOP}px)`;
-    const extX = P.cropX0 - x0;
-    Object.assign(this.sky.style, { display: '', left: `${extX}px`, top: `${sceneTop + 1 - P.skyH}px`, width: `${P.w}px`, height: `${P.skyH}px` });
-    Object.assign(this.ground.style, { display: '', left: `${extX}px`, top: `${groundTop - 1}px`, width: `${P.w}px`, height: `${Math.max(P.groundH, Hs - groundTop + 2)}px` });
-    // 구름: 로고 아래 ~ 장면 위 하늘에서만
-    const cTop = safeTop + logoH * 0.8;
-    Object.assign(this.clouds.style, { display: '', left: '0px', top: `${cTop}px`, width: `${unitsW}px`, height: `${Math.max(60, sceneTop + 40 - cTop)}px` });
-    for (const sd of this.sides) sd.style.display = 'none';
-    // 버튼: 풀밭 위
-    const groundCss = (Hs - groundTop) * s;
-    const unit = Math.max(3.6, Math.min(vw / 85, 7));
-    this.ui.style.setProperty('--b', `${unit}px`);
-    const uiH = this.ui.offsetHeight || unit * 16;
-    const bottom = groundCss > uiH + 24 ? (groundCss - uiH) / 2 : Math.max(16, vh * 0.04);
-    Object.assign(this.ui.style, { left: '0px', right: '0px', width: 'auto', bottom: `${bottom}px` });
-    this.root.classList.remove('side');
-  }
-
-  private layoutLandscape(vw: number, vh: number): void {
-    const s = Math.min(vw / IW, vh / IH);
-    const w = IW * s;
-    const h = IH * s;
-    const left = (vw - w) / 2;
-    const top = (vh - h) / 2;
-    Object.assign(this.stage.style, { width: `${IW}px`, height: `${IH}px`, transform: `scale(${s})`, left: `${left}px`, top: `${top}px`, background: '' });
-    Object.assign(this.clip.style, { left: '0px', top: '0px', width: `${IW}px`, height: `${IH}px` });
-    this.scene.style.transform = '';
-    this.sky.style.display = 'none';
-    this.ground.style.display = 'none';
-    this.logoTop.style.display = 'none'; // 가로는 원본 속 로고 그대로
-    Object.assign(this.clouds.style, { display: '', left: '440px', top: '450px', width: '760px', height: '70px' });
-    // 양옆: 원본 가장자리 색 띠 (그림 쪽에서 바깥으로 어두워짐)
-    const [sl, sr] = this.sides;
-    const sw = left + 2;
-    for (const sd of this.sides) sd.style.display = left > 1 ? '' : 'none';
-    Object.assign(sl.style, { left: `${left - sw + 1}px`, top: `${top}px`, width: `${sw}px`, height: `${h}px` });
-    Object.assign(sr.style, { left: `${left + w - 1}px`, top: `${top}px`, width: `${sw}px`, height: `${h}px` });
-    // 버튼: 고나(가운데)를 가리지 않도록 그림 오른쪽 아래
-    const unit = Math.max(3.2, Math.min(vw / 110, vh / 88, 6));
-    this.ui.style.setProperty('--b', `${unit}px`);
-    this.root.classList.add('side');
-    Object.assign(this.ui.style, { left: '0px', right: 'auto', width: 'max-content' });
-    const uiW = this.ui.offsetWidth || unit * 40;
-    const x = Math.min(vw - uiW - 8, Math.max(left + w * 0.62, left + w * 0.8 - uiW / 2));
-    Object.assign(this.ui.style, { left: `${x}px`, bottom: `${Math.max(10, vh * 0.05)}px` });
+    // 오른쪽 위 작은 버튼들(🧪 · 🔊)의 영역: 로고가 겹치지 않게
+    let avoid: { left: number; bottom: number } | undefined;
+    for (const sel of ['.cover-dev-toggle', '.top-buttons']) {
+      const r = document.querySelector(sel)?.getBoundingClientRect();
+      if (r && r.width > 0 && r.top < vh * 0.25) avoid = { left: Math.min(avoid?.left ?? 1e9, r.left), bottom: Math.max(avoid?.bottom ?? 0, r.bottom) };
+    }
+    this.title.layout(vw, vh, safe, avoid);
+    if (portrait) {
+      // 버튼: 고나가 걷는 흙길(발끝) 아래 풀밭 가운데
+      const unit = Math.max(3.6, Math.min(vw / 85, 7));
+      this.ui.style.setProperty('--b', `${unit}px`);
+      Object.assign(this.ui.style, { left: '0px', right: '0px', width: 'auto' });
+      const uiH = this.ui.offsetHeight || unit * 16;
+      const below = vh - this.title.feetCss - safe.bottom;
+      const bottom = below > uiH + 40 ? Math.max(safe.bottom + 52, safe.bottom + (below - uiH) / 2) : Math.max(16, safe.bottom + 12);
+      this.ui.style.bottom = `${bottom}px`;
+    } else {
+      // 가로: 오른쪽 띠(그림 바깥)에, 좁으면 그림 오른쪽 아래
+      const unit = Math.max(3.2, Math.min(vw / 110, vh / 88, 6));
+      this.ui.style.setProperty('--b', `${unit}px`);
+      Object.assign(this.ui.style, { left: '0px', right: 'auto', width: 'max-content' });
+      const uiW = this.ui.offsetWidth || unit * 40;
+      const uiH = this.ui.offsetHeight || unit * 16;
+      const stageR = (vw + this.title.stageWidthCss) / 2;
+      const room = vw - stageR - safe.right;
+      const x = room > uiW + 16 ? stageR + (room - uiW) / 2 : vw - uiW - Math.max(12, safe.right + 8);
+      Object.assign(this.ui.style, { left: `${x}px`, bottom: `${Math.max(12, (vh - uiH) * 0.3)}px` });
+    }
   }
 
   // ───────────────────────── 시작 ─────────────────────────
@@ -363,6 +209,9 @@ export class CoverScreen {
   start(opt?: RestartOptions): void {
     if (this.started || !this.shown) return;
     this.started = true;
+    // 게임 화면을 바로 다시 그리기 시작 (버튼이 사라지며 게임이 보이기 전에)
+    clearTimeout(this.pauseTimer);
+    this.onRenderPause?.(false);
     sound.unlock();
     sound.start();
     sound.startMusic('title');
@@ -372,30 +221,7 @@ export class CoverScreen {
     window.setTimeout(() => {
       this.root.classList.add('hidden');
       this.shown = false;
+      this.title.stop();
     }, 900);
   }
-}
-
-// ───────────────────────── 구름 도트 ─────────────────────────
-
-function cloudCanvas(seed: number): HTMLCanvasElement {
-  const w = 30 + (seed % 2) * 8;
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = 12;
-  const g = c.getContext('2d');
-  if (!g) return c;
-  const blob = (cx: number, cy: number, r: number, col: string): void => {
-    g.fillStyle = col;
-    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r + r) g.fillRect(cx + x, cy + y, 1, 1);
-  };
-  const parts = [
-    [6, 7, 4],
-    [13, 5, 5],
-    [21, 6, 4],
-    [w - 7, 7, 3],
-  ];
-  for (const [x, y, r] of parts) blob(x, y + 1, r, '#d9d3ee');
-  for (const [x, y, r] of parts) blob(x, y, r, '#f6f3ff');
-  return c;
 }

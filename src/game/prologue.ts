@@ -1,11 +1,10 @@
 /**
  * 스토리 프롤로그 대본.
- * 내레이션 파일: public/assets/voice/prologue-01.mp3 … prologue-10.mp3 (audio.ts → narrationUrl)
- *   파일이 없으면 자막만 나오고, 문장 길이로 계산한 시간만큼 보여 줍니다.
+ * 음성 내레이션 없음: 자막만 한 글자씩 나오고, 문장 길이로 계산한 시간만큼 보여 줍니다.
  */
 export interface PrologueLine {
   text: string;
-  /** 이 문장 장면의 최소 길이(초) — 내레이션이 짧아도 연출이 끝날 시간 */
+  /** 이 문장 장면의 최소 길이(초) — 문장이 짧아도 연출이 끝날 시간 */
   minSec: number;
 }
 

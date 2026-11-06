@@ -111,12 +111,18 @@ async function boot(): Promise<void> {
   });
 
   perf.attach(game.events);
+  // 타이틀이 화면을 덮는 동안 뒤의 게임 그리기 쉬기 (게임 진행·상태는 그대로, 시작 버튼 누르면 즉시 다시)
+  cover.onRenderPause = (paused) => {
+    if (paused) game.loop.sleep();
+    else game.loop.wake(true);
+  };
 
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
   if (new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
     (window as unknown as { __sound: typeof sound }).__sound = sound;
     (window as unknown as { __perf: typeof perf }).__perf = perf;
+    (window as unknown as { __coverDebug: () => unknown }).__coverDebug = () => cover.debugTitle();
   }
 
   // 회전/창 크기 변경 시 논리 해상도 재계산

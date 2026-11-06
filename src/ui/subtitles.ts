@@ -69,7 +69,7 @@ export class Subtitles {
     this.box.classList.remove('hidden', 'typed');
     this.box.dataset.index = String(l.index);
     this.pageEl.textContent = `${l.index + 1}/${l.total}`;
-    // 타이핑 효과: 문장 길이에 맞춰, 내레이션보다 조금 빨리 끝나게
+    // 타이핑 효과: 문장 길이에 맞춰, 다음 문장 전에 조금 여유 있게 끝나게
     const chars = Array.from(l.text);
     const step = Math.max(28, Math.min(70, (l.seconds * 1000 * 0.55) / chars.length));
     let n = 0;

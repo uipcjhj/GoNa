@@ -2453,3 +2453,47 @@ body.has-pad .touch-hint {
 .cover.portrait .build-badge {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 50px);
 }
+
+/* ───────── 움직이는 대표 타이틀 (ui/titleScene.ts) ─────────
+   모든 캔버스는 기기 픽셀 그대로(정수 배율) → 브라우저가 다시 늘리지 않음. 이동은 transform 만 */
+.t4 {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #8fb35a;
+}
+
+.t4-layer,
+.t4-world,
+.t4-bgc,
+.t4-spr {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.t4-world,
+.t4-spr {
+  will-change: transform;
+}
+
+.t4 canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 로고: 이야기 끝나고 타이틀이 나타날 때 살짝 늦게 페이드인 (위치는 정수 도트, 움직임 없음) */
+.cover .t4-logo {
+  opacity: 0;
+}
+
+.cover.revealed .t4-logo {
+  opacity: 1;
+  transition: opacity 0.6s ease 0.5s;
+}
+
+.cover.instant .t4-logo {
+  transition: none;
+}

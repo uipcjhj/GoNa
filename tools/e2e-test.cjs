@@ -215,6 +215,9 @@ async function introTests(label, device) {
   const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', e => errs.push(e.message));
+  // 음성 내레이션은 제거됨: voice 파일 요청이 한 번도 없어야 함
+  const voiceReq = []; page.on('request', (r) => { if (/assets\/voice\/|bgm-title-duck/.test(r.url())) voiceReq.push(r.url()); });
+  const noVoice = () => page.evaluate(() => !('narr' in window.__sound) && ![...document.querySelectorAll('audio')].some((a) => /voice/.test(a.src)));
   await page.goto(URL + '?test');
   await page.waitForFunction(() => window.__gona?.scene.isActive('Opening'), null, { timeout: 8000 });
   await page.waitForSelector('.pr-gate', { state: 'visible', timeout: 8000 });
@@ -228,19 +231,19 @@ async function introTests(label, device) {
   });
   const lineIdx = () => page.evaluate(() => { const bx = document.querySelector('.pr-box'); return bx.classList.contains('hidden') ? -1 : Number(bx.dataset.index); });
   const st0 = await page.evaluate(() => ({ cover: document.querySelector('.cover').classList.contains('hidden'), game: window.__gona.scene.getScene('Game').state,
-    narr: window.__sound.narr.some((a) => !a.paused), box: document.querySelector('.pr-box').classList.contains('hidden') }));
-  check(`${label}: starts with story gate (title hidden, no narration yet)`, st0.cover && st0.game === 'ready' && !st0.narr && st0.box, JSON.stringify(st0));
+    box: document.querySelector('.pr-box').classList.contains('hidden') }));
+  check(`${label}: starts with story gate (title hidden)`, st0.cover && st0.game === 'ready' && st0.box, JSON.stringify(st0));
   const vp = page.viewportSize();
   await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 첫 터치 = 이야기 시작 (소리 켜짐)
   await page.waitForTimeout(500);
   const t1 = await page.evaluate(() => ({ audio: window.__sound.ready, idx: document.querySelector('.pr-box').dataset.index, gate: document.querySelector('.pr-gate').classList.contains('hidden'),
-    n0: !window.__sound.narr[0].paused, music: window.__sound.status().musicMode, vol: window.__sound.music.title.volume }));
-  check(`${label}: first tap starts story + narration 1 + title music`, t1.audio && t1.idx === '0' && t1.gate && t1.n0 && t1.music === 'title', JSON.stringify(t1));
-  check(`${label}: BGM ducked during narration`, t1.vol < 0.8, `title volume ${t1.vol.toFixed(2)}`);
+    music: window.__sound.status().musicMode, vol: window.__sound.music.title.volume }));
+  check(`${label}: first tap starts story subtitle 1 + title music (no voice)`, t1.audio && t1.idx === '0' && t1.gate && t1.music === 'title' && (await noVoice()), JSON.stringify(t1));
+  check(`${label}: BGM stays at full volume (no narration ducking)`, t1.vol > 0.95, `title volume ${t1.vol.toFixed(2)}`);
   await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 터치 = 다음 문장
   await page.waitForTimeout(300);
-  const t2 = await page.evaluate(() => ({ idx: document.querySelector('.pr-box').dataset.index, n0: !window.__sound.narr[0].paused, n1: !window.__sound.narr[1].paused, op: window.__gona.scene.isActive('Opening') }));
-  check(`${label}: tap → exactly next sentence (narration switches)`, t2.idx === '1' && !t2.n0 && t2.n1 && t2.op, JSON.stringify(t2));
+  const t2 = await page.evaluate(() => ({ idx: document.querySelector('.pr-box').dataset.index, typing: !document.querySelector('.pr-box').classList.contains('typed'), len: document.querySelector('.pr-text').textContent.length, op: window.__gona.scene.isActive('Opening') }));
+  check(`${label}: tap → exactly next sentence, typed letter by letter`, t2.idx === '1' && t2.op && t2.typing && t2.len < '벚꽃이 흐드러지게 피던 어느 봄날.'.length, JSON.stringify(t2));
   // 2번 문장 끝까지 기다렸다가 자막 전체 확인
   await page.waitForFunction(() => document.querySelector('.pr-box').classList.contains('typed'), null, { timeout: 8000 });
   const txt = await page.evaluate(() => document.querySelector('.pr-text').textContent);
@@ -263,13 +266,33 @@ async function introTests(label, device) {
   await page.waitForSelector('.cover.revealed', { timeout: 8000 });
   await page.waitForTimeout(2600);
   const st1 = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity, game: window.__gona.scene.getScene('Game').state,
-    subs: document.querySelector('.prologue-ui').classList.contains('hidden'), narr: window.__sound.narr.some((a) => !a.paused) }));
-  check(`${label}: title after last sentence (waits for start button)`, !st1.op && st1.btn === '1' && st1.game === 'ready' && st1.subs && !st1.narr, JSON.stringify(st1));
+    subs: document.querySelector('.prologue-ui').classList.contains('hidden') }));
+  check(`${label}: title after last sentence (waits for start button)`, !st1.op && st1.btn === '1' && st1.game === 'ready' && st1.subs, JSON.stringify(st1));
+  // 새 타이틀: 고나가 화면 안에서 실제로 걸어 다니고, 나비 쫓기·열매 먹기까지 한 바퀴
+  const tr = await page.evaluate(() => new Promise((res) => {
+    const out = { phases: new Set(), poses: new Set(), minX: 1e9, maxX: -1e9, bfly: false, inView: true, moves: 0 };
+    const cv = document.querySelector('.t4-gona'); let last = '';
+    const t0 = performance.now();
+    const iv = setInterval(() => {
+      const r = cv.getBoundingClientRect(); const tf = cv.style.transform;
+      if (tf !== last) { out.moves++; last = tf; }
+      const d = window.__coverDebug();
+      out.phases.add(d.phase); out.poses.add(d.pose); if (d.bfly) out.bfly = true;
+      out.minX = Math.min(out.minX, r.left + r.width / 2); out.maxX = Math.max(out.maxX, r.left + r.width / 2);
+      if (r.left + r.width / 2 < 0 || r.left + r.width / 2 > innerWidth || r.top < 0 || r.bottom > innerHeight) out.inView = false;
+      if (performance.now() - t0 > 23000) { clearInterval(iv); res({ ...out, phases: [...out.phases], poses: [...out.poses], run: d.running, vw: innerWidth, stageW: d.stageW }); }
+    }, 100);
+  }));
+  check(`${label}: title GONA walks across the forest path (stays in view)`, tr.inView && tr.maxX - tr.minX > tr.stageW * 0.45 && tr.moves > 40, JSON.stringify({ minX: tr.minX, maxX: tr.maxX, stageW: tr.stageW, moves: tr.moves }));
+  check(`${label}: title loop: walk → butterfly → net chase → look back → fruit → eat → trot`, ['walk', 'notice', 'chase', 'lookback', 'walkback', 'find', 'eat', 'trot'].every((p) => tr.phases.includes(p)) && tr.bfly && ['gona-net', 'gona-eat', 'gona-trot', 'gona-surprise', 'gona-walk1', 'gona-walk2'].every((p) => tr.poses.includes(p)), JSON.stringify(tr.phases));
+  const lg = await page.evaluate(() => { const r = window.__coverDebug().logo; return { l: r.x, r: innerWidth - (r.x + r.w), t: r.y, w: r.w }; });
+  check(`${label}: logo fully inside screen with side margins`, lg.l >= 19 && lg.r >= 19 && lg.t >= 0 && lg.w > 150, JSON.stringify(lg));
   const box = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 5000 });
-  const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { stage: s.growth.stageIndex, nest: s.nestBack.visible, op: window.__gona.scene.isActive('Opening') }; });
-  check(`${label}: start → stage 1 nest, no egg replay`, st.stage === 0 && st.nest && !st.op, JSON.stringify(st));
+  await page.waitForTimeout(1000);
+  const st = await page.evaluate(() => { const s = window.__gona.scene.getScene('Game'); return { stage: s.growth.stageIndex, nest: s.nestBack.visible, op: window.__gona.scene.isActive('Opening'), titleLoop: window.__coverDebug().running }; });
+  check(`${label}: start → stage 1 nest, no egg replay, title animation stopped`, st.stage === 0 && st.nest && !st.op && !st.titleLoop, JSON.stringify(st));
   // 배경음악 파일 재생 + 효과음 레벨
   const ms = await page.evaluate(() => window.__sound.status());
   check(`${label}: game music file playing`, ms.musicMode === 'game' && ms.musicSource === 'file' && ms.musicPlaying && ms.errors.length === 0, `${ms.musicFile} ${ms.errors.join('|')}`);
@@ -287,11 +310,11 @@ async function introTests(label, device) {
   await page.locator('.op-skip').click();
   await page.waitForTimeout(400);
   const sk = await page.evaluate(() => ({ cover: document.querySelector('.cover').className, op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity,
-    narr: window.__sound.narr.some((a) => !a.paused), vol: window.__sound.music.title.volume }));
-  check(`${label}: skip button → title immediately, narration stops`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1' && !sk.narr, JSON.stringify(sk));
+    vol: window.__sound.music.title.volume }));
+  check(`${label}: skip button → title immediately`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1', JSON.stringify(sk));
   await page.waitForTimeout(1200);
   const vol = await page.evaluate(() => window.__sound.music.title.volume);
-  check(`${label}: BGM back to full after skip`, vol > 0.95, String(vol));
+  check(`${label}: BGM full volume after skip`, vol > 0.95, String(vol));
   // 오프닝 다시 보기: 대기 없이 바로 1번 문장부터
   await page.locator('.cover-replay').click();
   await page.waitForTimeout(600);
@@ -300,6 +323,7 @@ async function introTests(label, device) {
   check(`${label}: replay opening (starts story directly)`, rp.op && rp.hidden && rp.idx === '0' && rp.gate, JSON.stringify(rp));
   await page.locator('.op-skip').click();
   await page.waitForSelector('.cover.revealed', { timeout: 15000 });
+  check(`${label}: no voice narration requested or played`, voiceReq.length === 0 && (await noVoice()), voiceReq.join(' '));
   check(`${label}: no page errors (opening)`, errs.length === 0, errs.join(' | '));
   await b.close();
 }
