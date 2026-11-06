@@ -33,6 +33,12 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 `.github/workflows/deploy.yml` 이 포함되어 있습니다.
 저장소 **Settings → Pages → Source** 를 **GitHub Actions** 로 바꾸면 `main` 에 push 할 때마다 자동 배포됩니다.
 
+**테스트 배포 (작업 브랜치)**: `.github/workflows/pages-test.yml` — `claude/dino-snack-game` 에 push 할 때마다 같은 Pages 주소(https://uipcjhj.github.io/GoNa/)로 배포.
+- 타이틀 화면 아래쪽에 `🧪 테스트 빌드 · 커밋 · 시각(KST)` 표시 (이 표시는 CI 빌드에만 있고, 로컬·Claude 미리보기 빌드엔 없음)
+- `https://uipcjhj.github.io/GoNa/version.json` 에 브랜치·커밋 전체 해시
+- 처음 한 번: Settings → Pages → Source = GitHub Actions, Settings → Environments → github-pages → 배포 허용 브랜치에 `claude/dino-snack-game` 추가
+- `main` 에 push 하면 deploy.yml 이 같은 주소를 main 버전으로 덮어씀 (Pages 사이트는 저장소당 하나)
+
 ## 오프닝(타이틀) 화면
 
 버섯숲 + 귀여운 석기시대 분위기의 오프닝. 각 요소가 **독립 레이어**로 되어 있어 이미지로 하나씩 교체할 수 있습니다.

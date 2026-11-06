@@ -169,6 +169,9 @@ export class CoverScreen {
     this.cam = el('div', 'cv-cam');
     this.cam.append(...this.sides, this.stage);
     this.root.append(this.cam, this.ui, test, replay, dev);
+    // 테스트 배포(GitHub Pages)에서만: 빌드 때 VITE_BUILD_LABEL 이 주어지면 버전·커밋 표시 (평소 빌드·미리보기엔 없음)
+    const buildLabel = import.meta.env.VITE_BUILD_LABEL as string | undefined;
+    if (buildLabel) this.root.append(el('div', 'build-badge', buildLabel));
     parent.append(this.root);
 
     this.btn.addEventListener('click', () => this.start());
