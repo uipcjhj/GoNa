@@ -21,7 +21,9 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "art-src/title/gona-cover-original.png"
+_GRADED = ROOT / "art-src/title/gona-cover-graded.png"
+# 색 보정본(tools/grade_cover.py — 밝은 파스텔 톤)이 있으면 그것으로, 없으면 원본
+SRC = _GRADED if _GRADED.exists() else ROOT / "art-src/title/gona-cover-original.png"
 OUT = ROOT / "public/assets/title/cover"
 DOT = 6  # 원본 도트 한 칸 ≈ 6px — 새로 그리는 여백 그림도 같은 크기로
 

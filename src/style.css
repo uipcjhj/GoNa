@@ -1945,43 +1945,44 @@ h2 {
 }
 
 /* ═════════════════ 보스전 · 머리카락 부메랑 ═════════════════ */
-/* 조작 버튼: 따뜻한 나무 테두리 + 양피지 면 (스타듀풍 픽셀 UI) */
+/* 조작 버튼: 따뜻한 나무 테두리 + 양피지 면 (스타듀풍 픽셀 UI). .bt = 실제 터치 영역, .bt-face = 보이는 버튼 */
 .battle-pad {
-  --hit: 96px;
-  --face: 76px;
-  --sp-face: 62px;
+  --atk-face: 114px;
+  --atk-hit: 132px;
+  --sh-face: 80px;
+  --sh-hit: 100px;
+  --sp-face: 66px;
+  --sp-hit: 84px;
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 4;
-  touch-action: none;
 }
 .bt-group {
   position: absolute;
-  bottom: max(10px, calc(env(safe-area-inset-bottom) + 2px));
+  bottom: max(6px, env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
 }
 .bt-left {
-  left: max(4px, calc(env(safe-area-inset-left) + 2px));
+  left: max(2px, env(safe-area-inset-left));
 }
 .bt-right {
-  right: max(4px, calc(env(safe-area-inset-right) + 2px));
+  right: max(2px, env(safe-area-inset-right));
 }
 .battle-pad.mode-none,
 .battle-pad.mode-run .bt-left,
 .battle-pad.mode-run .bt-special,
-.bt-badge.hidden,
-.boss-bar.hidden,
+.battle-top.hidden,
 .battle-banner.hidden,
 .bb-phase.hidden {
   display: none;
 }
-/* 실제 터치 영역(.bt)은 보이는 버튼(.bt-face)보다 크게 */
 .bt {
+  --face: var(--sh-face);
   position: relative;
-  width: var(--hit);
-  height: var(--hit);
+  width: var(--sh-hit);
+  height: var(--sh-hit);
   margin: 0;
   padding: 0;
   border: 0;
@@ -1995,6 +1996,18 @@ h2 {
   -webkit-tap-highlight-color: transparent;
   outline: none;
   cursor: pointer;
+}
+.bt-attack {
+  --face: var(--atk-face);
+  width: var(--atk-hit);
+  height: var(--atk-hit);
+}
+.bt-special {
+  --face: var(--sp-face);
+  width: var(--sp-hit);
+  height: var(--sp-hit);
+  margin-bottom: calc(var(--atk-hit) * 0.62);
+  margin-right: -14px;
 }
 .bt-face {
   position: absolute;
@@ -2012,7 +2025,7 @@ h2 {
   color: #4a2a14;
   background: #f9e7bd;
   border: 3px solid #5b3418;
-  border-radius: 14px;
+  border-radius: 16px;
   box-shadow:
     inset 0 0 0 2px #e3a85a,
     inset 0 -6px 0 2px #d99a50,
@@ -2022,7 +2035,8 @@ h2 {
   image-rendering: pixelated;
 }
 .bt.pressed .bt-face {
-  transform: translate(-50%, calc(-50% + 3px));
+  transform: translate(-50%, calc(-50% + 3px)) scale(0.96);
+  background: #ffefc8;
   box-shadow:
     inset 0 0 0 2px #e3a85a,
     inset 0 -3px 0 2px #d99a50,
@@ -2031,54 +2045,53 @@ h2 {
 }
 .bt-icon {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 .bt-label {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
 }
-.bt-dodge .bt-face {
-  background: #e4f3cc;
+.bt-attack .bt-label {
+  font-size: 15px;
 }
-.bt-badge {
-  position: absolute;
-  top: 3px;
-  right: 4px;
-  z-index: 2;
-  padding: 1px 3px;
-  font-size: 10px;
-  color: #fff8e6;
-  background: #e0602a;
-  border-radius: 3px;
-}
-/* 공격: 쿨타임(돌아오는 중) — 어두운 막이 아래로 줄어듦 */
+/* 쿨타임: 어두운 막이 줄어듦 */
 .bt-cool {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
   height: 0;
-  background: rgba(58, 30, 12, 0.55);
+  background: rgba(58, 30, 12, 0.6);
   z-index: 1;
 }
 .bt-attack.out .bt-label {
-  font-size: 10px;
+  font-size: 12px;
+  color: #fff3d6;
 }
 .bt-attack.locked .bt-face {
   filter: grayscale(0.9);
   opacity: 0.7;
 }
-/* 필살: 게이지가 아래에서 차오름 */
-.bt-special {
-  --face: var(--sp-face);
-  width: calc(var(--sp-face) + 18px);
-  height: calc(var(--sp-face) + 18px);
-  margin-bottom: 52px;
-  margin-right: -6px;
+/* 방패 */
+.bt-shield .bt-face {
+  background: #e3f4fb;
 }
+.bt-shield.active .bt-face {
+  background: #bdeeff;
+  border-color: #1f6fa0;
+  animation: sh-glow 0.25s steps(2) infinite;
+}
+.bt-shield.off:not(.active) .bt-label {
+  color: #fff3d6;
+}
+@keyframes sh-glow {
+  0% { box-shadow: inset 0 0 0 2px #8fe3ff, 0 4px 0 #3a1f0c, 0 0 0 3px #bff4ff; }
+  100% { box-shadow: inset 0 0 0 2px #4fb6e8, 0 4px 0 #3a1f0c, 0 0 0 6px #8fe3ff; }
+}
+/* 필살: 게이지가 아래에서 차오름 */
 .bt-special .bt-face {
   background: #e7d6b2;
 }
@@ -2089,6 +2102,7 @@ h2 {
   bottom: 0;
   height: 0;
   background: linear-gradient(#ffe27a, #ffb83a);
+  z-index: 1;
 }
 .bt-special.ready .bt-face {
   border-color: #b5420f;
@@ -2098,31 +2112,63 @@ h2 {
   0% { box-shadow: inset 0 0 0 2px #fff6a8, 0 4px 0 #3a1f0c, 0 0 0 3px #fff6a8; }
   100% { box-shadow: inset 0 0 0 2px #ff9a3a, 0 4px 0 #3a1f0c, 0 0 0 6px #ff9a3a; }
 }
-/* 누를 수 없을 때 (일시정지·연출·게이지 부족) */
-.bt.off:not(.ready) .bt-face {
-  opacity: 0.55;
+.bt.off:not(.ready):not(.active) .bt-face {
+  opacity: 0.6;
 }
-.bt-dodge.off .bt-face {
-  opacity: 0.45;
-}
-/* 보스전에는 하단 안내 대신 버튼 */
-body.in-battle .touch-hint {
-  display: none;
+.bt-attack.out .bt-face {
+  opacity: 1 !important;
 }
 
-/* 보스 체력 바 */
-.boss-bar {
+/* 위: 고나 하트 + HP  ·  보스 체력 */
+.battle-top {
   position: absolute;
-  left: 50%;
-  top: calc(env(safe-area-inset-top) + 54px);
-  transform: translateX(-50%);
-  width: min(72vw, 320px);
-  padding: 4px 8px 6px;
-  background: rgba(40, 20, 30, 0.72);
-  border: 2px solid #4a2a14;
-  border-radius: 6px;
+  left: max(6px, env(safe-area-inset-left));
+  right: max(6px, env(safe-area-inset-right));
+  top: calc(max(6px, env(safe-area-inset-top)) + 40px);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   pointer-events: none;
   z-index: 3;
+}
+.bt-me,
+.boss-bar {
+  width: min(46%, 260px);
+  padding: 4px 8px 6px;
+  border: 2px solid #4a2a14;
+  border-radius: 6px;
+}
+.bt-me {
+  background: rgba(40, 26, 14, 0.66);
+}
+.bt-hearts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 3px;
+}
+.bt-hp-text {
+  margin-left: auto;
+  font-size: 11px;
+  color: #eaffd8;
+}
+.bt-hp-track,
+.bb-track {
+  height: 9px;
+  background: #2a1c14;
+  border: 2px solid #120a06;
+}
+.bt-hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(#a8f07a 0 40%, #4fb83a 40%);
+  transition: width 0.2s steps(4);
+}
+.bt-hp-fill.low {
+  background: linear-gradient(#ffd27a 0 40%, #e0802a 40%);
+}
+.boss-bar {
+  background: rgba(40, 20, 30, 0.72);
 }
 .bb-top {
   display: flex;
@@ -2136,12 +2182,6 @@ body.in-battle .touch-hint {
   font-size: 11px;
   color: #ffb08a;
 }
-.bb-track {
-  height: 9px;
-  background: #3a1c24;
-  border: 2px solid #1e0e14;
-  image-rendering: pixelated;
-}
 .bb-hp {
   height: 100%;
   width: 100%;
@@ -2151,13 +2191,8 @@ body.in-battle .touch-hint {
 .boss-bar.phase2 .bb-hp {
   background: linear-gradient(#ffb08a 0 40%, #e0503a 40%);
 }
-.boss-bar.hit {
-  animation: bb-shake 0.25s steps(4);
-}
-@keyframes bb-shake {
-  0%, 100% { transform: translateX(-50%); }
-  25% { transform: translateX(calc(-50% - 3px)); }
-  75% { transform: translateX(calc(-50% + 3px)); }
+body.in-battle .touch-hint {
+  display: none;
 }
 
 /* 가운데 큰 안내 */
@@ -2227,14 +2262,14 @@ body.in-battle .touch-hint {
   word-break: keep-all;
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  /* 가로 화면: 작게, 양쪽 아래 구석 (땅 아래 흙 띠 안) */
+  /* 가로 화면: 작게, 양쪽 아래 구석 */
   .battle-pad {
-    --hit: 74px;
-    --face: 58px;
-    --sp-face: 48px;
-  }
-  .bt-group {
-    bottom: max(2px, env(safe-area-inset-bottom));
+    --atk-face: 86px;
+    --atk-hit: 96px;
+    --sh-face: 56px;
+    --sh-hit: 70px;
+    --sp-face: 50px;
+    --sp-hit: 64px;
   }
   .bt-special {
     margin-bottom: 0;
@@ -2243,13 +2278,17 @@ body.in-battle .touch-hint {
   .bt-label {
     font-size: 10px;
   }
-  .bt-icon {
-    transform: scale(0.75);
-    margin: -3px 0;
+  .bt-attack .bt-label {
+    font-size: 12px;
   }
+  .battle-top {
+    top: calc(max(4px, env(safe-area-inset-top)) + 32px);
+    left: max(8px, calc(env(safe-area-inset-left) + 6px));
+    right: max(118px, calc(env(safe-area-inset-right) + 112px));
+  }
+  .bt-me,
   .boss-bar {
-    top: calc(env(safe-area-inset-top) + 34px);
-    width: min(44vw, 300px);
+    width: min(40%, 240px);
   }
 }
 

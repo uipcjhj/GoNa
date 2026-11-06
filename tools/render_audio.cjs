@@ -63,7 +63,7 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
   const jobs = [
     { name: 'bgm-title', music: 'title', tempo: 68, secs: 256 * (60 / 68 / 4) + 3, kbps: 112 },
     { name: 'bgm-game', music: 'game', tempo: 96, secs: 256 * (60 / 96 / 4) + 3, kbps: 112 },
-    ...['start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff']
+    ...['start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield']
       .map((n) => ({ name: `sfx-${n}`, sfx: n, secs: 3, kbps: 96 })),
     ...[10, 20, 30].map((p) => ({ name: `sfx-pickup${p}`, sfx: 'pickup', args: [p], secs: 1.5, kbps: 96 })),
   ];

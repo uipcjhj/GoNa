@@ -202,6 +202,25 @@ export function stinkPuddle(): HTMLCanvasElement {
   return pc.canvas;
 }
 
+/** 방패: 고나 앞의 반투명 픽셀 방패 (18x38, 발 기준) — 둥근 물방울 방패 */
+export function battleShield(): HTMLCanvasElement {
+  const w = 18;
+  const h = 38;
+  const pc = new PixelCanvas(w, h);
+  for (let y = 0; y < h; y++) {
+    const t = (y - h / 2) / (h / 2);
+    const half = Math.max(1, Math.round(7 * Math.sqrt(Math.max(0, 1 - t * t))));
+    const front = 9 + half - 1;
+    pc.rect(9 - Math.round(half / 2), y, half + Math.round(half / 2), 1, 'rgba(140, 225, 255, 0.55)');
+    pc.px(front, y, 'rgba(240, 252, 255, 1)');
+    pc.px(front - 1, y, 'rgba(90, 200, 255, 0.95)');
+    pc.px(9 - Math.round(half / 2), y, 'rgba(90, 200, 255, 0.8)');
+  }
+  // 반짝 하이라이트
+  for (const [x, y] of [[11, 8], [12, 9], [12, 10], [13, 12], [13, 13], [11, 26], [12, 27]]) pc.px(x, y, 'rgba(255,255,255,1)');
+  return pc.canvas;
+}
+
 /** 작은 하트 파티클 3x3 · 냄새 파티클 2x2 · 경고 '!' */
 export function tinyHeart(): HTMLCanvasElement {
   const pc = new PixelCanvas(3, 3);

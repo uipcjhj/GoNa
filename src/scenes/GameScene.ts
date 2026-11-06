@@ -9,9 +9,9 @@ import type { StageVisual } from './BootScene';
 import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '../game/growth';
 import { StageManager } from '../game/stages';
 import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
-import { BOSSES } from '../game/boss';
+import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
 import { boomerangStats } from '../game/weapons';
-import { bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
+import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
 import { KissBattle } from './battle/KissBattle';
@@ -89,6 +89,15 @@ export class GameScene extends Phaser.Scene {
   /** 보스전 시작 때의 점수 (보스전 다시 도전용) */
   private retryCarry = { score: 0, snacks: 0 };
   private hudKey = '';
+  /** 보스전 체력: 지금 하트의 HP (하트 1개 = 100) */
+  private hp: number = BATTLE_HP.perHeart;
+  /** 방패: 켜진 동안 / 다시 쓸 수 있는 시각 (scene time ms) */
+  private shieldUntil = 0;
+  private shieldReadyAt = 0;
+  private shieldSprite!: Phaser.GameObjects.Image;
+  /** 부메랑이 돌아오기 직전에 누른 공격은 기억했다가 돌아오자마자 발사 */
+  private attackBufferUntil = 0;
+  private phaserHearts = true;
   /** 떠오르는 점수 글자 재사용 (매번 Text 를 새로 만들면 텍스처 생성으로 멈칫) */
   private popPool: Phaser.GameObjects.Text[] = [];
   private host!: BattleHost;
@@ -258,7 +267,12 @@ export class GameScene extends Phaser.Scene {
       this.squash = 0.86;
       const h = this.headPos();
       this.sparkleEmitter.explode(4, h.x, h.y);
+      if (this.time.now < this.attackBufferUntil) {
+        this.attackBufferUntil = 0;
+        this.throwHair();
+      }
     };
+    this.shieldSprite = this.add.image(0, 0, 'battle-shield').setOrigin(0.5, 1).setDepth(11.5).setVisible(false).setAlpha(0.85);
 
     // 떠오르는 글자 미리 만들어 둠 (첫 간식 때 텍스처 생성으로 멈칫하지 않게)
     this.popPool = [];
@@ -297,6 +311,7 @@ export class GameScene extends Phaser.Scene {
     };
     const onAttack = (): void => this.throwHair();
     const onDodge = (): void => this.dodge();
+    const onShield = (): void => this.raiseShield();
     const onSpecial = (): void => {
       if (this.state === 'playing') this.battle?.useSpecial();
     };
@@ -308,7 +323,9 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.attack, onAttack);
     bus.on(EV.special, onSpecial);
     bus.on(EV.dodge, onDodge);
+    bus.on(EV.shield, onShield);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off(EV.shield, onShield);
       bus.off(EV.dodge, onDodge);
       bus.off(EV.attack, onAttack);
       bus.off(EV.special, onSpecial);
@@ -532,6 +549,7 @@ export class GameScene extends Phaser.Scene {
       // 보스전 연출(필살기·각성) 중: 세상은 멈추고 연출만
       this.battle.update(dt);
       this.placePlayer(dt, time);
+      this.updateShield();
       this.emitHud();
       return;
     }
@@ -565,6 +583,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEntities(move, time);
     if (this.battle && this.state === 'playing') this.battle.update(dt);
     this.updateBoomerang(dt);
+    this.updateShield();
     this.emitHud();
   }
 
@@ -886,6 +905,82 @@ export class GameScene extends Phaser.Scene {
     if (this.hurt()) this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
   }
 
+  // ───────────────────────── 보스전 체력 · 방패 ─────────────────────────
+
+  private get shieldOn(): boolean {
+    return !!this.battle && this.time.now < this.shieldUntil;
+  }
+
+  /**
+   * 보스 공격에 맞음: HP 만 깎임. HP 0 → 하트 -1 (남은 하트가 있으면 HP 100 으로, 넘친 피해는 버림)
+   * 맞은 직후 짧은 무적, 하트를 잃은 직후 1.5초 무적. 방패 중엔 피해 0.
+   */
+  /** (검증용) 받은 피해 기록 */
+  readonly damageLog: string[] = [];
+  lastAttackLog: string[] = [];
+
+  private hurtBattle(damage: number, source = '?'): boolean {
+    if (this.state !== 'playing') return false;
+    if (this.shieldOn) return false;
+    if (this.time.now < this.invincibleUntil) return false;
+    this.damageLog.push(`${source}:${damage}`);
+    this.hp = Math.max(0, this.hp - damage);
+    sound.hit();
+    this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
+    this.floatText(`-${damage}`, this.playerX, this.player.y - this.player.displayHeight / 2 - 4, '#ff8f8f');
+    if (this.hp > 0) {
+      this.invincibleUntil = this.time.now + BATTLE_HP.hitInvulnMs;
+      this.cameras.main.shake(120, 0.006);
+      this.cameras.main.flash(90, 255, 140, 130);
+      return true;
+    }
+    // 하트 하나 잃음
+    this.hearts = Math.max(0, this.hearts - 1);
+    this.updateHud();
+    this.cameras.main.shake(220, 0.014);
+    this.cameras.main.flash(160, 255, 110, 100);
+    if (this.hearts <= 0) {
+      this.die();
+      return true;
+    }
+    this.hp = BATTLE_HP.perHeart;
+    this.invincibleUntil = this.time.now + BATTLE_HP.heartLossInvulnMs;
+    return true;
+  }
+
+  /** 방패 버튼: 고나 앞에 1초 동안 반투명 방패 */
+  private raiseShield(): void {
+    if (!this.battle || this.state !== 'playing' || this.battle.frozen || this.battle.mode === 'victory') return;
+    if (this.time.now < this.shieldReadyAt) return;
+    this.shieldUntil = this.time.now + SHIELD.activeMs;
+    this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
+    sound.shield();
+    this.updateShield();
+    this.sparkleEmitter.explode(perf.low ? 3 : 6, this.shieldSprite.x, this.shieldSprite.y - 12);
+  }
+
+  /** 방패 영역 (고나 앞쪽, 키보다 조금 크게) */
+  private shieldRect(): { x0: number; y0: number; x1: number; y1: number } | null {
+    if (!this.shieldOn) return null;
+    const feet = this.groundY - this.alt;
+    return { x0: this.playerX - 2, x1: this.playerX + 20, y0: feet - 38, y1: feet + 2 };
+  }
+
+  private updateShield(): void {
+    const on = this.shieldOn;
+    if (!on) {
+      if (this.shieldSprite.visible) this.shieldSprite.setVisible(false);
+      return;
+    }
+    const left = this.shieldUntil - this.time.now;
+    // 끝나기 직전엔 깜빡
+    const a = left < 250 ? (Math.floor(left / 60) % 2 ? 0.3 : 0.75) : 0.8 + Math.sin(this.time.now * 0.02) * 0.1;
+    this.shieldSprite
+      .setVisible(true)
+      .setAlpha(a)
+      .setPosition(Math.round(this.playerX + 11), Math.round(this.groundY - this.alt + 2));
+  }
+
   /** 고나가 맞음 (바위·보스 공격 공통). 무적 중이면 false */
   private hurt(): boolean {
     if (this.state !== 'playing' || this.time.now < this.invincibleUntil) return false;
@@ -921,6 +1016,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.scrollY = 0;
     this.state = 'dead';
     const bossRetry = this.battle?.id;
+    if (this.battle) this.lastAttackLog = this.battle.attackLog;
     this.battle?.destroy();
     this.battle = null;
     this.pull = 0;
@@ -1128,6 +1224,7 @@ export class GameScene extends Phaser.Scene {
       ['boss-dot', stinkDot],
       ['boss-warn', warnMark],
       ['boss-tinyheart', tinyHeart],
+      ['battle-shield', battleShield],
     ];
     for (const [k, f] of small) if (!tm.exists(k)) addCanvas(this, k, f());
 
@@ -1222,7 +1319,12 @@ export class GameScene extends Phaser.Scene {
       },
       playerHead: () => this.headPos(),
       playerGrounded: () => this.grounded,
-      hurtPlayer: () => this.hurt(),
+      hurtPlayer: (d, src) => this.hurtBattle(d, src),
+      shieldRect: () => this.shieldRect(),
+      onShieldBlock: (x, y) => {
+        sound.catch();
+        this.sparkleEmitter.explode(perf.low ? 2 : 4, x, y);
+      },
       spawnSnack: (k, alt) => this.addSnack(k, this.W + 14, alt),
       addScore: (p, x, y) => this.addPoints(p, x, y),
       sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
@@ -1255,7 +1357,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private throwHair(): void {
-    if (this.state !== 'playing' || !this.canThrow || this.boomerang.isOut || this.battle?.frozen || this.battle?.mode === 'victory') return;
+    if (this.state !== 'playing' || !this.canThrow || this.battle?.frozen || this.battle?.mode === 'victory') return;
+    if (this.boomerang.isOut) {
+      // 돌아오기 직전에 누른 것은 기억 (돌아오자마자 발사)
+      this.attackBufferUntil = this.time.now + 250;
+      return;
+    }
     const h = this.headPos();
     const stats = boomerangStats(this.growth.stage.id);
     // 보스전: 보스까지는 꼭 닿게
@@ -1346,6 +1453,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.retryCarry = { score: this.score, snacks: this.snacksEaten };
+    this.hp = BATTLE_HP.perHeart;
+    this.shieldUntil = 0;
+    this.shieldReadyAt = 0;
     const tex = `boss-${id}`;
     this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : new SniffBattle(this.host, tex);
     this.battle.start();
@@ -1355,6 +1465,7 @@ export class GameScene extends Phaser.Scene {
     const b = this.battle;
     if (!b) return;
     const id = b.id;
+    this.lastAttackLog = b.attackLog;
     b.destroy();
     this.battle = null;
     this.pull = 0;
@@ -1395,24 +1506,35 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** 공격 버튼·필살 게이지·보스 체력 → 화면 UI (값이 바뀔 때만 — DOM 작업 최소화) */
+  /** 공격·방패·필살 버튼, 고나 하트+HP, 보스 체력 → 화면 UI (값이 바뀔 때만 — DOM 작업 최소화) */
   private emitHud(): void {
     const live = this.state === 'playing' || this.state === 'evolving' || this.state === 'paused';
     const b = this.battle && live ? this.battle : null;
     const mode: CombatHud['mode'] = !live ? 'none' : b ? 'battle' : this.canThrow ? 'run' : 'none';
     const enabled = this.state === 'playing' && !b?.frozen && b?.mode !== 'victory' && b?.mode !== 'done';
     const attack: AttackState = mode === 'none' ? 'hidden' : !this.canThrow ? 'locked' : this.boomerang.isOut ? 'out' : 'ready';
+    const now = this.time.now;
+    const shield: CombatHud['shield'] = !b ? 'hidden' : now < this.shieldUntil ? 'active' : now < this.shieldReadyAt ? 'cool' : 'ready';
     const hud: CombatHud = {
       mode,
       enabled,
       attack,
       cooldown: Math.ceil(this.boomerang.remaining * 20) / 20,
-      airJump: !this.grounded && this.jumpsUsed < this.growth.stage.controls.maxJumps,
+      shield,
+      shieldCool: shield === 'cool' ? Math.ceil(((this.shieldReadyAt - now) / (SHIELD.cooldownMs - SHIELD.activeMs)) * 20) / 20 : 0,
       special: b ? Math.floor(b.special * 20) / 20 : 0,
       specialReady: !!b?.specialReady,
       boss: b && b.mode !== 'done' ? b.hud() : null,
+      player: b ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
     };
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.airJump}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}`;
+    // 보스전에는 위쪽 하트를 화면 UI(하트 + HP 게이지)로 대신 보여 줌
+    const wantPhaser = mode !== 'battle' && this.state !== 'ready';
+    if (wantPhaser !== this.phaserHearts) {
+      this.phaserHearts = wantPhaser;
+      this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
+      this.gaugeGfx.setVisible(wantPhaser);
+    }
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);

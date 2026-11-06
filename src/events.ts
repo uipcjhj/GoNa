@@ -41,6 +41,8 @@ export const EV = {
   special: 'special',
   /** UI → 게임: 보스전 '피하기' 버튼 = 점프 / 공중에서 한 번 더 = 더블 점프 */
   dodge: 'dodge',
+  /** UI → 게임: 보스전 방패 */
+  shield: 'shield',
   /** 게임 → UI: 공격 버튼·필살 게이지·보스 체력 표시 (CombatHud) */
   combatHud: 'combatHud',
   /** 게임 → UI: 화면 가운데 큰 안내 ({ top, name, desc, ms, tone }) */
@@ -65,12 +67,15 @@ export interface CombatHud {
   attack: AttackState;
   /** 부메랑이 돌아올 때까지 남은 정도 1 → 0 */
   cooldown: number;
-  /** 공중에서 한 번 더 뛸 수 있음 (피하기 버튼에 '2단' 표시) */
-  airJump: boolean;
+  /** 방패: 숨김 / 쓸 수 있음 / 켜짐 / 재사용 대기 (shieldCool 1 → 0) */
+  shield: 'hidden' | 'ready' | 'active' | 'cool';
+  shieldCool: number;
   /** 필살 게이지 0~1 (보스전에서만) */
   special: number;
   specialReady: boolean;
   boss: { name: string; hp: number; maxHp: number; phase: number } | null;
+  /** 보스전 고나 체력: 하트 + 지금 하트의 HP */
+  player: { hearts: number; maxHearts: number; hp: number; maxHp: number } | null;
 }
 
 export interface BannerInfo {

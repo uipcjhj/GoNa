@@ -44,6 +44,8 @@ export interface Hostile {
   spin: number;
   /** 위아래 물결 이동 */
   wave: { amp: number; freq: number; t: number; baseY: number } | null;
+  /** 맞으면 HP 피해 */
+  dmg: number;
   /** 땅에 닿으면 (포물선 탄 → 장판) */
   onLand: ((h: Hostile) => void) | null;
   dead: boolean;
@@ -74,6 +76,8 @@ export abstract class BossBattle {
   /** 연출 중: 세상(땅·고나·투사체)이 멈춤 */
   frozen = false;
   mode: Mode = 'intro';
+  /** (검증용) 지금까지 쓴 공격 이름 */
+  readonly attackLog: string[] = [];
 
   protected boss: Phaser.GameObjects.Sprite;
   protected bx = 0;
@@ -211,7 +215,8 @@ export abstract class BossBattle {
 
   protected endAttack(cool: number): void {
     this.busy = false;
-    this.cooldown = this.phase2 ? cool * 0.7 : cool;
+    // 공격 뒤 최소 쉬는 시간은 2페이즈에서도 지킴 (부메랑을 맞힐 빈틈)
+    this.cooldown = Math.max(this.def.minRecover, this.phase2 ? cool * 0.8 : cool);
   }
 
   private render(dt: number): void {
@@ -288,12 +293,17 @@ export abstract class BossBattle {
     return { x0: this.bx - this.fw * 0.36, x1: this.bx + this.fw * 0.36, y0: feet - this.fh * 0.78, y1: feet - 1 };
   }
 
+  /** 몸통 충돌 높이 비율 (뿔·머리 장식은 제외 — 점프로 넘을 수 있게) */
+  protected contactHeight = 1;
+
   private bodyContact(): void {
     if (this.mode !== 'fight') return;
     const p = this.host.playerRect();
     const b = this.bossRect();
+    b.y0 = b.y1 - (b.y1 - b.y0) * this.contactHeight;
     if (p.x0 < b.x1 && p.x1 > b.x0 && p.y0 < b.y1 && p.y1 > b.y0) {
-      if (this.host.hurtPlayer()) this.onBodyHit();
+      if (this.host.shieldRect()) return; // 방패 중엔 몸통도 막음
+      if (this.host.hurtPlayer(this.def.bodyDamage, 'body')) this.onBodyHit();
     }
   }
 
@@ -356,7 +366,7 @@ export abstract class BossBattle {
   gain(v: number): void {
     if (this.mode === 'victory' || this.mode === 'done') return;
     const was = this.special >= 1;
-    this.special = Math.min(1, this.special + v);
+    this.special = Math.min(1, this.special + v * this.def.specialGainMul);
     if (!was && this.special >= 1) sound.evolveDone();
   }
 
@@ -381,6 +391,7 @@ export abstract class BossBattle {
       w: sprite.width,
       h: sprite.height,
       breakable: true,
+      dmg: 20,
       onGround: false,
       threat: true,
       pierce: false,
@@ -419,13 +430,28 @@ export abstract class BossBattle {
       }
       if (h.spin) h.sprite.angle += h.spin * dt;
       h.sprite.setPosition(Math.round(h.x), Math.round(h.y));
+      // 방패: 막으면 피해 0 (탄은 부서지고, 파동·장판은 그냥 지나감)
+      const sh = this.host.shieldRect();
+      if (sh && !h.hitPlayer) {
+        const blocked =
+          h.shape === 'circle'
+            ? circleRect(h.x, h.y, h.r, sh)
+            : h.x - h.w / 2 < sh.x1 && h.x + h.w / 2 > sh.x0 && h.y - h.h / 2 < sh.y1 && h.y + h.h / 2 > sh.y0;
+        if (blocked) {
+          h.hitPlayer = true;
+          this.host.onShieldBlock(h.x, h.y);
+          this.gain(SPECIAL_GAIN.dodge);
+          if (!h.pierce) this.pop(h);
+          continue;
+        }
+      }
       // 고나와 충돌
       if (!h.hitPlayer) {
         const hit =
           h.shape === 'circle'
             ? circleRect(h.x, h.y, h.r, p)
             : h.x - h.w / 2 < p.x1 && h.x + h.w / 2 > p.x0 && h.y - h.h / 2 < p.y1 && h.y + h.h / 2 > p.y0;
-        if (hit && this.host.hurtPlayer()) {
+        if (hit && this.host.hurtPlayer(h.dmg, h.sprite.texture.key)) {
           h.hitPlayer = true;
           if (!h.pierce) this.pop(h);
         }

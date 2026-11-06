@@ -1,11 +1,14 @@
 /**
  * ⚔ 뽀뽀괴물 (첫 번째 보스, 2단계 '기어 다니는 고나' 때)
- *   - 하트 뽀뽀탄: 입술에서 하트 3발(2페이즈 5발). 낮은 탄은 점프, 높은 탄은 땅에 그대로
- *   - 짧은 돌진: '!' 뒤에 땅을 쓸며 돌진 → 점프로 넘기
- *   - 뽀뽀 파동: 가까이 뛰어와 땅을 따라 퍼지는 하트 파동 → 점프
+ *   튜토리얼 보스: 모든 공격 전 0.8초 이상 예고, 공격 뒤 2초 쉼, 공격끼리 겹치지 않음,
+ *   모든 공격은 점프 또는 방패로 피할 수 있음.
+ *   - 하트 뽀뽀탄(HP 20): 1초 간격 3발(2페이즈 4발). 낮은 탄은 점프, 높은 탄은 땅에 그대로
+ *   - 짧은 돌진(HP 30): '!' 뒤에 땅을 쓸며 돌진 → 점프로 넘기
+ *   - 뽀뽀 파동(HP 25): 가까이 뛰어와 땅을 따라 퍼지는 하트 파동 → 점프
  *   - 각성: 처음엔 공격 수단이 없다가, 두 번째 공격 뒤 고나의 머리카락이 반짝 → 머리카락 부메랑 각성
  */
 import { sound } from '../../audio';
+import { DAMAGE } from '../../game/boss';
 import { BossBattle } from './BossBattle';
 import type { BattleHost } from './types';
 
@@ -23,6 +26,8 @@ export class KissBattle extends BossBattle {
     private awakened: boolean,
   ) {
     super(host, 'kiss', tex);
+    // 돌진 충돌은 둥근 몸통만 (하트 뿔 제외): 높이 약 26px → 한 번 점프로 넉넉히 넘음
+    this.contactHeight = 0.75;
   }
 
   protected idleFrame(): number {
@@ -59,6 +64,7 @@ export class KissBattle extends BossBattle {
     if (this.done === 0) pick = 'shots';
     else if (this.done === 1 && !this.awakened) pick = 'dash';
     this.last = pick;
+    this.attackLog.push(pick + (this.phase2 ? '#2' : ''));
     this.done++;
     if (pick === 'shots') this.shots();
     else if (pick === 'dash') this.dash();
@@ -70,41 +76,48 @@ export class KissBattle extends BossBattle {
     return { x: this.bx - this.fw * 0.36, y: this.host.groundY - this.balt - this.fh * 0.36 };
   }
 
+  /**
+   * 하트 뽀뽀탄 — 0.9초 예고(입술 쭉 + '!') 뒤 3발.
+   * 1페이즈: 모두 낮게(점프로 하나씩) · 2페이즈: 낮게/높게 번갈아(높은 탄은 가만히 서 있으면 지나감)
+   * 탄 사이 간격 1초 이상 → 한 번 뛰고 내려온 뒤 다음 탄이 옴 (점프 체공 약 0.7초)
+   */
   private shots(): void {
-    const n = this.phase2 ? 5 : 3;
-    const gap = this.phase2 ? 0.26 : 0.34;
-    const speed = this.phase2 ? 120 : 98;
-    // 낮은 탄(점프) · 높은 탄(그대로) — 적어도 하나는 낮게
-    const lows = this.phase2 ? [true, false, true, true, false] : [true, false, true];
-    if (this.phase2) lows.sort(() => Math.random() - 0.5);
-    this.setPose(2, 0.4);
+    const n = this.phase2 ? 4 : 3;
+    const gap = this.phase2 ? 1.1 : 1.0;
+    const speed = this.phase2 ? 84 : 69; // 기존 120 / 98 에서 약 30% 느리게
+    const lows = this.phase2 ? [true, false, true, false] : [true, true, true];
+    this.warn(0.9);
+    this.setPose(2, 0.9);
     for (let i = 0; i < n; i++) {
-      this.after(0.35 + i * gap, () => {
-        this.setPose(2, 0.18);
+      this.after(0.9 + i * gap, () => {
+        this.setPose(2, 0.25);
         sound.smooch();
         const m = this.lips();
         const targetY = this.host.groundY - (lows[i] ? 7 : 31);
         const t = Math.max(0.3, (m.x - this.host.basePlayerX) / speed);
-        this.spawn('boss-heart', m.x, m.y, { vx: -speed, vy: (targetY - m.y) / t, spin: 0, r: 3.5 });
+        this.spawn('boss-heart', m.x, m.y, { vx: -speed, vy: (targetY - m.y) / t, spin: 0, r: 3.5, dmg: DAMAGE.kissHeart });
       });
     }
-    this.after(0.35 + n * gap + 0.2, () => this.endAttack(1.3));
+    // 마지막 탄이 고나를 지나갈 때까지 기다린 뒤 쉬는 시간 (다른 공격과 겹치지 않게)
+    const travel = (this.homeX - this.host.basePlayerX) / speed;
+    this.after(0.9 + (n - 1) * gap + travel, () => this.endAttack(2.0));
   }
 
+  /** 짧은 돌진 — 0.9초 예고(몸 흔들 + '!') 뒤 땅을 쓸고 지나감 → 점프로 넘기 (또는 방패) */
   private dash(): void {
-    this.warn(0.75);
-    this.setPose(1, 0.75);
-    this.after(0.8, () => {
+    this.warn(0.9);
+    this.setPose(1, 0.9);
+    this.after(0.95, () => {
       sound.boing();
       this.dashing = true;
       this.dashHit = false;
-      const speed = this.phase2 ? 270 : 225;
+      const speed = this.phase2 ? 185 : 165;
       const dist = this.bx + this.fw;
       this.moveTo(-this.fw, 0, dist / speed, 0, (t) => t, () => {
         this.dashing = false;
         // 오른쪽에서 다시 통통 등장
         this.bx = this.host.W + this.fw / 2;
-        this.moveTo(this.homeX, 0, 0.9, 12, (t) => 1 - (1 - t) ** 2, () => this.endAttack(1.1));
+        this.moveTo(this.homeX, 0, 1.0, 12, (t) => 1 - (1 - t) ** 2, () => this.endAttack(2.0));
       });
     });
   }
@@ -121,17 +134,19 @@ export class KissBattle extends BossBattle {
     if (this.dashing) this.dashHit = true;
   }
 
+  /** 뽀뽀 파동 — 가까이 폴짝 → 0.8초 입술 예고 → 땅을 따라 하트 파동 (점프로 넘기 또는 방패) */
   private wave(): void {
-    // 가까이 폴짝 → 쿵 → 땅을 따라 하트 파동
-    const nearX = Math.min(this.homeX, this.host.basePlayerX + 64);
-    this.moveTo(nearX, 0, 0.6, 26, (t) => t, () => {
+    const nearX = Math.min(this.homeX, this.host.basePlayerX + 70);
+    this.moveTo(nearX, 0, 0.7, 26, (t) => t, () => {
       sound.nestJump();
       this.host.scene.cameras.main.shake(140, 0.006);
-      this.setPose(2, 0.6);
-      this.after(0.25, () => this.emitWave());
-      if (this.phase2) this.after(0.6, () => this.emitWave());
-      this.after(this.phase2 ? 1.1 : 0.8, () => {
-        this.moveTo(this.homeX, 0, 0.7, 26, (t) => t, () => this.endAttack(1.2));
+      this.warn(0.8);
+      this.setPose(2, 0.8);
+      this.after(0.8, () => this.emitWave());
+      if (this.phase2) this.after(1.9, () => this.emitWave()); // 2페이즈: 착지하고 다시 뛸 시간이 충분한 두 번째 파동
+      const done = this.phase2 ? 2.9 : 1.8;
+      this.after(done, () => {
+        this.moveTo(this.homeX, 0, 0.8, 26, (t) => t, () => this.endAttack(2.0));
       });
     });
   }
@@ -140,7 +155,7 @@ export class KissBattle extends BossBattle {
     sound.smooch();
     const m = this.lips();
     const y = this.host.groundY - 7;
-    const h = this.spawn('boss-wave', m.x, y, { vx: -125, shape: 'box', w: 10, h: 12, pierce: true, breakable: false, life: 1.25 });
+    const h = this.spawn('boss-wave', m.x, y, { vx: -100, shape: 'box', w: 10, h: 12, pierce: true, breakable: false, life: 1.6, dmg: DAMAGE.kissWave });
     h.sprite.setScale(2);
     // 퍼지는 고리 (보이기만)
     const g = this.host.scene.add.ellipse(m.x, y, 8, 6).setStrokeStyle(1, 0xff7aa8, 1).setDepth(10.9);
@@ -151,7 +166,7 @@ export class KissBattle extends BossBattle {
   private awaken(): void {
     this.cutscene(3.1, () => {
       this.awakened = true;
-      this.endAttack(0.9);
+      this.endAttack(1.2);
     });
     const scene = this.host.scene;
     this.setPose(2, 1.0);

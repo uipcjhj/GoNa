@@ -35,6 +35,8 @@ export class HairBoomerang {
     return Math.min(0.5, 0.5 * (this.backDist / Math.max(1, this.range)));
   }
   private backDist = 0;
+  /** 던진 횟수 (검증용) */
+  throws = 0;
 
   get isOut(): boolean {
     return this.state !== 'held';
@@ -43,6 +45,7 @@ export class HairBoomerang {
   throw(texture: string, scale: number, x: number, y: number, stats: { range: number; speed: number; returnSpeed: number; damage: number }): boolean {
     if (this.state !== 'held') return false;
     this.state = 'out';
+    this.throws++;
     this.hitIds.clear();
     this.x = x;
     this.y = y;

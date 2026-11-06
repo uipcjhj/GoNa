@@ -8,6 +8,7 @@
  */
 import Phaser from 'phaser';
 import { sound } from '../../audio';
+import { DAMAGE } from '../../game/boss';
 import { BossBattle } from './BossBattle';
 import type { BattleHost } from './types';
 
@@ -53,6 +54,7 @@ export class SniffBattle extends BossBattle {
     }
     this.count++;
     this.last = pick;
+    this.attackLog.push(pick + (this.phase2 ? '#2' : ''));
     if (pick === 'clouds') this.clouds();
     else if (pick === 'inhale') this.inhale();
     else if (pick === 'bomb') this.bomb();
@@ -65,20 +67,21 @@ export class SniffBattle extends BossBattle {
 
   private clouds(): void {
     const n = this.phase2 ? 5 : 3;
-    this.setPose(2, 0.4);
+    this.warn(0.7);
+    this.setPose(2, 0.7);
     const alts = [8, 30, 12, 44, 8];
     for (let i = 0; i < n; i++) {
-      this.after(0.3 + i * 0.36, () => {
+      this.after(0.7 + i * 0.45, () => {
         sound.puff();
         const m = this.nose();
         const speed = (this.phase2 ? 82 : 66) + Math.random() * 10;
         const targetY = this.host.groundY - alts[i];
         const t = Math.max(0.4, (m.x - this.host.basePlayerX) / speed);
-        const h = this.spawn('boss-cloud', m.x, m.y, { vx: -speed, vy: (targetY - m.y) / t, r: 4.5 });
+        const h = this.spawn('boss-cloud', m.x, m.y, { vx: -speed, vy: (targetY - m.y) / t, r: 4.5, dmg: DAMAGE.sniffCloud });
         h.wave = { amp: 4, freq: 5 + Math.random() * 2, t: Math.random() * 6, baseY: m.y };
       });
     }
-    this.after(0.3 + n * 0.36 + 0.3, () => this.endAttack(1.4));
+    this.after(0.7 + n * 0.45 + 0.3, () => this.endAttack(1.5));
   }
 
   private inhale(): void {
@@ -145,11 +148,11 @@ export class SniffBattle extends BossBattle {
         this.host.scene.tweens.add({ targets: c, x: this.bx + Math.cos(a) * 46, y: m.y + Math.sin(a) * 30, alpha: 0, scale: 1.6, duration: 700, onComplete: () => c.destroy() });
       }
       // 땅을 따라 오는 큰 파동 (한 번 점프)
-      const h = this.spawn('boss-bigcloud', m.x, this.host.groundY - 9, { vx: -150, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3 });
+      const h = this.spawn('boss-bigcloud', m.x, this.host.groundY - 9, { vx: -150, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3, dmg: DAMAGE.sniffBlast });
       h.sprite.setScale(1.3);
       // 공중 구름 (더블 점프로 너무 높이 뛰면 맞음)
       for (const alt of [50, 66]) {
-        const c = this.spawn('boss-cloud', m.x + 10, this.host.groundY - alt, { vx: -70, r: 4.5, threat: false });
+        const c = this.spawn('boss-cloud', m.x + 10, this.host.groundY - alt, { vx: -70, r: 4.5, threat: false, dmg: DAMAGE.sniffCloud });
         c.wave = { amp: 3, freq: 4, t: alt, baseY: this.host.groundY - alt };
       }
     };
@@ -177,9 +180,10 @@ export class SniffBattle extends BossBattle {
           ay,
           r: 4,
           threat: false,
+          dmg: DAMAGE.sniffPuddle,
           spin: 360,
           onLand: (h) => {
-            const p = this.spawn('boss-puddle', h.x, this.host.groundY - 2.5, { shape: 'box', w: 24, h: 5, onGround: true, pierce: true, breakable: false, life: 14 });
+            const p = this.spawn('boss-puddle', h.x, this.host.groundY - 2.5, { shape: 'box', w: 24, h: 5, onGround: true, pierce: true, breakable: false, life: 14, dmg: DAMAGE.sniffPuddle });
             p.sprite.setAlpha(0);
             this.host.scene.tweens.add({ targets: p.sprite, alpha: 1, duration: 120 });
           },

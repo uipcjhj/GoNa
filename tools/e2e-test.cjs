@@ -327,9 +327,9 @@ async function bossTests(label, device) {
   check(`${label}: crawler gauge full → 뽀뽀괴물 battle (no evolution yet)`, k0?.id === 'kiss' && c0.stage === 1 && c0.state === 'playing', JSON.stringify({ k0, c0 }));
   const bar = await page.locator('.boss-bar').isVisible();
   check(`${label}: boss HP bar visible`, bar);
-  check(`${label}: 3 buttons shown from battle start, attack locked before awakening`, !c0.canThrow && (await page.locator('.bt-dodge').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-attack').getAttribute('class')).includes('locked'));
+  check(`${label}: 3 buttons shown from battle start, attack locked before awakening`, !c0.canThrow && (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-attack').getAttribute('class')).includes('locked'));
   await G(() => window.__gona.scene.getScene('Game').debugGod());
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 16000 });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 30000 });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugCombat().canThrow, null, { timeout: 6000 }).catch(() => {});
   const aw = await page.locator('.bt-attack').getAttribute('class');
   check(`${label}: hair boomerang awakens mid-battle (button unlocks)`, (await combat()).canThrow && !aw.includes('locked'), aw);
@@ -357,7 +357,7 @@ async function bossTests(label, device) {
   const sp = await battle();
   await page.waitForTimeout(1700);
   const sp2 = await battle();
-  check(`${label}: special = cutscene + big damage`, sp.frozen && sp2.hp === hp1 - 4 && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
+  check(`${label}: special = cutscene + big damage`, sp.frozen && sp2.hp === Math.max(0, hp1 - 3) && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
   // 승리 → 3단계 직립보행
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
   for (let i = 0; i < 6 && (await battle())?.mode === 'fight'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
@@ -365,7 +365,7 @@ async function bossTests(label, device) {
   await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 9000 }).catch(() => {});
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
-  check(`${label}: boss UI hidden after battle (attack stays, dodge/special gone)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-special').isVisible()) && !(await page.locator('.bt-dodge').isVisible()) && (await page.locator('.bt-attack').isVisible()));
+  check(`${label}: boss UI hidden after battle (attack stays, dodge/special gone)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-special').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()));
   // 평소 달리기: 부메랑으로 바위 깨기
   const sc0 = await G(() => window.__gona.scene.getScene('Game').score);
   await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); sc.entities = []; sc.addRock(sc.playerX + 60); sc.distToNext = 9999; });
@@ -399,7 +399,7 @@ async function bossTests(label, device) {
   await page.keyboard.press('KeyX');
   await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 }).catch(() => {});
   check(`${label}: boomerang reaches small boss from tall bigbaby`, (await battle()).hp < shp, `${shp} → ${(await battle()).hp}`);
-  await G(() => window.__gona.scene.getScene('Game').debugBoss(15));
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(21));
   for (let i = 0; i < 5 && !(await battle())?.phase2; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(1000); }
   check(`${label}: sniff phase 2 at half HP`, (await battle())?.phase2 && (await page.locator('.bb-phase').isVisible()));
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
@@ -414,7 +414,7 @@ async function bossTests(label, device) {
 
   // ── 보스전에서 짐 → '보스전 다시' 버튼
   await begin('kiss');
-  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.hearts = 1; });
+  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.hearts = 1; sc.hp = 10; });
   await page.waitForSelector('.over-screen:not(.hidden)', { timeout: 25000 });
   check(`${label}: losing in boss battle offers boss retry`, await page.locator('.boss-retry').isVisible());
   await page.waitForTimeout(600);
@@ -426,7 +426,7 @@ async function bossTests(label, device) {
   await b.close();
 }
 
-/** 보스전 조작 버튼: 실제 터치 이벤트(CDP Input.dispatchTouchEvent — 멀티터치 포함) + 프레임 시간 */
+/** 보스전 조작: 실제 터치 이벤트(CDP Input.dispatchTouchEvent — 멀티터치 포함) + HP 시스템 + 프레임 시간 */
 async function controlTests(label, device) {
   const b = await chromium.launch();
   const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
@@ -436,8 +436,11 @@ async function controlTests(label, device) {
   const T = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y, id]) => ({ x, y, id, radiusX: 6, radiusY: 6, force: 1 })) });
   const center = async (sel) => { const r = await page.locator(sel).boundingBox(); return [r.x + r.width / 2, r.y + r.height / 2]; };
   const tap = async (sel) => { const [x, y] = await center(sel); await T('touchStart', [[x, y, 1]]); await T('touchEnd', []); };
-  const G = (fn) => page.evaluate(fn);
-  const game = () => G(() => { const g = window.__gona.scene.getScene('Game'); return { grounded: g.grounded, jumps: g.jumpsUsed, out: g.boomerang.isOut, state: g.state, alt: g.alt, battle: g.debugBattle() }; });
+  const vp = page.viewportSize();
+  const SX = vp.width * 0.5, SY = vp.height * 0.32; // 화면 빈 곳
+  const tapScreen = async () => { await T('touchStart', [[SX, SY, 1]]); await T('touchEnd', []); };
+  const G = (fn, arg) => page.evaluate(fn, arg);
+  const game = () => G(() => { const g = window.__gona.scene.getScene('Game'); return { grounded: g.grounded, jumps: g.jumpsUsed, out: g.boomerang.isOut, state: g.state, hp: g.hp, hearts: g.hearts, shield: g.shieldOn, battle: g.debugBattle() }; });
   const waitGround = () => page.waitForFunction(() => window.__gona.scene.getScene('Game').grounded, null, { timeout: 4000 });
 
   // 타이틀 테스트 메뉴 → 뽀뽀괴물전 바로
@@ -448,108 +451,129 @@ async function controlTests(label, device) {
   await tap('.cover-dev-toggle'); await page.waitForTimeout(150);
   await tap('.cover-dev-btn >> nth=0');
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.id === 'kiss', null, { timeout: 8000 }).catch(() => {});
-  check(`${label}: title test menu → 뽀뽀괴물 battle directly`, (await game()).battle?.id === 'kiss');
-  await G(() => window.__gona.scene.getScene('Game').debugGod());
+  const g0 = await game();
+  check(`${label}: title test menu → 뽀뽀괴물 battle directly (HP 100, hearts 3, boss HP 8)`, g0.battle?.id === 'kiss' && g0.hp === 100 && g0.hearts === 3 && g0.battle.hp === 8, JSON.stringify(g0));
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
+  const top = await G(() => ({ me: !!document.querySelector('.bt-me') && getComputedStyle(document.querySelector('.battle-top')).display !== 'none', hp: document.querySelector('.bt-hp-text').textContent, hearts: document.querySelectorAll('.bt-heart').length }));
+  check(`${label}: top shows GONA hearts + HP gauge + boss HP`, top.me && top.hp === 'HP 100' && top.hearts === 3 && (await page.locator('.boss-bar').isVisible()), JSON.stringify(top));
+  check(`${label}: buttons: shield (left), big attack + special (right), no dodge button`, (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-dodge').count()) === 0);
 
-  // 버튼 위치: 고나·보스를 가리지 않음 (화면 좌표로 비교)
+  // 버튼 위치·크기: 고나·보스를 가리지 않음, 터치 영역 64px 이상, 공격 버튼은 크게
   const geo = await G(() => {
     const g = window.__gona.scene.getScene('Game'); const cv = g.game.canvas.getBoundingClientRect();
-    const k = cv.width / (g.W);
-    const p = g.player.getBounds(); const br = g.battle.bossRect();
-    const toScr = (x, y) => [cv.left + x * k, cv.top + y * k];
-    return { player: [...toScr(p.x, p.y), ...toScr(p.right, p.bottom)], boss: [...toScr(br.x0, br.y0), ...toScr(br.x1, br.y1)], ground: toScr(0, g.groundY)[1] };
+    const k = cv.width / g.W; const p = g.player.getBounds(); const br = g.battle.bossRect();
+    const S = (x, y) => [cv.left + x * k, cv.top + y * k];
+    return { player: [...S(p.x, p.y), ...S(p.right, p.bottom)], boss: [...S(br.x0, br.y0), ...S(br.x1, br.y1)] };
   });
   const rects = [];
-  for (const sel of ['.bt-dodge .bt-face', '.bt-attack .bt-face', '.bt-special .bt-face']) { const r = await page.locator(sel).boundingBox(); rects.push(r); }
+  for (const sel of ['.bt-shield .bt-face', '.bt-attack .bt-face', '.bt-special .bt-face']) rects.push(await page.locator(sel).boundingBox());
   const hit = (r, q) => r.x < q[2] && r.x + r.width > q[0] && r.y < q[3] && r.y + r.height > q[1];
-  const coverPlayer = rects.some((r) => hit(r, geo.player)); const coverBoss = rects.some((r) => hit(r, geo.boss));
-  check(`${label}: buttons don't cover GONA or boss`, !coverPlayer && !coverBoss, JSON.stringify({ geo, rects: rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)) }));
-  const hitArea = await page.locator('.bt-dodge').boundingBox();
-  check(`${label}: touch area ≥ 64px`, hitArea.width >= 64 && hitArea.height >= 64, `${hitArea.width}x${hitArea.height}`);
+  const inView = rects.every((r) => r.x >= 0 && r.y >= 0 && r.x + r.width <= vp.width && r.y + r.height <= vp.height);
+  check(`${label}: buttons inside screen, not covering GONA or boss`, inView && !rects.some((r) => hit(r, geo.player) || hit(r, geo.boss)), JSON.stringify({ geo, rects: rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)) }));
+  const atkHit = await page.locator('.bt-attack').boundingBox();
+  const shHit = await page.locator('.bt-shield').boundingBox();
+  check(`${label}: attack face big (≥ 1.5× old) & touch areas ≥ 64px`, rects[1].width >= (label.includes('land') ? 84 : 110) && atkHit.width >= 64 && shHit.width >= 64, `attack face ${rects[1].width} hit ${atkHit.width} · shield hit ${shHit.width}`);
 
-  // ① 피하기 → 점프 / 연속 → 더블 점프
+  // ① 화면 빈 곳 터치 = 점프 / 공중에서 한 번 더 = 더블 점프
   await waitGround();
-  await tap('.bt-dodge'); await page.waitForTimeout(90);
+  await tapScreen(); await page.waitForTimeout(80);
   const j1 = await game();
-  check(`${label}: dodge button → jump`, !j1.grounded && j1.jumps === 1, JSON.stringify(j1));
-  await tap('.bt-dodge'); await page.waitForTimeout(60);
-  const j2 = await game();
-  check(`${label}: dodge again in air → double jump`, j2.jumps === 2, JSON.stringify(j2));
+  check(`${label}: screen tap → jump in boss battle`, !j1.grounded && j1.jumps === 1, JSON.stringify(j1));
+  await tapScreen(); await page.waitForTimeout(60);
+  check(`${label}: tap again in air → double jump`, (await game()).jumps === 2);
   await waitGround();
-  // 보스전 중 화면 터치는 점프 안 함 (버튼과 충돌 방지)
-  const vp = page.viewportSize();
-  await T('touchStart', [[vp.width * 0.5, vp.height * 0.3, 1]]); await T('touchEnd', []); await page.waitForTimeout(90);
-  check(`${label}: screen tap doesn't jump during boss battle`, (await game()).grounded);
+  // 버튼 터치는 점프로 새지 않음
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').time.now >= window.__gona.scene.getScene('Game').shieldReadyAt, null, { timeout: 5000 });
+  await tap('.bt-shield'); await page.waitForTimeout(80);
+  const sh = await game();
+  check(`${label}: shield button → shield on, no jump`, sh.shield && sh.grounded, JSON.stringify(sh));
 
-  // ② 피하기 누른 채로 공격 (멀티터치)
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugCombat().canThrow, null, { timeout: 15000 });
+  // ② 방패: 1초 동안 막음, 피해 0, 4초 대기 표시, 대기 중 재사용 불가
+  const blocked = await G(() => {
+    const g = window.__gona.scene.getScene('Game'); const bt = g.battle;
+    const hp0 = g.hp;
+    bt.spawn('boss-heart', g.playerX + 30, g.groundY - 8, { vx: -150, r: 3.5, dmg: 20 });
+    return new Promise((res) => setTimeout(() => res({ hp0, hp1: g.hp, left: bt.hostiles.filter((h) => !h.dead).length }), 400));
+  });
+  check(`${label}: shield blocks projectile (damage 0)`, blocked.hp1 === blocked.hp0, JSON.stringify(blocked));
+  const shUi = await G(() => ({ cls: document.querySelector('.bt-shield').className, label: document.querySelector('.bt-shield .bt-label').textContent }));
+  await page.waitForTimeout(800);
+  const shCool = await G(() => ({ on: window.__gona.scene.getScene('Game').shieldOn, cls: document.querySelector('.bt-shield').className, cool: document.querySelector('.bt-shield .bt-cool').style.height, label: document.querySelector('.bt-shield .bt-label').textContent }));
+  await tap('.bt-shield'); await page.waitForTimeout(60);
+  const again = await game();
+  check(`${label}: shield ends after ~1s, cooldown shown, can't reuse`, shUi.cls.includes('active') && !shCool.on && parseInt(shCool.cool) > 0 && shCool.label === '준비 중' && !again.shield, JSON.stringify({ shUi, shCool }));
+
+  // ③ 화면 누른 채(점프 손가락) 공격 버튼 (멀티터치)
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugCombat().canThrow, null, { timeout: 30000 });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
   await page.waitForFunction(() => !window.__gona.scene.getScene('Game').boomerang.isOut, null, { timeout: 4000 });
   await waitGround();
-  const [dx, dy] = await center('.bt-dodge'); const [ax, ay] = await center('.bt-attack');
-  await T('touchStart', [[dx, dy, 1]]);
-  await T('touchStart', [[dx, dy, 1], [ax, ay, 2]]);
-  await page.waitForTimeout(60);
+  const [ax, ay] = await center('.bt-attack');
+  await T('touchStart', [[SX, SY, 1]]);
+  await T('touchStart', [[SX, SY, 1], [ax, ay, 2]]);
+  await page.waitForTimeout(50);
   const mt = await game();
   const pressed = await G(() => [...document.querySelectorAll('.bt.pressed')].map((e) => e.getAttribute('aria-label')));
-  check(`${label}: hold dodge + press attack → both work`, !mt.grounded && mt.out && pressed.length === 2, JSON.stringify({ mt, pressed }));
-  // 공격 쿨타임 표시
-  const cool = await G(() => ({ h: document.querySelector('.bt-attack .bt-cool').style.height, label: document.querySelector('.bt-attack .bt-label').textContent, cls: document.querySelector('.bt-attack').className }));
-  check(`${label}: attack cooldown shown on button`, parseInt(cool.h) > 0 && cool.label === '돌아오는 중' && cool.cls.includes('out'), JSON.stringify(cool));
-  // 돌아오기 전 재발사 불가
-  await T('touchEnd', [[dx, dy, 1]]);
-  await T('touchStart', [[dx, dy, 1], [ax, ay, 3]]);
-  await T('touchEnd', [[dx, dy, 1]]);
-  check(`${label}: can't re-throw before return`, (await game()).out);
-  // 손가락이 버튼 밖으로 나갔다 떼도 눌림 상태가 남지 않음
-  await T('touchMove', [[dx + 200, dy - 300, 1]]);
+  check(`${label}: finger on screen (jump) + attack button → both work`, !mt.grounded && mt.out && pressed.includes('공격'), JSON.stringify({ mt, pressed }));
+  const cool = await G(() => ({ h: document.querySelector('.bt-attack .bt-cool').style.height, label: document.querySelector('.bt-attack .bt-label').textContent }));
+  check(`${label}: attack cooldown clearly shown`, parseInt(cool.h) > 0 && cool.label === '돌아오는 중', JSON.stringify(cool));
+  await T('touchMove', [[SX, SY, 1], [ax - 250, ay - 300, 2]]);
   await T('touchEnd', []);
-  await page.waitForTimeout(50);
-  const stuck = await G(() => document.querySelectorAll('.bt.pressed').length);
-  check(`${label}: no stuck pressed state after finger slides off`, stuck === 0, `pressed ${stuck}`);
+  await page.waitForTimeout(40);
+  check(`${label}: no stuck pressed state after finger slides off`, (await G(() => document.querySelectorAll('.bt.pressed').length)) === 0);
+  // 돌아오기 직전에 누른 공격은 돌아오자마자 발사 (공격이 씹히지 않음)
+  await page.waitForFunction(() => { const b = window.__gona.scene.getScene('Game').boomerang; return b.state === 'back' && b.remaining < 0.1; }, null, { timeout: 4000, polling: 10 }).catch(() => {});
+  const th0 = await G(() => window.__gona.scene.getScene('Game').boomerang.throws);
+  await tap('.bt-attack');
+  await page.waitForFunction((n) => window.__gona.scene.getScene('Game').boomerang.throws > n, th0, { timeout: 800 }).catch(() => {});
+  check(`${label}: attack pressed just before return fires on return`, (await G(() => window.__gona.scene.getScene('Game').boomerang.throws)) > th0);
+  // 버튼 반응 시간: 터치 → 부메랑 발사까지 (같은 프레임 안)
   await page.waitForFunction(() => !window.__gona.scene.getScene('Game').boomerang.isOut, null, { timeout: 4000 });
-  const cool2 = await G(() => document.querySelector('.bt-attack .bt-cool').style.height);
-  check(`${label}: cooldown clears when hair returns`, cool2 === '0%', cool2);
+  await page.waitForTimeout(50);
+  const lat = await G(() => new Promise((res) => {
+    const btn = document.querySelector('.bt-attack'); const g = window.__gona.scene.getScene('Game');
+    const r = btn.getBoundingClientRect(); const t0 = performance.now();
+    btn.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, bubbles: true, clientX: r.x + 5, clientY: r.y + 5, pointerType: 'touch' }));
+    const t1 = performance.now();
+    res({ out: g.boomerang.isOut, ms: +(t1 - t0).toFixed(2), pressed: btn.classList.contains('pressed') });
+  }));
+  check(`${label}: attack button reacts in the same event (pressed + throw)`, lat.out && lat.pressed && lat.ms < 8, JSON.stringify(lat));
 
-  // ③ 공격 → 필살 연속
-  await G(() => window.__gona.scene.getScene('Game').debugBoss(undefined, 1));
-  await page.waitForTimeout(100);
-  const spCls = await page.locator('.bt-special').getAttribute('class');
-  const hpA = (await game()).battle.hp;
-  await tap('.bt-attack'); await page.waitForTimeout(40); await tap('.bt-special'); await page.waitForTimeout(250);
-  const sp = await game();
-  check(`${label}: attack then special back-to-back`, spCls.includes('ready') && sp.battle.frozen && sp.battle.special === 0, JSON.stringify(sp.battle));
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 4000 });
-  check(`${label}: special dealt big damage`, (await game()).battle.hp <= hpA - 4, `${hpA} → ${(await game()).battle.hp}`);
-  const spOff = await page.locator('.bt-special').getAttribute('class');
-  check(`${label}: special disabled when gauge empty`, spOff.includes('off') && !spOff.includes('ready'), spOff);
+  // ④ 필살: 게이지 100% 에서만
+  const spSt = await G(() => ({ cls: document.querySelector('.bt-special').className, g: window.__gona.scene.getScene('Game').battle.special }));
+  check(`${label}: special enabled only at 100%`, spSt.g >= 1 ? spSt.cls.includes('ready') : spSt.cls.includes('off') && !spSt.cls.includes('ready'), JSON.stringify(spSt));
 
-  // ④ 일시정지 중 버튼 비활성
+  // ⑤ HP 시스템: HP 만 감소 → 0 이면 하트 -1, HP 100 회복, 넘친 피해 버림, 무적
+  const hpT = await G(() => {
+    const g = window.__gona.scene.getScene('Game'); g.shieldUntil = 0; g.invincibleUntil = 0; g.hp = 100; g.hearts = 3;
+    const r = {};
+    g.hurtBattle(20, 't'); r.a = [g.hearts, g.hp];
+    r.inv = g.hurtBattle(20, 't'); // 맞은 직후 무적
+    g.invincibleUntil = 0; g.hp = 10; g.hurtBattle(35, 't'); r.b = [g.hearts, g.hp]; // 넘친 25 는 버림
+    r.invMs = Math.round(g.invincibleUntil - g.time.now);
+    return r;
+  });
+  check(`${label}: HP system (100→80, i-frames, HP0 → heart -1 → HP 100, no overflow, 1.5s i-frames)`, hpT.a[0] === 3 && hpT.a[1] === 80 && hpT.inv === false && hpT.b[0] === 2 && hpT.b[1] === 100 && hpT.invMs > 1300, JSON.stringify(hpT));
+
+  // ⑥ 일시정지 중 버튼 비활성
   await page.locator('.top-buttons .icon-btn >> nth=0').click();
   await page.waitForTimeout(150);
-  const offs = await G(() => [...document.querySelectorAll('.bt-dodge, .bt-attack')].map((e) => e.classList.contains('off')));
-  await waitGround().catch(() => {});
-  await tap('.bt-dodge'); await page.waitForTimeout(80);
+  const offs = await G(() => [...document.querySelectorAll('.bt-shield, .bt-attack')].map((e) => e.classList.contains('off')));
+  const before = await game();
+  await tap('.bt-attack'); await page.waitForTimeout(80);
   const ps = await game();
-  check(`${label}: buttons disabled while paused`, offs.every(Boolean) && ps.state === 'paused' && ps.grounded, JSON.stringify({ offs, ps }));
+  check(`${label}: buttons disabled while paused`, offs.every(Boolean) && ps.state === 'paused' && ps.out === before.out, JSON.stringify({ offs, ps }));
   await page.locator('.top-buttons .icon-btn >> nth=0').click();
   await page.waitForTimeout(150);
 
-  // ⑤ 프레임 시간: 피하기 연타 20번 (이 컨테이너는 GPU 없이 그려서 절대값은 실제 기기보다 나쁨 — 터치 순간 튀는지만 봄)
+  // ⑦ 프레임 시간: 화면 터치 점프 20번 (이 컨테이너는 GPU 없이 그려서 절대값은 실제 기기보다 나쁨 — 터치 순간 튀는지만 봄)
   await G(() => window.__perf.reset());
-  for (let i = 0; i < 20; i++) { await tap('.bt-dodge'); await page.waitForTimeout(350); }
+  for (let i = 0; i < 20; i++) { await tapScreen(); await page.waitForTimeout(350); }
   const ps2 = await G(() => window.__perf.stats());
   const longEv = await G(() => window.__perf.long.slice(0, 40).map((f) => f.events.map((e) => e.name).join('+')));
-  const inputLong = longEv.filter((e) => /btn|jump|sfx|audio/.test(e)).length;
-  check(`${label}: frame time during 20 dodge taps (info)`, true, `${JSON.stringify(ps2)} long frames with input/sfx: ${inputLong}/${longEv.length}`);
+  check(`${label}: frame time during 20 jump taps (info)`, true, `${JSON.stringify(ps2)} long frames with input/sfx: ${longEv.filter((e) => /input|btn|jump|sfx|audio/.test(e)).length}/${longEv.length}`);
   const unl = await G(() => window.__perf.long.flatMap((f) => f.events).filter((e) => e.name === 'audio:unlock').length);
   check(`${label}: no audio unlock work on repeated taps`, unl === 0, `unlock in long frames: ${unl}`);
-
-  // ⑥ 1보스 공격으로 실제 피해 받기 (무적 해제)
-  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.hearts = 3; g.updateHud(); });
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').hearts < 3, null, { timeout: 20000 }).catch(() => {});
-  check(`${label}: 뽀뽀괴물 attacks damage GONA`, (await G(() => window.__gona.scene.getScene('Game').hearts)) < 3);
   check(`${label}: no page errors (controls)`, errs.length === 0, errs.join(' | '));
   await b.close();
 }

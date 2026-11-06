@@ -24,8 +24,12 @@ export interface BattleHost {
   playerRect(): Rect;
   playerHead(): { x: number; y: number };
   playerGrounded(): boolean;
-  /** 고나가 맞음. 무적 중이면 false */
-  hurtPlayer(): boolean;
+  /** 고나가 맞음 (HP 피해). 무적·방패 중이면 false */
+  hurtPlayer(damage: number, source?: string): boolean;
+  /** 방패가 켜져 있으면 그 영역 (고나 앞) */
+  shieldRect(): Rect | null;
+  /** 방패가 막음 (반짝·소리) */
+  onShieldBlock(x: number, y: number): void;
   /** 흡입: 기본 x 에서 오른쪽으로 끌려간 거리 */
   pull: number;
   spawnSnack(kind: SnackKind, alt: number): void;

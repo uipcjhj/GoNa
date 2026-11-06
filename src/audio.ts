@@ -75,13 +75,13 @@ export const narrationUrl = (i: number): string => `assets/voice/prologue-${Stri
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
-  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff',
+  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield',
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 /** 효과음 메서드 (성능 기록용) */
 const SFX_METHODS = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'pickup', 'hit', 'gameOver', 'evolve',
-  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff',
+  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield',
 ] as const;
 
 /** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
@@ -768,6 +768,13 @@ class Sound {
     this.noise(0.5, 0.7, 0, 'lowpass', 800);
     ['G4', 'E4', 'C4'].forEach((n, i) => this.tone(hz(n), 0.18, 'square', 0.2, i * 0.12));
     ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.24, 0.5 + i * 0.1));
+  }
+  /** 방패 (반짝 웅) */
+  shield(): void {
+    if (this.sfxFile('shield')) return;
+    this.tone(440, 0.25, 'triangle', 0.22, 0, 880);
+    this.bell(hz('E6'), 0.35, 0.18, 0.05);
+    this.bell(hz('B6'), 0.3, 0.12, 0.1);
   }
   /** 보스 등장 경고 */
   warn(): void {

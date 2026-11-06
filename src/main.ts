@@ -88,7 +88,7 @@ async function boot(): Promise<void> {
   };
   const overlay = new Overlay(ui);
   const audioPanel = new AudioPanel(ui);
-  const battleUi = new BattleUi(ui);
+  new BattleUi(ui);
   cover.onAudioTest = () => audioPanel.open();
   overlay.onAudioTest = () => audioPanel.open();
 
@@ -152,8 +152,7 @@ async function boot(): Promise<void> {
     }
     if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
     if (overlay.isGameOverVisible) return;
-    // 보스전: 화면 터치 점프는 끄고 '피하기' 버튼으로만 (버튼과 겹쳐 두 번 뛰는 일 방지). 일시정지 해제 터치는 그대로
-    if (battleUi.battleMode && !overlay.isPaused) return;
+    // 보스전도 평소처럼 화면 빈 곳 터치 = 점프 (버튼 위 터치는 위에서 걸러져 중복 점프 없음)
     bus.emit(EV.tap);
   };
   document.addEventListener('pointerdown', onPointer, { passive: false });

@@ -110,7 +110,7 @@ export class CoverScreen {
     for (const side of ['left', 'right'] as const) {
       const s = el('div', `cv-side cv-side-${side}`);
       // 그림 쪽은 원본 숲 색, 바깥으로 갈수록 깊은 숲 그늘 (미러링·흐림·줄무늬 없음)
-      s.style.backgroundImage = `linear-gradient(${side === 'left' ? 'to left' : 'to right'}, #6f8f52 0%, #4b6340 30%, #2f3b2c 100%)`;
+      s.style.backgroundImage = `linear-gradient(${side === 'left' ? 'to left' : 'to right'}, #cfe9b4 0%, #a9d58a 35%, #86bd6c 100%)`;
       this.sides.push(s);
     }
 
@@ -275,7 +275,8 @@ export class CoverScreen {
 
     Object.assign(this.stage.style, { width: `${unitsW}px`, height: `${Hs}px`, transform: `scale(${s})`, left: '0px', top: '0px', background: 'rgb(150,190,238)' });
     // 로고: 위쪽 하늘 위
-    const logoW = unitsW * 0.94;
+    // 로고 폭: 화면의 86% (양옆 장식 잎·열매까지 화면 안에, 여백 확보)
+    const logoW = unitsW * 0.86;
     const logoH = (logoW / L.logo.w) * L.logo.h;
     place(this.logoTop, { x: (unitsW - logoW) / 2, y: safeTop, w: logoW, h: logoH });
     this.logoTop.style.display = '';
