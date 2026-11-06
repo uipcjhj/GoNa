@@ -28,6 +28,14 @@ export class HairBoomerang {
     this.sprite = scene.add.image(0, 0, '__DEFAULT').setDepth(13).setVisible(false);
   }
 
+  /** 돌아올 때까지 남은 정도 (1 = 막 던짐 → 0 = 돌아옴) */
+  get remaining(): number {
+    if (this.state === 'held') return 0;
+    if (this.state === 'out') return 1 - 0.5 * Math.min(1, this.traveled / Math.max(1, this.range));
+    return Math.min(0.5, 0.5 * (this.backDist / Math.max(1, this.range)));
+  }
+  private backDist = 0;
+
   get isOut(): boolean {
     return this.state !== 'held';
   }
@@ -70,6 +78,7 @@ export class HairBoomerang {
       const dx = headX - this.x;
       const dy = headY - this.y;
       const d = Math.hypot(dx, dy);
+      this.backDist = d;
       const v = this.returnSpeed * dt;
       if (d <= Math.max(5, v)) {
         this.catch();

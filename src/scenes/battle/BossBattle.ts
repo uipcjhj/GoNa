@@ -187,12 +187,20 @@ export abstract class BossBattle {
   }
 
   private runTasks(list: Task[], dt: number): void {
-    for (const t of list) t.t -= dt;
-    const due = list.filter((t) => t.t <= 0);
-    if (!due.length) return;
-    const keep = list.filter((t) => t.t > 0);
-    list.length = 0;
-    list.push(...keep);
+    // 매 프레임 배열을 새로 만들지 않도록 (모바일 GC 끊김 방지)
+    let anyDue = false;
+    for (const t of list) {
+      t.t -= dt;
+      if (t.t <= 0) anyDue = true;
+    }
+    if (!anyDue) return;
+    const due: Task[] = [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].t <= 0) {
+        due.unshift(list[i]);
+        list.splice(i, 1);
+      }
+    }
     for (const t of due) t.fn();
   }
 
@@ -430,7 +438,7 @@ export abstract class BossBattle {
       }
       if (h.life <= 0 || h.x < -50 || h.x > this.host.W + 80 || h.y > this.host.H + 30 || h.y < -120) this.kill(h);
     }
-    this.hostiles = this.hostiles.filter((h) => !h.dead);
+    if (this.hostiles.some((h) => h.dead)) this.hostiles = this.hostiles.filter((h) => !h.dead);
   }
 
   protected kill(h: Hostile): void {
@@ -568,11 +576,7 @@ export abstract class BossBattle {
   }
 
   protected floatText(text: string, x: number, y: number, color: string): void {
-    const t = this.host.scene.add
-      .text(Math.round(x), Math.round(y), text, { fontFamily: 'Galmuri11, monospace', fontSize: '12px', color, stroke: '#5a2a1a', strokeThickness: 3 })
-      .setOrigin(0.5, 1)
-      .setDepth(15);
-    this.host.scene.tweens.add({ targets: t, y: t.y - 14, alpha: 0, duration: 650, onComplete: () => t.destroy() });
+    this.host.floatText(text, x, y, color);
   }
 
   destroy(): void {

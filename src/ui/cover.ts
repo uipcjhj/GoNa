@@ -1,3 +1,6 @@
+import { DEV } from '../config';
+import { perf, setPerfOverlay } from '../perf';
+import type { BossId } from '../events';
 /**
  * 대표 타이틀 화면 — 알 부화 시네마틱이 끝나면 카메라가 물러나며 나타남.
  *
@@ -65,7 +68,7 @@ export class CoverScreen {
 
   constructor(
     parent: HTMLElement,
-    private onStart: () => void,
+    private onStart: (boss?: BossId) => void,
   ) {
     this.root = el('section', 'cover hidden');
     this.root.setAttribute('aria-label', GAME_TITLE);
@@ -124,11 +127,34 @@ export class CoverScreen {
     const replay = el('button', 'ap-open cover-replay', '↺ 오프닝');
     replay.type = 'button';
     replay.addEventListener('click', () => this.onReplay?.());
+    // 개발용: 보스전 바로가기 · 성능 표시 (config.ts DEV.bossTestMenu = false 면 숨김)
+    const dev = el('div', 'cover-dev');
+    if (DEV.bossTestMenu) {
+      // 작은 🧪 버튼을 누르면 펼쳐짐 (로고를 가리지 않게)
+      const toggle = el('button', 'ap-open cover-dev-toggle', '🧪');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-label', '개발용 테스트 메뉴');
+      const list = el('div', 'cover-dev-list hidden');
+      toggle.addEventListener('click', () => list.classList.toggle('hidden'));
+      dev.append(toggle, list);
+      const mk = (label: string, fn: () => void): void => {
+        const b = el('button', 'ap-open cover-dev-btn', label);
+        b.type = 'button';
+        b.addEventListener('click', fn);
+        list.append(b);
+      };
+      mk('🧪 뽀뽀괴물 테스트', () => this.start('kiss'));
+      mk('🧪 킁카괴물 테스트', () => this.start('sniff'));
+      mk(perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기', () => {
+        setPerfOverlay(!perf.enabled);
+        window.location.reload();
+      });
+    }
 
     // 사이드·무대를 한 번에 확대/축소하는 '카메라' 묶음 (알 부화 장면에서 물러나며 등장)
     this.cam = el('div', 'cv-cam');
     this.cam.append(...this.sides, this.stage);
-    this.root.append(this.cam, this.ui, test, replay);
+    this.root.append(this.cam, this.ui, test, replay, dev);
     parent.append(this.root);
 
     this.btn.addEventListener('click', () => this.start());
@@ -305,8 +331,8 @@ export class CoverScreen {
 
   // ───────────────────────── 시작 ─────────────────────────
 
-  /** 게임 시작 버튼 (Space 키도) */
-  start(): void {
+  /** 게임 시작 버튼 (Space 키도). boss = 개발용 보스전 바로가기 */
+  start(boss?: BossId): void {
     if (this.started || !this.shown) return;
     this.started = true;
     sound.unlock();
@@ -314,7 +340,7 @@ export class CoverScreen {
     sound.startMusic('title');
     this.btn.classList.add('pressed');
     this.root.classList.add('leaving');
-    window.setTimeout(() => this.onStart(), 350);
+    window.setTimeout(() => this.onStart(boss), 350);
     window.setTimeout(() => {
       this.root.classList.add('hidden');
       this.shown = false;

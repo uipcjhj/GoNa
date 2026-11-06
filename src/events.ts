@@ -39,6 +39,8 @@ export const EV = {
   /** UI → 게임: 머리카락 부메랑 / 필살기 */
   attack: 'attack',
   special: 'special',
+  /** UI → 게임: 보스전 '피하기' 버튼 = 점프 / 공중에서 한 번 더 = 더블 점프 */
+  dodge: 'dodge',
   /** 게임 → UI: 공격 버튼·필살 게이지·보스 체력 표시 (CombatHud) */
   combatHud: 'combatHud',
   /** 게임 → UI: 화면 가운데 큰 안내 ({ top, name, desc, ms, tone }) */
@@ -52,13 +54,21 @@ export const EV = {
 
 export type BossId = 'kiss' | 'sniff';
 
-/** 공격 버튼 상태: 숨김 / 던질 수 있음 / 날아가는 중(돌아오기 전) */
-export type AttackState = 'hidden' | 'ready' | 'out';
+/** 공격 버튼 상태: 숨김 / 잠김(각성 전) / 던질 수 있음 / 날아가는 중(돌아오기 전) */
+export type AttackState = 'hidden' | 'locked' | 'ready' | 'out';
 
 export interface CombatHud {
+  /** 'none' = 조작 버튼 없음 · 'run' = 평소 달리기(공격 버튼만, 점프는 화면 터치) · 'battle' = 보스전(피하기·공격·필살 3버튼) */
+  mode: 'none' | 'run' | 'battle';
+  /** 지금 누를 수 있는지 (일시정지·진화·연출 중엔 false) */
+  enabled: boolean;
   attack: AttackState;
-  /** 필살 게이지 0~1 (null = 숨김: 보스전에서만 보임) */
-  special: number | null;
+  /** 부메랑이 돌아올 때까지 남은 정도 1 → 0 */
+  cooldown: number;
+  /** 공중에서 한 번 더 뛸 수 있음 (피하기 버튼에 '2단' 표시) */
+  airJump: boolean;
+  /** 필살 게이지 0~1 (보스전에서만) */
+  special: number;
   specialReady: boolean;
   boss: { name: string; hp: number; maxHp: number; phase: number } | null;
 }

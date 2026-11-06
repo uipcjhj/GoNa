@@ -12,6 +12,7 @@ import { Subtitles } from './ui/subtitles';
 import { BattleUi } from './ui/battleUi';
 import { bus, EV } from './events';
 import { sound } from './audio';
+import { perf } from './perf';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
 
 /** 화면 비율에 맞춰 논리 해상도를 계산 (가로: 높이 고정, 세로: 너비 고정) */
@@ -40,7 +41,7 @@ async function boot(): Promise<void> {
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
   // 흐름: 스토리 프롤로그(알 부화 포함, Phaser + 자막) → 카메라가 물러나며 대표 타이틀 → 게임 시작 → 1단계
-  const cover = new CoverScreen(ui, () => bus.emit(EV.requestStart));
+  const cover = new CoverScreen(ui, (boss) => bus.emit(EV.requestStart, boss));
   const subs = new Subtitles(ui);
   // 프롤로그 중 화면 위 작은 UI: 건너뛰기
   let openingActive = false;
@@ -87,7 +88,7 @@ async function boot(): Promise<void> {
   };
   const overlay = new Overlay(ui);
   const audioPanel = new AudioPanel(ui);
-  new BattleUi(ui);
+  const battleUi = new BattleUi(ui);
   cover.onAudioTest = () => audioPanel.open();
   overlay.onAudioTest = () => audioPanel.open();
 
@@ -97,6 +98,7 @@ async function boot(): Promise<void> {
     parent: 'game',
     backgroundColor: '#f8eac0',
     pixelArt: true,
+    powerPreference: 'high-performance',
     roundPixels: true,
     width: size.width * VIEW.renderScale,
     height: size.height * VIEW.renderScale,
@@ -108,10 +110,13 @@ async function boot(): Promise<void> {
     scene: [BootScene, GameScene, OpeningScene],
   });
 
+  perf.attach(game.events);
+
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
   if (new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
     (window as unknown as { __sound: typeof sound }).__sound = sound;
+    (window as unknown as { __perf: typeof perf }).__perf = perf;
   }
 
   // 회전/창 크기 변경 시 논리 해상도 재계산
@@ -135,6 +140,9 @@ async function boot(): Promise<void> {
     if (target?.closest('button') || target?.closest('.audio-panel')) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
+    perf.time('input:screen', () => handlePointer());
+  };
+  const handlePointer = (): void => {
     sound.unlock();
     // 프롤로그 중 터치: 처음엔 이야기 시작, 그 뒤로는 다음 문장
     if (openingActive) {
@@ -144,6 +152,8 @@ async function boot(): Promise<void> {
     }
     if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
     if (overlay.isGameOverVisible) return;
+    // 보스전: 화면 터치 점프는 끄고 '피하기' 버튼으로만 (버튼과 겹쳐 두 번 뛰는 일 방지). 일시정지 해제 터치는 그대로
+    if (battleUi.battleMode && !overlay.isPaused) return;
     bus.emit(EV.tap);
   };
   document.addEventListener('pointerdown', onPointer, { passive: false });

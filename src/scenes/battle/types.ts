@@ -31,6 +31,8 @@ export interface BattleHost {
   spawnSnack(kind: SnackKind, alt: number): void;
   addScore(points: number, x: number, y: number): void;
   sparkle(n: number, x: number, y: number): void;
+  /** 떠오르는 글자 (재사용 풀 — 매번 새 텍스처를 만들지 않음) */
+  floatText(text: string, x: number, y: number, color: string): void;
   /** 머리카락 부메랑 사용 가능하게 (뽀뽀괴물전 각성) */
   unlockBoomerang(): void;
   /** 머리카락 텍스처 (부메랑·필살기 그림) */

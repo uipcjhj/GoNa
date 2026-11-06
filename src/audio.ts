@@ -1,3 +1,4 @@
+import { perf } from './perf';
 /**
  * Web Audio 로 즉석에서 만드는 효과음과 오리지널 배경음악 (오디오 파일 없음).
  *
@@ -77,6 +78,11 @@ export const SFX_NAMES = [
   'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff',
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
+/** 효과음 메서드 (성능 기록용) */
+const SFX_METHODS = [
+  'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'pickup', 'hit', 'gameOver', 'evolve',
+  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff',
+] as const;
 
 /** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
 function silentWavUrl(): string {
@@ -151,6 +157,12 @@ class Sound {
   constructor() {
     this.muted = storage.get(STORAGE_KEYS.muted) === '1';
     this.createElements();
+    // 성능 기록: 효과음마다 걸린 시간과 경로(Web Audio 합성 / 파일)
+    const self = this as unknown as Record<string, (...a: unknown[]) => void>;
+    for (const m of SFX_METHODS) {
+      const f = self[m].bind(this);
+      self[m] = (...a: unknown[]) => perf.time(`sfx:${m}${this.ctx?.state === 'running' && !this.forceSynth ? '' : '(파일)'}`, () => f(...a));
+    }
     // 어떤 사용자 입력이든 소리를 깨우도록 (iOS 는 touchend/click 에서만 허용되는 경우가 있음)
     const wake = (): void => this.unlock();
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
@@ -172,8 +184,29 @@ class Sound {
     return !!this.ctx && this.ctx.state === 'running';
   }
 
-  /** 사용자 입력 안에서 호출: 오디오 시작/재개 */
+  private lastUnlock = 0;
+
+  /**
+   * 사용자 입력 안에서 호출: 오디오 시작/재개.
+   * 터치 한 번에 pointerdown·touchend·click 등으로 여러 번 불리므로,
+   * 처음 켠 뒤에는 '할 일이 있을 때만' + 1초에 한 번만 실제 작업을 함
+   * (iOS 에서 매 터치 resume()/play()/pause() 를 부르면 메인 스레드가 멈칫함).
+   */
   unlock(): void {
+    const now = performance.now();
+    if (this.ctx && this.primed) {
+      const ctxOk = this.ctx.state === 'running';
+      const keepOk = !this.keepAliveEl || !this.keepAliveEl.paused;
+      const want = this.wantedMusicEl();
+      const musicOk = !want || this.muted || this.musicSource === 'synth' || !want.paused;
+      if (ctxOk && keepOk && musicOk) return;
+      if (now - this.lastUnlock < 1000) return;
+    }
+    this.lastUnlock = now;
+    perf.time('audio:unlock', () => this.unlockNow());
+  }
+
+  private unlockNow(): void {
     if (!this.ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
@@ -195,8 +228,9 @@ class Sound {
     }
     if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().then(() => this.emit(), (e) => this.log('AudioContext.resume', e));
     this.primeElements();
-    // 터치 전에 음악을 틀려다 막혔으면 지금 다시
-    if (this.wantMusic && !this.muted && this.musicSource !== 'synth') this.playFileMusic(this.wantMusic);
+    // 터치 전에 음악을 틀려다 막혔으면 지금 다시 (이미 나오고 있으면 건드리지 않음)
+    const want = this.wantedMusicEl();
+    if (this.wantMusic && !this.muted && this.musicSource !== 'synth' && (!want || want.paused)) this.playFileMusic(this.wantMusic);
     this.emit();
     if (!this.ctx) return;
     if (!this.unlockedOnce && this.ctx) {
@@ -297,7 +331,8 @@ class Sound {
     for (const n of SFX_NAMES) {
       const list = [0, 1].map(() => {
         const a = mk(`${AUDIO_DIR}sfx-${n}.mp3`, false);
-        a.preload = 'none';
+        // 첫 재생 때 내려받느라 멈칫하지 않게 미리 받아 둠 (아주 작은 파일)
+        a.preload = 'auto';
         return a;
       });
       this.sfxEls[n] = list;

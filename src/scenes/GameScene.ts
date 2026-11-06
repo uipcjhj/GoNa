@@ -3,6 +3,7 @@ import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS,
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
 import { sound } from '../audio';
+import { perf } from '../perf';
 import { storage } from '../storage';
 import type { StageVisual } from './BootScene';
 import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '../game/growth';
@@ -88,6 +89,8 @@ export class GameScene extends Phaser.Scene {
   /** 보스전 시작 때의 점수 (보스전 다시 도전용) */
   private retryCarry = { score: 0, snacks: 0 };
   private hudKey = '';
+  /** 떠오르는 점수 글자 재사용 (매번 Text 를 새로 만들면 텍스처 생성으로 멈칫) */
+  private popPool: Phaser.GameObjects.Text[] = [];
   private host!: BattleHost;
 
   // 화면 배치
@@ -257,6 +260,12 @@ export class GameScene extends Phaser.Scene {
       this.sparkleEmitter.explode(4, h.x, h.y);
     };
 
+    // 떠오르는 글자 미리 만들어 둠 (첫 간식 때 텍스처 생성으로 멈칫하지 않게)
+    this.popPool = [];
+    for (let i = 0; i < 6; i++) {
+      this.popPool.push(this.add.text(0, 0, '+10', { fontFamily: FONT, fontSize: '12px', color: '#fff4c2', stroke: '#7a3f1f', strokeThickness: 3 }).setOrigin(0.5).setDepth(15).setVisible(false));
+    }
+
     // HUD
     for (let i = 0; i < PLAYER.maxHearts; i++) {
       this.heartIcons.push(this.add.image(0, 0, TEX.heartFull).setOrigin(0, 0).setDepth(20).setScrollFactor(0));
@@ -276,14 +285,18 @@ export class GameScene extends Phaser.Scene {
     const onTap = (): void => this.handleTap();
     const onPause = (): void => this.pauseGame();
     const onResume = (): void => this.resumeGame();
-    const onRequestStart = (): void => {
-      if (this.state === 'ready') this.startGame();
+    const onRequestStart = (boss?: BossId): void => {
+      if (this.state !== 'ready') return;
+      // 개발용 보스전 바로가기: 성장 과정을 건너뛰고 그 보스전으로
+      if (boss) this.scene.restart({ autoStart: true, boss });
+      else this.startGame();
     };
     const onRestart = (opt?: RestartOptions): void => {
       const retry = opt?.boss ? { boss: opt.boss, score: this.retryCarry.score, snacks: this.retryCarry.snacks } : {};
       this.scene.restart({ autoStart: true, ...retry });
     };
     const onAttack = (): void => this.throwHair();
+    const onDodge = (): void => this.dodge();
     const onSpecial = (): void => {
       if (this.state === 'playing') this.battle?.useSpecial();
     };
@@ -294,7 +307,9 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.requestStart, onRequestStart);
     bus.on(EV.attack, onAttack);
     bus.on(EV.special, onSpecial);
+    bus.on(EV.dodge, onDodge);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off(EV.dodge, onDodge);
       bus.off(EV.attack, onAttack);
       bus.off(EV.special, onSpecial);
       this.battle?.destroy();
@@ -427,6 +442,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setFrame(this.vis.idleFrame); // 쉬는 동안은 대기 포즈
     sound.stopMusic();
     bus.emit(EV.pause);
+    this.emitHud(); // 일시정지 중엔 update 가 멈추므로 버튼 비활성 표시를 바로 보냄
   }
 
   private resumeGame(): void {
@@ -437,6 +453,7 @@ export class GameScene extends Phaser.Scene {
     if (this.player.anims.currentFrame) this.player.setFrame(this.player.anims.currentFrame.frame.name);
     sound.startMusic();
     bus.emit(EV.resume);
+    this.emitHud();
   }
 
   private setHudVisible(v: boolean): void {
@@ -461,6 +478,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private doJump(v: number, isDouble: boolean): void {
+    perf.mark(isDouble ? 'doubleJump' : 'jump');
     this.vy = v;
     this.grounded = false;
     this.jumpsUsed = isDouble ? 2 : 1;
@@ -604,7 +622,7 @@ export class GameScene extends Phaser.Scene {
 
     this.placePlayer(dt, time);
 
-    if (this.grounded && this.state === 'playing' && Math.random() < dt * (this.inNest ? 9 : 6)) {
+    if (!perf.low && this.grounded && this.state === 'playing' && Math.random() < dt * (this.inNest ? 9 : 6)) {
       this.dustEmitter.explode(1, this.playerX - (this.inNest ? 18 : 6), this.groundY);
     }
   }
@@ -859,24 +877,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => e.sprite.destroy(),
     });
 
-    const pop = this.add
-      .text(Math.round(e.sprite.x), Math.round(e.sprite.y - 14), `+${info.points}`, {
-        fontFamily: FONT,
-        fontSize: '12px',
-        color: '#fff4c2',
-        stroke: '#7a3f1f',
-        strokeThickness: 3,
-      })
-      .setOrigin(0.5)
-      .setDepth(15);
-    this.tweens.add({
-      targets: pop,
-      y: pop.y - 16,
-      alpha: 0,
-      duration: 650,
-      ease: 'Quad.Out',
-      onComplete: () => pop.destroy(),
-    });
+    this.floatText(`+${info.points}`, e.sprite.x, e.sprite.y - 14, '#fff4c2');
 
     this.tweens.add({ targets: this.scoreText, scale: 1.25, duration: 80, yoyo: true });
   }
@@ -1224,7 +1225,8 @@ export class GameScene extends Phaser.Scene {
       hurtPlayer: () => this.hurt(),
       spawnSnack: (k, alt) => this.addSnack(k, this.W + 14, alt),
       addScore: (p, x, y) => this.addPoints(p, x, y),
-      sparkle: (n, x, y) => this.sparkleEmitter.explode(n, x, y),
+      sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
+      floatText: (t, x, y, c) => this.floatText(t, x, y, c),
       unlockBoomerang: () => {
         this.boomerangAwake = true;
       },
@@ -1303,11 +1305,25 @@ export class GameScene extends Phaser.Scene {
   private addPoints(points: number, x: number, y: number): void {
     this.score += points;
     this.updateHud();
-    const pop = this.add
-      .text(Math.round(x), Math.round(y), `+${points}`, { fontFamily: FONT, fontSize: '12px', color: '#fff4c2', stroke: '#7a3f1f', strokeThickness: 3 })
-      .setOrigin(0.5)
-      .setDepth(15);
-    this.tweens.add({ targets: pop, y: pop.y - 16, alpha: 0, duration: 800, ease: 'Quad.Out', onComplete: () => pop.destroy() });
+    this.floatText(`+${points}`, x, y, '#fff4c2');
+  }
+
+  /** 떠오르는 글자 (풀에서 꺼내 씀) */
+  private floatText(text: string, x: number, y: number, color: string): void {
+    let t = this.popPool.find((p) => !p.visible);
+    if (!t) {
+      if (this.popPool.length >= 8) t = this.popPool[0];
+      else {
+        t = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '12px', color, stroke: '#7a3f1f', strokeThickness: 3 }).setOrigin(0.5).setDepth(15);
+        this.popPool.push(t);
+      }
+    }
+    this.tweens.killTweensOf(t);
+    if (t.text !== text) t.setText(text);
+    if (t.style.color !== color) t.setColor(color);
+    t.setPosition(Math.round(x), Math.round(y)).setAlpha(1).setVisible(true);
+    const pop = t;
+    this.tweens.add({ targets: pop, y: pop.y - 16, alpha: 0, duration: 750, ease: 'Quad.Out', onComplete: () => pop.setVisible(false) });
   }
 
   /** 성장 게이지 가득: 이 단계의 보스가 남아 있으면 보스전, 아니면 진화 */
@@ -1379,21 +1395,33 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** 공격 버튼·필살 게이지·보스 체력 → 화면 UI (바뀔 때만) */
+  /** 공격 버튼·필살 게이지·보스 체력 → 화면 UI (값이 바뀔 때만 — DOM 작업 최소화) */
   private emitHud(): void {
     const live = this.state === 'playing' || this.state === 'evolving' || this.state === 'paused';
-    const attack: AttackState = live && this.canThrow ? (this.boomerang.isOut ? 'out' : 'ready') : 'hidden';
     const b = this.battle && live ? this.battle : null;
+    const mode: CombatHud['mode'] = !live ? 'none' : b ? 'battle' : this.canThrow ? 'run' : 'none';
+    const enabled = this.state === 'playing' && !b?.frozen && b?.mode !== 'victory' && b?.mode !== 'done';
+    const attack: AttackState = mode === 'none' ? 'hidden' : !this.canThrow ? 'locked' : this.boomerang.isOut ? 'out' : 'ready';
     const hud: CombatHud = {
+      mode,
+      enabled,
       attack,
-      special: b ? Math.round(b.special * 100) / 100 : null,
+      cooldown: Math.ceil(this.boomerang.remaining * 20) / 20,
+      airJump: !this.grounded && this.jumpsUsed < this.growth.stage.controls.maxJumps,
+      special: b ? Math.floor(b.special * 20) / 20 : 0,
       specialReady: !!b?.specialReady,
       boss: b && b.mode !== 'done' ? b.hud() : null,
     };
-    const key = JSON.stringify(hud);
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.airJump}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);
+  }
+
+  /** 보스전 '피하기' 버튼 */
+  private dodge(): void {
+    if (this.state !== 'playing' || this.battle?.frozen) return;
+    this.pressJump();
   }
 
   // ───────────────────────── 테스트·디버그용 ─────────────────────────

@@ -33,6 +33,14 @@ export const VIEW = {
   renderScale: 5,
 };
 
+/**
+ * 개발용 기능 — 정식 배포 때는 false 로 바꾸면 모두 숨겨집니다.
+ *   bossTestMenu: 타이틀 화면의 '보스전 바로가기'(뽀뽀괴물·킁카괴물 테스트) · '성능 표시' 버튼
+ */
+export const DEV = {
+  bossTestMenu: true,
+};
+
 export const PHYSICS = {
   gravity: 980,
   jumpVelocity: 330,
