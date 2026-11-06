@@ -1812,3 +1812,134 @@ h2 {
 .cover.portrait .cover-hint {
   margin-bottom: 30px;
 }
+
+/* ───────── 스토리 프롤로그: 대기 화면 · 자막 상자 ───────── */
+.prologue-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.prologue-ui.hidden,
+.prologue-ui .hidden {
+  display: none !important;
+}
+.pr-gate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: calc(max(18px, env(safe-area-inset-bottom)) + 9vh);
+  pointer-events: auto;
+  background: linear-gradient(to bottom, rgba(40, 22, 30, 0) 40%, rgba(40, 22, 30, 0.35) 100%);
+}
+.pr-gate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.pr-begin {
+  font-family: inherit;
+  font-size: 20px;
+  padding: 12px 26px;
+  min-height: 52px;
+  color: #4a2a14;
+  background: #fff3d6;
+  border: 3px solid #4a2a14;
+  border-radius: 6px;
+  box-shadow: 0 4px 0 #4a2a14, inset 0 -4px 0 #f1d9a8;
+  cursor: pointer;
+  touch-action: manipulation;
+  animation: pr-bob 1.6s ease-in-out infinite;
+}
+.pr-begin:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #4a2a14;
+}
+.pr-gate-hint {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #fff8e6;
+  background: rgba(61, 39, 22, 0.55);
+  border-radius: 4px;
+  text-align: center;
+}
+@keyframes pr-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* 자막: 둥근 도트 대화창 (크림색 + 갈색 테두리, 계단식 모서리) */
+.pr-box {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 8px));
+  transform: translateX(-50%);
+  width: min(640px, calc(100% - 24px));
+  box-sizing: border-box;
+  min-height: 84px;
+  padding: 14px 18px 22px;
+  color: #4a2a14;
+  background: rgba(255, 244, 220, 0.94);
+  border: 3px solid #5a3418;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 3px rgba(255, 244, 220, 0.5),
+    0 5px 0 rgba(58, 32, 14, 0.55),
+    inset 0 -4px 0 rgba(222, 190, 140, 0.55),
+    inset 0 3px 0 rgba(255, 255, 255, 0.6);
+  image-rendering: pixelated;
+  animation: pr-pop 0.25s steps(3, end);
+}
+.pr-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.7);
+}
+.pr-page {
+  position: absolute;
+  left: 14px;
+  bottom: 5px;
+  font-size: 10px;
+  color: #a07450;
+}
+.pr-more {
+  position: absolute;
+  right: 12px;
+  bottom: 4px;
+  font-size: 11px;
+  color: #8a4a2a;
+  opacity: 0;
+}
+.pr-box.typed .pr-more {
+  opacity: 1;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes pr-pop {
+  from { transform: translateX(-50%) translateY(6px); opacity: 0.4; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .pr-box {
+    min-height: 62px;
+    padding: 9px 16px 17px;
+    width: min(620px, calc(100% - 140px));
+  }
+  .pr-text {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .pr-gate {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+/* 건너뛰기는 대기 화면·자막 위에서도 눌리게 */
+.opening-ui .op-skip {
+  z-index: 6;
+}

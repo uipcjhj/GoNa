@@ -8,6 +8,7 @@ import { el } from './ui/dom';
 import { Overlay } from './ui/overlay';
 import { CoverScreen } from './ui/cover';
 import { AudioPanel } from './ui/audioPanel';
+import { Subtitles } from './ui/subtitles';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -37,29 +38,50 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
-  // 흐름: 알 부화 시네마틱(Phaser) → 카메라가 물러나며 대표 타이틀(움직임) → 게임 시작 → 1단계
+  // 흐름: 스토리 프롤로그(알 부화 포함, Phaser + 자막) → 카메라가 물러나며 대표 타이틀 → 게임 시작 → 1단계
   const cover = new CoverScreen(ui, () => bus.emit(EV.requestStart));
-  // 시네마틱 중 화면 위 작은 UI: 건너뛰기 · 소리 안내
+  const subs = new Subtitles(ui);
+  // 프롤로그 중 화면 위 작은 UI: 건너뛰기
   let openingActive = false;
+  let prologueStarted = false;
+  /** '오프닝 다시 보기'처럼 이미 소리가 켜진 상태면 대기 없이 바로 시작 */
+  let autoBegin = false;
   const opUi = el('div', 'opening-ui hidden');
   const skipBtn = el('button', 'ap-open op-skip', '건너뛰기 ▶▶');
   skipBtn.type = 'button';
   skipBtn.addEventListener('click', () => bus.emit(EV.skipOpening));
-  const soundHint = el('p', 'op-hint', '🔊 화면을 터치하면 소리가 켜져요');
-  opUi.append(soundHint, skipBtn);
+  opUi.append(skipBtn);
   ui.append(opUi);
+  /** 첫 터치(사용자 동작 안에서): 소리 켜고 이야기 시작 */
+  const beginPrologue = (): void => {
+    if (!openingActive || prologueStarted) return;
+    prologueStarted = true;
+    sound.unlock();
+    sound.startMusic('title');
+    subs.hideGate();
+    bus.emit(EV.prologueBegin);
+  };
+  subs.onBegin = beginPrologue;
   bus.on(EV.openingStart, () => {
     openingActive = true;
+    prologueStarted = false;
     opUi.classList.remove('hidden');
-    soundHint.classList.toggle('hidden', sound.ready);
+    subs.show();
+    if (autoBegin) {
+      autoBegin = false;
+      beginPrologue();
+    }
   });
   bus.on(EV.openingDone, (info: { instant: boolean }) => {
     openingActive = false;
     opUi.classList.add('hidden');
+    subs.hide();
     cover.reveal(info.instant);
   });
   cover.onReplay = () => {
     cover.hide();
+    sound.unlock();
+    autoBegin = true;
     game.scene.start('Opening');
   };
   const overlay = new Overlay(ui);
@@ -112,10 +134,10 @@ async function boot(): Promise<void> {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     sound.unlock();
-    // 시네마틱 중 터치: 소리만 켬 (건너뛰기는 버튼으로)
+    // 프롤로그 중 터치: 처음엔 이야기 시작, 그 뒤로는 다음 문장
     if (openingActive) {
-      sound.startMusic('title');
-      soundHint.classList.add('hidden');
+      if (!prologueStarted) beginPrologue();
+      else bus.emit(EV.prologueNext);
       return;
     }
     if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
@@ -130,8 +152,10 @@ async function boot(): Promise<void> {
     if (ev.code === 'Space' || ev.code === 'ArrowUp' || ev.code === 'KeyW') {
       ev.preventDefault();
       sound.unlock();
-      if (openingActive) bus.emit(EV.skipOpening);
-      else if (cover.isVisible) cover.start();
+      if (openingActive) {
+        if (!prologueStarted) beginPrologue();
+        else bus.emit(EV.prologueNext);
+      } else if (cover.isVisible) cover.start();
       else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);
     } else if (ev.code === 'KeyP' || ev.code === 'Escape') {

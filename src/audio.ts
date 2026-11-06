@@ -66,6 +66,11 @@ const TEMPO: Record<MusicMode, number> = { title: 68, game: 96 };
 const AUDIO_DIR = 'assets/audio/';
 /** 미리 만든 소리 파일 (tools/render_audio.cjs) */
 export const MUSIC_FILES: Record<MusicMode, string> = { title: 'bgm-title.mp3', game: 'bgm-game.mp3' };
+/** 내레이션 중 낮춘 타이틀 음악 (아이폰은 <audio> 음량을 코드로 못 바꿔서, 미리 작게 녹음한 파일로 같은 위치에서 바꿔 탐) */
+const TITLE_DUCK_FILE = 'bgm-title-duck.mp3';
+/** 프롤로그 내레이션 파일 (public/assets/voice/prologue-01.mp3 …) */
+export const NARRATION_COUNT = 10;
+export const narrationUrl = (i: number): string => `assets/voice/prologue-${String(i + 1).padStart(2, '0')}.mp3`;
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
@@ -126,6 +131,14 @@ class Sound {
   // 파일 기반 소리
   private music: Partial<Record<MusicMode, HTMLAudioElement>> = {};
   private musicBroken: Partial<Record<MusicMode, boolean>> = {};
+  private duckEl: HTMLAudioElement | null = null;
+  private ducked = false;
+  private volumeWorks = false;
+  private duckTimer = 0;
+  /** 지금 나와야 하는 내레이션 (준비 재생이 멈추지 않게) */
+  private narrWanted: HTMLAudioElement | null = null;
+  private narr: HTMLAudioElement[] = [];
+  private narrBroken: boolean[] = [];
   private sfxEls: Partial<Record<SfxName, HTMLAudioElement[]>> = {};
   private keepAliveEl: HTMLAudioElement | null = null;
   private primed = false;
@@ -263,6 +276,23 @@ class Sound {
       a.addEventListener('pause', () => this.emit());
       this.music[m] = a;
     });
+    this.duckEl = mk(AUDIO_DIR + TITLE_DUCK_FILE, true);
+    // <audio>.volume 을 바꿀 수 있는 브라우저인지 (아이폰 Safari 는 항상 1)
+    try {
+      const probe = new Audio();
+      probe.volume = 0.5;
+      this.volumeWorks = Math.abs(probe.volume - 0.5) < 0.01;
+    } catch {
+      this.volumeWorks = false;
+    }
+    for (let i = 0; i < NARRATION_COUNT; i++) {
+      const a = mk(narrationUrl(i), false);
+      this.narrBroken[i] = false;
+      a.addEventListener('error', () => {
+        this.narrBroken[i] = true;
+      });
+      this.narr.push(a);
+    }
     for (const n of SFX_NAMES) {
       const list = [0, 1].map(() => {
         const a = mk(`${AUDIO_DIR}sfx-${n}.mp3`, false);
@@ -285,7 +315,8 @@ class Sound {
     }
     if (this.primed) return;
     this.primed = true;
-    const all: HTMLAudioElement[] = [...(Object.values(this.music) as HTMLAudioElement[])];
+    const all: HTMLAudioElement[] = [...(Object.values(this.music) as HTMLAudioElement[]), ...this.narr];
+    if (this.duckEl) all.push(this.duckEl);
     for (const list of Object.values(this.sfxEls)) all.push(...(list as HTMLAudioElement[]));
     for (const a of all) {
       if (!a.paused) continue;
@@ -293,7 +324,7 @@ class Sound {
       a.play().then(
         () => {
           // 원하는 음악이면 그대로 두고, 아니면 멈춤
-          const isWanted = this.wantMusic && a === this.music[this.wantMusic] && !this.muted;
+          const isWanted = (!this.muted && a === this.wantedMusicEl()) || a === this.narrWanted;
           if (!isWanted) {
             a.pause();
             a.currentTime = 0;
@@ -308,11 +339,21 @@ class Sound {
     }
   }
 
+  /** 지금 재생되어야 하는 배경음악 <audio> (내레이션 중 아이폰이면 작게 녹음한 판) */
+  private wantedMusicEl(): HTMLAudioElement | null {
+    if (!this.wantMusic) return null;
+    if (this.wantMusic === 'title' && this.ducked && !this.volumeWorks && this.duckEl && !this.duckEl.error) return this.duckEl;
+    return this.music[this.wantMusic] ?? null;
+  }
+
   private playFileMusic(mode: MusicMode): boolean {
-    const el = this.music[mode];
+    // 내레이션 중(아이폰): 타이틀 음악은 작게 녹음한 판으로
+    const useDuck = mode === 'title' && this.ducked && !this.volumeWorks && this.duckEl && !this.duckEl.error;
+    if (!useDuck) this.duckEl?.pause();
+    const el = useDuck ? this.duckEl! : this.music[mode];
     if (!el || this.musicBroken[mode]) return false;
     for (const m of Object.keys(this.music) as MusicMode[]) {
-      if (m !== mode) this.music[m]?.pause();
+      if (this.music[m] !== el) this.music[m]?.pause();
     }
     if (!el.paused && !el.muted) return true;
     el.muted = false;
@@ -336,6 +377,97 @@ class Sound {
 
   private pauseFileMusic(): void {
     for (const a of Object.values(this.music) as HTMLAudioElement[]) a.pause();
+    this.duckEl?.pause();
+  }
+
+  // ───────────────────────── 내레이션 ─────────────────────────
+
+  /** 내레이션 i 번 재생. 파일이 없거나 재생할 수 없으면 false */
+  narrate(i: number): boolean {
+    this.stopNarration();
+    const a = this.narr[i];
+    if (!a || this.narrBroken[i] || this.muted) return false;
+    this.narrWanted = a;
+    a.muted = false;
+    try {
+      a.currentTime = 0;
+    } catch {
+      /* 로드 전 */
+    }
+    a.play().catch((e) => this.log(`내레이션 ${i + 1}`, e));
+    this.duck(true);
+    a.onended = () => this.duck(false);
+    return true;
+  }
+
+  stopNarration(): void {
+    this.narrWanted = null;
+    for (const a of this.narr) {
+      if (!a.paused) a.pause();
+      a.onended = null;
+    }
+  }
+
+  /** 내레이션 i 번 길이(초). 아직 모르거나 없으면 null */
+  narrationDuration(i: number): number | null {
+    const a = this.narr[i];
+    if (!a || this.narrBroken[i] || !isFinite(a.duration) || a.duration <= 0) return null;
+    return a.duration;
+  }
+
+  /** 내레이션 i 번이 아직 재생 중인지 */
+  narrationPlaying(i: number): boolean {
+    const a = this.narr[i];
+    return !!a && !a.paused && !a.ended;
+  }
+
+  /** 내레이션 i 번 재생 위치(초) */
+  narrationTime(i: number): number {
+    return this.narr[i]?.currentTime ?? 0;
+  }
+
+  narrationAvailable(i: number): boolean {
+    return !!this.narr[i] && !this.narrBroken[i];
+  }
+
+  /** 내레이션 동안 배경음악 낮추기 */
+  duck(on: boolean): void {
+    if (this.ducked === on) return;
+    this.ducked = on;
+    const title = this.music.title;
+    if (!title || this.wantMusic !== 'title' || this.muted) return;
+    if (this.volumeWorks) {
+      // 부드럽게 음량 조절
+      clearInterval(this.duckTimer);
+      const target = on ? 0.32 : 1;
+      this.duckTimer = window.setInterval(() => {
+        const v = title.volume + (target - title.volume) * 0.25;
+        title.volume = Math.abs(v - target) < 0.02 ? target : v;
+        if (title.volume === target) clearInterval(this.duckTimer);
+      }, 40);
+      return;
+    }
+    // 아이폰: 같은 곡의 작은 판으로 같은 위치에서 바꿔 탐
+    const d = this.duckEl;
+    if (!d || d.error) return;
+    const from = on ? title : d;
+    const to = on ? d : title;
+    if (from.paused) return;
+    try {
+      to.currentTime = from.currentTime % (to.duration || from.duration || 1);
+    } catch {
+      /* 로드 전 */
+    }
+    to.muted = false;
+    to.play().then(
+      () => {
+        // 그 사이 상태가 바뀌었으면 지금 나와야 하는 쪽만 남김
+        const want = this.wantedMusicEl();
+        if (from !== want) from.pause();
+        if (to !== want) to.pause();
+      },
+      (e) => this.log('배경음악 낮추기', e),
+    );
   }
 
   /** 효과음 파일로 대신 재생 (Web Audio 가 동작하지 않을 때). 재생했으면 true */

@@ -5,6 +5,7 @@
  * 사용법: npm run build && npx vite preview --port 4173 (다른 터미널)
  *        node tools/render_audio.cjs
  * 필요: ffmpeg
+ * 내레이션 중 낮춘 배경음악(아이폰용): ffmpeg -i bgm-title.mp3 -af volume=0.32 -c:a libmp3lame -b:a 96k bgm-title-duck.mp3
  */
 const { chromium } = require('playwright');
 const fs = require('fs');

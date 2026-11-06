@@ -11,6 +11,9 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
 const results = [];
 /** 알 부화 시네마틱 → 대표 타이틀 등장 → '게임 시작' → 1단계 시작까지 */
 async function startFromTitle(page) {
+  // 스토리 프롤로그는 건너뛰기로 넘김 (프롤로그 자체는 introTests 에서 검사)
+  await page.waitForSelector('.op-skip', { state: 'visible', timeout: 15000 });
+  await page.locator('.op-skip').click();
   await page.waitForSelector('.cover.revealed', { timeout: 15000 });
   await page.waitForTimeout(2600); // 카메라 물러남 + 버튼 나타남
   const box = await page.locator('.cover-btn').boundingBox();
@@ -210,28 +213,54 @@ async function introTests(label, device) {
   page.on('pageerror', e => errs.push(e.message));
   await page.goto(URL + '?test');
   await page.waitForFunction(() => window.__gona?.scene.isActive('Opening'), null, { timeout: 8000 });
-  // 시네마틱 진행 기록: 머리카락이 나온 시각, 아기가 나온 시각
+  await page.waitForSelector('.pr-gate', { state: 'visible', timeout: 8000 });
+  // 프롤로그 진행 기록: 머리카락이 나온 시각, 아기가 나온 시각
   await page.evaluate(() => {
     window.__tl = {}; const t0 = performance.now();
     const iv = setInterval(() => { const o = window.__gona.scene.getScene('Opening'); if (!o || !o.hair) return;
-      if (!window.__tl.hair && Math.abs(o.hair.y - o.hair.getData('upY')) < 2) window.__tl.hair = performance.now() - t0;
+      if (!window.__tl.hair && Math.abs(o.hair.y - o.hairUpY) < 2) window.__tl.hair = performance.now() - t0;
       if (!window.__tl.baby && o.baby.visible) window.__tl.baby = performance.now() - t0;
-      if (!window.__tl.zoom && o.cameras.main.zoom > 0) window.__tl.zoom0 = o.cameras.main.zoom;
       if (window.__tl.baby) clearInterval(iv); }, 20);
   });
-  const st0 = await page.evaluate(() => ({ cover: document.querySelector('.cover').classList.contains('hidden'), game: window.__gona.scene.getScene('Game').state }));
-  check(`${label}: starts with egg cinematic (title hidden)`, st0.cover && st0.game === 'ready', JSON.stringify(st0));
+  const lineIdx = () => page.evaluate(() => { const bx = document.querySelector('.pr-box'); return bx.classList.contains('hidden') ? -1 : Number(bx.dataset.index); });
+  const st0 = await page.evaluate(() => ({ cover: document.querySelector('.cover').classList.contains('hidden'), game: window.__gona.scene.getScene('Game').state,
+    narr: window.__sound.narr.some((a) => !a.paused), box: document.querySelector('.pr-box').classList.contains('hidden') }));
+  check(`${label}: starts with story gate (title hidden, no narration yet)`, st0.cover && st0.game === 'ready' && !st0.narr && st0.box, JSON.stringify(st0));
   const vp = page.viewportSize();
-  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.5); // 시네마틱 중 터치 = 소리만 켬
+  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 첫 터치 = 이야기 시작 (소리 켜짐)
+  await page.waitForTimeout(500);
+  const t1 = await page.evaluate(() => ({ audio: window.__sound.ready, idx: document.querySelector('.pr-box').dataset.index, gate: document.querySelector('.pr-gate').classList.contains('hidden'),
+    n0: !window.__sound.narr[0].paused, music: window.__sound.status().musicMode, vol: window.__sound.music.title.volume }));
+  check(`${label}: first tap starts story + narration 1 + title music`, t1.audio && t1.idx === '0' && t1.gate && t1.n0 && t1.music === 'title', JSON.stringify(t1));
+  check(`${label}: BGM ducked during narration`, t1.vol < 0.8, `title volume ${t1.vol.toFixed(2)}`);
+  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 터치 = 다음 문장
   await page.waitForTimeout(300);
-  const t1 = await page.evaluate(() => ({ audio: window.__sound.ready, game: window.__gona.scene.getScene('Game').state, op: window.__gona.scene.isActive('Opening') }));
-  check(`${label}: tap during cinematic unlocks audio only`, t1.audio && t1.game === 'ready' && t1.op, JSON.stringify(t1));
-  await page.waitForSelector('.cover.revealed', { timeout: 15000 });
+  const t2 = await page.evaluate(() => ({ idx: document.querySelector('.pr-box').dataset.index, n0: !window.__sound.narr[0].paused, n1: !window.__sound.narr[1].paused, op: window.__gona.scene.isActive('Opening') }));
+  check(`${label}: tap → exactly next sentence (narration switches)`, t2.idx === '1' && !t2.n0 && t2.n1 && t2.op, JSON.stringify(t2));
+  // 2번 문장 끝까지 기다렸다가 자막 전체 확인
+  await page.waitForFunction(() => document.querySelector('.pr-box').classList.contains('typed'), null, { timeout: 8000 });
+  const txt = await page.evaluate(() => document.querySelector('.pr-text').textContent);
+  check(`${label}: subtitle text (typing finished)`, txt === '벚꽃이 흐드러지게 피던 어느 봄날.', txt);
+  // 자동으로 3번 문장(부화)으로 넘어가는지
+  await page.waitForFunction(() => document.querySelector('.pr-box').dataset.index === '2', null, { timeout: 12000 });
+  await page.waitForFunction(() => window.__tl.baby > 0, null, { timeout: 15000 });
   const tl = await page.evaluate(() => window.__tl);
-  check(`${label}: hair peeks before hatch`, tl.hair > 0 && tl.baby > tl.hair, JSON.stringify(tl));
+  check(`${label}: auto-advance; hair peeks before hatch`, tl.hair > 0 && tl.baby > tl.hair, JSON.stringify(tl));
+  // 나머지 문장은 터치로 하나씩
+  const seen = [];
+  for (let i = 0; i < 8; i++) {
+    const before = await lineIdx();
+    await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3);
+    await page.waitForTimeout(350);
+    seen.push(`${before}>${await lineIdx()}`);
+  }
+  const mon = await page.evaluate(() => { const o = window.__gona.scene.getScene('Opening'); return o ? { k: o.kiss.visible, s: o.sniff.visible } : null; });
+  check(`${label}: taps advance one sentence each`, seen.slice(0, 7).every((x) => { const [a, c] = x.split('>').map(Number); return c === a + 1; }), seen.join(' '));
+  await page.waitForSelector('.cover.revealed', { timeout: 8000 });
   await page.waitForTimeout(2600);
-  const st1 = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity }));
-  check(`${label}: title revealed after cinematic`, !st1.op && st1.btn === '1', JSON.stringify(st1));
+  const st1 = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity, game: window.__gona.scene.getScene('Game').state,
+    subs: document.querySelector('.prologue-ui').classList.contains('hidden'), narr: window.__sound.narr.some((a) => !a.paused) }));
+  check(`${label}: title after last sentence (waits for start button)`, !st1.op && st1.btn === '1' && st1.game === 'ready' && st1.subs && !st1.narr, JSON.stringify(st1));
   const box = await page.locator('.cover-btn').boundingBox();
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 5000 });
@@ -245,19 +274,27 @@ async function introTests(label, device) {
     const buf = new Float32Array(2048); let peak = 0; const t0 = performance.now();
     const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); if (performance.now() - t0 > 600) { clearInterval(iv); res(peak); } }, 20); }));
   check(`${label}: sfx audible (web audio level)`, level > 0.2, `peak ${level.toFixed(3)}`);
-  // 건너뛰기
+  // 건너뛰기 (대기 화면에서도, 이야기 중에도)
   await page.reload();
   await page.waitForFunction(() => window.__gona?.scene.isActive('Opening'), null, { timeout: 8000 });
   await page.waitForTimeout(800);
+  await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3);
+  await page.waitForTimeout(1200);
   await page.locator('.op-skip').click();
   await page.waitForTimeout(400);
-  const sk = await page.evaluate(() => ({ cover: document.querySelector('.cover').className, op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity }));
-  check(`${label}: skip button → title immediately`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1', JSON.stringify(sk));
-  // 오프닝 다시 보기
+  const sk = await page.evaluate(() => ({ cover: document.querySelector('.cover').className, op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity,
+    narr: window.__sound.narr.some((a) => !a.paused), vol: window.__sound.music.title.volume }));
+  check(`${label}: skip button → title immediately, narration stops`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1' && !sk.narr, JSON.stringify(sk));
+  await page.waitForTimeout(1200);
+  const vol = await page.evaluate(() => window.__sound.music.title.volume);
+  check(`${label}: BGM back to full after skip`, vol > 0.95, String(vol));
+  // 오프닝 다시 보기: 대기 없이 바로 1번 문장부터
   await page.locator('.cover-replay').click();
-  await page.waitForTimeout(400);
-  const rp = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), hidden: document.querySelector('.cover').classList.contains('hidden') }));
-  check(`${label}: replay opening`, rp.op && rp.hidden, JSON.stringify(rp));
+  await page.waitForTimeout(600);
+  const rp = await page.evaluate(() => ({ op: window.__gona.scene.isActive('Opening'), hidden: document.querySelector('.cover').classList.contains('hidden'), idx: document.querySelector('.pr-box').dataset.index,
+    gate: document.querySelector('.pr-gate').classList.contains('hidden') }));
+  check(`${label}: replay opening (starts story directly)`, rp.op && rp.hidden && rp.idx === '0' && rp.gate, JSON.stringify(rp));
+  await page.locator('.op-skip').click();
   await page.waitForSelector('.cover.revealed', { timeout: 15000 });
   check(`${label}: no page errors (opening)`, errs.length === 0, errs.join(' | '));
   await b.close();

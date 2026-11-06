@@ -29,6 +29,11 @@ export const EV = {
   openingDone: 'openingDone',
   skipOpening: 'skipOpening',
   replayOpening: 'replayOpening',
+  /** 스토리 프롤로그: 시작(첫 터치) / 다음 문장 요청 / 문장 시작({ index, total, text, seconds }) / 끝 */
+  prologueBegin: 'prologueBegin',
+  prologueNext: 'prologueNext',
+  prologueLine: 'prologueLine',
+  prologueEnd: 'prologueEnd',
   /** 화면 터치 */
   tap: 'tap',
 } as const;
