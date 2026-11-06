@@ -7,7 +7,7 @@
 
   - 전체: 누런 안개 빼기(화이트밸런스) + 중간 톤 밝게
   - 하늘: 맑은 파스텔 블루 / 풀밭: 밝은 연두 / 버섯·꽃·열매: 생기 있게 / 흙길: 덜 탁하게
-  - 고나: 고나 외곽선 안쪽의 밝은 몸 색만 더 뽀얗게 (외곽선·가방·볼터치는 그대로)
+  - 고나: 외곽선 안쪽만 — 얼굴·배는 따뜻한 크림, 머리 위·등·팔·꼬리는 선명한 초록 (명암·볼터치·갈색 머리카락·가방 그대로)
 
 사용법: python3 tools/grade_cover.py && python3 tools/build_cover_layers.py
 """
@@ -117,13 +117,39 @@ def main():
     # 흙길·누런 곳: 덜 탁하게 (채도 살짝 빼고 밝게)
     s = np.where(yellow & ~dark & ~inside, s * 0.86, s)
     v = np.where(yellow & ~dark & ~inside, np.minimum(1, v * 1.05), v)
-    # 고나 몸: 밝은 부분만 더 뽀얗게 (외곽선·가방 갈색·진한 볼은 제외)
-    body = inside & (v > 0.55) & (s < 0.42)
-    s = np.where(body, s * 0.72, s)
-    v = np.where(body, v + (1 - v) * 0.38, v)
+    # 고나: 원본 그림의 명암은 그대로 두고 색만 — 얼굴·배는 따뜻한 크림, 머리 위·등·팔·꼬리는 싱그러운 초록
+    #   (볼터치·갈색 머리카락·가방·외곽선·가방 속 잎은 그대로. 영역 경계는 6px 도트 단위로)
+    h0, s0, v0 = rgb2hsv(np.clip(src / 255.0, 0, 1))
+    Hh, Ww = v0.shape
+    yy, xx = np.mgrid[0:Hh, 0:Ww]
+    gx0, gy0 = GONA_BOX[0], GONA_BOX[1]
+    bx = (xx // 6) * 6 + 3 - gx0
+    by = (yy // 6) * 6 + 3 - gy0
+
+    def ell(cx, cy, rx, ry):
+        return np.sqrt(((bx - cx) / rx) ** 2 + ((by - cy) / ry) ** 2)
+
+    d = np.minimum(ell(120, 165, 125, 88), ell(105, 355, 92, 95))  # 얼굴 · 배
+    cream = np.round(np.clip((1.0 - d) / 0.22, 0, 1) * 3) / 3
+    hair = (bx >= 150) & (bx <= 262) & (by <= 100) & (v0 < 0.9) & (s0 > 0.22)
+    body = (
+        inside & ~hair & (v0 >= 0.32)
+        & ~((h0 < 30) & (s0 > 0.3))  # 볼터치·열매
+        & ~((s0 > 0.42) & (v0 < 0.7))  # 가방·끈
+        & ~((h0 >= 60) & (h0 < 170) & (s0 > 0.35))  # 가방 속 잎
+    )
+    gh = np.full_like(h0, 100.0)
+    gs = np.clip(0.42 + 0.55 * (1 - v0), 0.42, 0.66)
+    gv = v0 * 0.95
+    ch = np.full_like(h0, 42.0)
+    cs = np.clip(s0, 0.17, 0.27)
+    cv = np.minimum(1, v0 * 1.02)
+    h = np.where(body, gh * (1 - cream) + ch * cream, h)
+    s = np.where(body, gs * (1 - cream) + cs * cream, s)
+    v = np.where(body, gv * (1 - cream) + cv * cream, v)
     out = hsv2rgb(h, np.clip(s, 0, 1), np.clip(v, 0, 1))
     Image.fromarray((out * 255 + 0.5).astype(np.uint8)).save(OUT)
-    print(f"saved {OUT.relative_to(ROOT)} · 고나 몸 보정 픽셀 {int(body.sum())}")
+    print(f"saved {OUT.relative_to(ROOT)} · 고나 색 보정 픽셀 {int(body.sum())}")
 
 
 if __name__ == "__main__":

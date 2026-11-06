@@ -166,6 +166,8 @@ export class CoverScreen {
       sound.startMusic('title');
     });
     window.addEventListener('resize', () => this.layout());
+    // 앱 안 미리보기 창처럼 window 크기와 실제 보이는 크기가 다를 수 있어, 실제 요소 크기가 바뀔 때마다 다시 배치
+    if ('ResizeObserver' in window) new ResizeObserver(() => this.layout()).observe(this.root);
     void this.load();
   }
 
@@ -252,8 +254,9 @@ export class CoverScreen {
 
   layout(): void {
     if (!this.shown) return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    // 실제로 보이는 크기 (window.innerWidth 대신 화면 요소 자체의 크기)
+    const vw = this.root.clientWidth || window.innerWidth;
+    const vh = this.root.clientHeight || window.innerHeight;
     const portrait = vw / vh < 1;
     this.root.classList.toggle('portrait', portrait);
     if (portrait) this.layoutPortrait(vw, vh);
@@ -267,16 +270,19 @@ export class CoverScreen {
     const Hs = vh / s;
     const x0 = Math.min(P.cropX0 + P.w - unitsW, Math.max(P.cropX0, PORTRAIT_CENTER_X - unitsW / 2));
     const probe = document.createElement('div');
-    probe.style.cssText = 'position:absolute;top:0;height:env(safe-area-inset-top);visibility:hidden';
+    probe.style.cssText =
+      'position:absolute;top:0;left:0;height:env(safe-area-inset-top);width:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);visibility:hidden';
     document.body.append(probe);
     const inset = probe.offsetHeight;
+    const insetX = Math.max(probe.offsetWidth, 0);
     probe.remove();
     const safeTop = Math.max(vh * 0.04, inset + 8) / s;
 
     Object.assign(this.stage.style, { width: `${unitsW}px`, height: `${Hs}px`, transform: `scale(${s})`, left: '0px', top: '0px', background: 'rgb(150,190,238)' });
     // 로고: 위쪽 하늘 위
-    // 로고 폭: 화면의 86% (양옆 장식 잎·열매까지 화면 안에, 여백 확보)
-    const logoW = unitsW * 0.86;
+    // 세로 화면 전용 로고 크기: 보이는 폭의 82% 이하 + 양옆 최소 16px(안전 영역 포함) — 양옆 장식 잎·열매까지 절대 안 잘리게
+    const sideCss = Math.max(16, insetX + 12);
+    const logoW = Math.min(unitsW * 0.82, (vw - sideCss * 2) / s);
     const logoH = (logoW / L.logo.w) * L.logo.h;
     place(this.logoTop, { x: (unitsW - logoW) / 2, y: safeTop, w: logoW, h: logoH });
     this.logoTop.style.display = '';
