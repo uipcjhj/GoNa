@@ -433,8 +433,9 @@ async function bossTests(label, device) {
   await G(() => window.__gona.scene.getScene('Game').debugBoss(21));
   for (let i = 0; i < 5 && !(await battle())?.phase2; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(1000); }
   check(`${label}: sniff phase 2 at half HP`, (await battle())?.phase2 && (await page.locator('.bb-phase').isVisible()));
-  await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
-  for (let i = 0; i < 8 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
+  // (엔딩 화면 확인용: HP 1 로 낮춰도 2차 분노 전환을 거친 뒤 쓰러짐 — 그동안 고나는 무적)
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.debugBoss(1); });
+  for (let i = 0; i < 16 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
   await page.waitForSelector('.over-screen.cleared:not(.hidden)', { timeout: 9000 }).catch(() => {});
   const end = await page.locator('.over-screen h2').textContent();
   check(`${label}: final boss win → ending screen`, end.includes('모험 완료'), end);

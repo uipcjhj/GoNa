@@ -837,6 +837,8 @@ h2 {
 }
 
 .evo-name {
+  /* 한국어는 단어 사이에서만 줄바꿈 (예: '자이언트 곤룡 고' / '나' 처럼 끊기지 않게) */
+  word-break: keep-all;
   margin-top: 4px !important;
   font-size: clamp(20px, 6.4vmin, 32px);
   color: #fff8e6;
@@ -2232,6 +2234,8 @@ body.has-pad .touch-hint {
   color: #ffe08a;
 }
 .bn-name {
+  /* 한국어는 단어 사이에서만 줄바꿈 (예: '자이언트 곤룡 고' / '나' 처럼 끊기지 않게) */
+  word-break: keep-all;
   margin-top: 4px !important;
   font-size: clamp(20px, 6.2vmin, 30px);
   color: #fff8e6;
