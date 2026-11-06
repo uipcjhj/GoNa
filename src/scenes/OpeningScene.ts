@@ -461,7 +461,8 @@ export class OpeningScene extends Phaser.Scene {
       // 3 · 아무것도 모르는 고나 — 깜빡깜빡 두리번
       {
         play: (d) => {
-          this.moveCam(v1() * 0.92, NEST_X + 8, nestCy - 4, d * 1000);
+          // 클로즈업에서 고나가 가만히 있을 때는 카메라도 고정 (느린 줌 = 매 프레임 다시 샘플링 → 픽셀이 꿈틀거림)
+          this.setCam(v1(), NEST_X, nestCy);
           this.at(250, () => this.blink());
           this.at(650, () => this.look(true));
           this.at(1250, () => this.look(false));
@@ -470,7 +471,7 @@ export class OpeningScene extends Phaser.Scene {
         },
         end: () => {
           this.baby.setFlipX(false).setAngle(0).setFrame(this.nb.idleFrame);
-          this.setCam(v1() * 0.92, NEST_X + 8, nestCy - 4);
+          this.setCam(v1(), NEST_X, nestCy);
         },
       },
       // 4 · 호기심만큼은 — '!' 와 깡충깡충
@@ -699,10 +700,9 @@ export class OpeningScene extends Phaser.Scene {
     this.at(150, () => this.baby.setFrame(this.nb.idleFrame));
   }
 
-  /** 고개 돌리기 (좌우 뒤집기 + 까딱) */
+  /** 고개 돌리기 (좌우 뒤집기만 — 도트 그림을 회전시키면 픽셀이 일그러져 떨려 보임) */
   private look(left: boolean): void {
     this.baby.setFlipX(left);
-    this.tw({ targets: this.baby, angle: { from: 0, to: left ? 6 : -6 }, duration: 120, yoyo: true });
   }
 
   private wiggle(): void {

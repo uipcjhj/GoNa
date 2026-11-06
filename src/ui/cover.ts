@@ -224,7 +224,7 @@ export class CoverScreen {
   }
 
   /**
-   * 알 부화 장면이 끝나면 호출: 카메라가 고나 쪽에서 물러나며 대표 타이틀 등장 → 버튼.
+   * 알 부화 장면이 끝나면 호출: 대표 타이틀이 (배율 변화 없이) 페이드인 → 로고 → 버튼.
    * instant: 건너뛰기 — 바로 표시
    */
   reveal(instant: boolean): void {
@@ -242,10 +242,7 @@ export class CoverScreen {
     if (instant) {
       this.root.classList.add('revealed', 'instant');
     } else {
-      this.cam.style.transform = 'none';
-      const r = this.gonaMark.getBoundingClientRect();
-      this.cam.style.transform = '';
-      this.cam.style.transformOrigin = `${r.left + r.width / 2}px ${r.top + r.height * 0.6}px`;
+      // 확대→축소 줌은 도트 그림을 매 프레임 다른 배율로 다시 샘플링해 고나가 '떨리는' 것처럼 보였음 → 최종 배율 그대로 페이드인만
       void this.root.offsetWidth;
       requestAnimationFrame(() => this.root.classList.add('revealed'));
     }

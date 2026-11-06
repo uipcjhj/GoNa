@@ -1564,15 +1564,10 @@ h2 {
   background: transparent;
 }
 
+/* 도트 그림은 배율을 바꾸지 않음 (줌 애니메이션 = 픽셀 떨림) */
 .cv-cam {
   position: absolute;
   inset: 0;
-  transform: scale(1.9);
-}
-
-.cover.revealed .cv-cam {
-  transform: scale(1);
-  transition: transform 1.9s cubic-bezier(0.33, 0, 0.2, 1);
 }
 
 .cover.instant,
