@@ -373,6 +373,10 @@ def main() -> None:
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(sheet).save(OUT)
+    # 공식 캐릭터 팔레트(art-src/growth/gona-official-palette.png)의 초록으로 맞춤
+    import apply_official_palette
+
+    apply_official_palette.apply(OUT)
     prev = Image.new("RGBA", (sheet.shape[1], fh), (120, 190, 220, 255))
     prev.alpha_composite(Image.fromarray(sheet))
     prev.resize((prev.width * 8, prev.height * 8), Image.NEAREST).save(PREVIEW)

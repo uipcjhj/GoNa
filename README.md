@@ -133,11 +133,22 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 - **실제 플레이 검증 봇**: `node tools/playtest-bot.cjs kiss|sniff [횟수] [반응ms]` — 치트 없이 실제 터치로 클리어 (`MODE=dodge` 는 공격 없이 피하기만 60초)
 - 보스 그림: 지금은 코드 도트(`src/art/bossArt.ts`). 정식 그림은 `art-src/opening/ASSETS_NEEDED.md`
 
-## 대표 타이틀 색
+## 고나 캐릭터 디자인 기준 (공식)
 
-- `python3 tools/grade_cover.py` → 원본 그림의 **색만** 밝은 파스텔 톤으로 보정(`art-src/title/gona-cover-graded.png`) → `python3 tools/build_cover_layers.py` 가 이것으로 레이어를 만듦
-- 하늘 파스텔 블루 · 풀밭 연두 · 버섯·꽃 생기 · 흙길 덜 탁하게 · 고나는 외곽선 안쪽만: 얼굴·배 따뜻한 크림, 머리 위·등·팔·꼬리 선명한 초록 (명암·볼터치·갈색 머리카락·가방 그대로, 오려내거나 메우지 않음)
-- 세로 화면 로고: 실제 보이는 폭의 82% 이하 + 양옆 최소 16px(안전 영역 포함), 화면 크기가 바뀌면 다시 배치
+- **공식 기준 이미지**: `art-src/growth/gona-official-palette.png` (GONA Growth Sprite Concepts). 고나의 색·디자인은 이 이미지를 따르고, 따로 요청이 없으면 바꾸지 않음
+- 공식 색값(시트에서 직접 추출): `art-src/growth/gona-official-palette.json`
+
+  | 부위 | 그늘 | 기본 | 밝은 곳 |
+  |---|---|---|---|
+  | 공룡옷 초록 | #809D41 · #99B450 | **#B1C655** | #C1D167 |
+  | 얼굴 피부(복숭아빛) | #ECB18C | **#FDDCB1** | #FFEAC2 |
+  | 배(크림) | #F0C371 · #FBDB8E | **#FEE6A0** | — |
+  | 등뿔(노랑) | #E4AE3C | **#FDDF62** | #FBEDA8 |
+  | 외곽선 | | **#41260E** | |
+
+- 게임 스프라이트: 1·2·4단계는 공식 시트에서 그대로 잘라 만듦(`tools/build_growth_sprites.py`) · 3단계 `dino.png` 는 초록만 공식 초록으로 교체(`tools/apply_official_palette.py`, `build_dino_sheet.py` 가 자동 실행)
+- 타이틀 고나: `python3 tools/grade_cover.py` — **배경은 원본 그대로(바뀐 픽셀 0)**, 고나 외곽선 안쪽만 부위별 공식 색으로 (원본 명암 단계 → 공식 색 단계, 6px 도트 단위). 외곽선·갈색 머리카락·볼터치·가방은 원본 그대로. 그다음 `python3 tools/build_cover_layers.py`
+- 세로 화면 로고: 실제 보이는 폭의 80% 이하 + 양옆 최소 20px(안전 영역 포함), 원본 비율 유지, 화면 크기가 바뀌면 다시 배치
 
 ## 성능 측정 (끊김 확인)
 

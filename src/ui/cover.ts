@@ -280,9 +280,10 @@ export class CoverScreen {
 
     Object.assign(this.stage.style, { width: `${unitsW}px`, height: `${Hs}px`, transform: `scale(${s})`, left: '0px', top: '0px', background: 'rgb(150,190,238)' });
     // 로고: 위쪽 하늘 위
-    // 세로 화면 전용 로고 크기: 보이는 폭의 82% 이하 + 양옆 최소 16px(안전 영역 포함) — 양옆 장식 잎·열매까지 절대 안 잘리게
-    const sideCss = Math.max(16, insetX + 12);
-    const logoW = Math.min(unitsW * 0.82, (vw - sideCss * 2) / s);
+    // 세로 화면 전용 로고 크기: 보이는 폭의 80% 이하 + 양옆 최소 20px(안전 영역 포함) — 양옆 장식 잎·열매까지 절대 안 잘리게
+    // (높이는 폭에 맞춰 원본 비율 그대로)
+    const sideCss = Math.max(20, insetX + 14);
+    const logoW = Math.min(unitsW * 0.8, (vw - sideCss * 2) / s);
     const logoH = (logoW / L.logo.w) * L.logo.h;
     place(this.logoTop, { x: (unitsW - logoW) / 2, y: safeTop, w: logoW, h: logoH });
     this.logoTop.style.display = '';

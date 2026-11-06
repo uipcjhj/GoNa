@@ -1,0 +1,23 @@
+{
+ "skin": [
+  "#ECB18C",
+  "#FDDCB1",
+  "#FFEAC2"
+ ],
+ "belly": [
+  "#F0C371",
+  "#FBDB8E",
+  "#FEE6A0"
+ ],
+ "spike": [
+  "#E4AE3C",
+  "#FDDF62",
+  "#FBEDA8"
+ ],
+ "green": [
+  "#809D41",
+  "#99B450",
+  "#B1C655",
+  "#C1D167"
+ ]
+}
