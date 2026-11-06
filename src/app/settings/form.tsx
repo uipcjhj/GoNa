@@ -137,14 +137,36 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
           {s.rssFeeds.map((f, i) => {
             const set = (patch: Partial<typeof f>) => up("rssFeeds", s.rssFeeds.map((x, k) => (k === i ? { ...x, ...patch } : x)));
             return (
-              <div key={i} className="grid grid-cols-[auto_180px_1fr_auto] items-center gap-2">
+              <div key={i} className="grid grid-cols-[auto_180px_110px_1fr_auto] items-center gap-2">
                 <input type="checkbox" checked={f.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
                 <Input value={f.name} onChange={(e) => set({ name: e.target.value })} />
+                <Select value={f.lang ?? "en"} onChange={(e) => set({ lang: e.target.value as "ko" | "en", scope: e.target.value === "ko" ? "domestic" : "global" })}><option value="ko">국문</option><option value="en">영문</option></Select>
                 <Input value={f.url} onChange={(e) => set({ url: e.target.value })} />
                 <Button variant="ghost" size="sm" onClick={() => up("rssFeeds", s.rssFeeds.filter((_, k) => k !== i))}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
             );
           })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>주간 업계동향 검색어</CardTitle><span className="text-xs text-slate-400">한 줄에 하나 · Google News 검색 문법(OR 사용 가능) · 기간은 자동 적용</span></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {([
+            ["domesticQueries", "국내 산업동향 (국문)"], ["globalQueries", "글로벌 산업동향 (영문)"], ["competitorQueriesKo", "경쟁사 (국문, 영문은 경쟁사 목록 사용)"],
+            ["policyQueriesKo", "정책·규제 (국문)"], ["policyQueriesEn", "정책·규제 (영문)"], ["techQueriesKo", "기술·시장 (국문)"], ["techQueriesEn", "기술·시장 (영문)"],
+          ] as const).map(([k, label]) => (
+            <label key={k} className="text-sm">
+              <span className="text-xs font-semibold text-slate-600">{label}</span>
+              <Textarea rows={6} value={s.weekly[k].join("\n")} onChange={(e) => up("weekly", { ...s.weekly, [k]: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} />
+            </label>
+          ))}
+          <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={s.weekly.googleNews} onChange={(e) => up("weekly", { ...s.weekly, googleNews: e.target.checked })} />Google News RSS 사용 (무료)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={s.weekly.gdelt} onChange={(e) => up("weekly", { ...s.weekly, gdelt: e.target.checked })} />GDELT 사용 (무료, 글로벌)</label>
+            <label className="block">주간 추천 기사 수<Input type="number" value={s.weekly.recommendCount} onChange={(e) => up("weekly", { ...s.weekly, recommendCount: Number(e.target.value) })} /></label>
+            <label className="block">1회 최대 분석 기사 수 (AI 연결 시 비용 영향)<Input type="number" value={s.weekly.maxAnalyzePerRun} onChange={(e) => up("weekly", { ...s.weekly, maxAnalyzePerRun: Number(e.target.value) })} /></label>
+          </div>
         </CardContent>
       </Card>
 

@@ -10,10 +10,14 @@ import { searchGdelt, RateLimitError } from "@/lib/news/gdelt";
 import { sleep } from "@/lib/util/http";
 import { fetchRss } from "@/lib/news/rss";
 import { searchGnews } from "@/lib/news/gnews";
+import { searchGoogleNews } from "@/lib/news/googlenews";
+import { planWeeklyQueries, type WeeklyRange } from "@/lib/weekly/plan";
+import { weeklyFromAI, weeklyRules, weeklyPreScore } from "@/lib/weekly/classify";
 import { planQueries, preScore } from "@/lib/news/queries";
 import type { RawArticle } from "@/lib/news/types";
 import { classifySource, verifyAndFetch } from "./verify";
-import { analyzeArticle } from "./analyze";
+import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
+import { analyzeArticle, aiConfigured } from "./analyze";
 import { findMatch, mergeInto, newOpportunityFrom } from "./cluster";
 import { hashId, isHttpUrl, normalizeUrl, domainOf } from "@/lib/util/url";
 import { containsAny, jaccard, normalizeTitle } from "@/lib/util/text";
@@ -36,7 +40,7 @@ export async function latestJob(): Promise<Job | null> {
 }
 
 /** Start a new job, or return the running one (prevents duplicate concurrent runs). */
-export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "collect"): Promise<{ job: Job; created: boolean; resumed: boolean }> {
+export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "collect", range: WeeklyRange | null = null): Promise<{ job: Job; created: boolean; resumed: boolean }> {
   const recent = await listJobs(5);
   const running = recent.find((j) => j.status === "running");
   if (running) {
@@ -48,14 +52,15 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     return { job: running, created: false, resumed: true };
   }
   const settings = await getSettings();
-  const queries = mode === "collect" ? planQueries(settings) : [];
+  const queries = mode === "collect" ? planQueries(settings) : mode === "weekly" && range ? planWeeklyQueries(settings, range) : [];
   const now = new Date().toISOString();
   const job: Job = {
     id: `job_${now.replace(/[-:.TZ]/g, "").slice(0, 14)}_${randomUUID().slice(0, 6)}`,
     trigger,
     mode,
+    range,
     status: "running",
-    phase: mode === "collect" ? "discover" : "analyze",
+    phase: mode === "collect" || mode === "weekly" ? "discover" : "analyze",
     startedAt: now,
     finishedAt: null,
     heartbeatAt: now,
@@ -71,13 +76,26 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     error: null,
     slices: 0,
   };
-  log(job, "info", mode === "collect" ? `수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정` : "규칙 기반 분석 기사 AI 재분석 시작");
+  const label = mode === "collect" ? `수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정`
+    : mode === "weekly" ? `주간 업계동향 수집 시작 — ${range?.startDate} ~ ${range?.endDate}${range?.days?.length ? ` (누락 날짜 ${range.days.join(", ")})` : ""}, 검색 ${queries.length}건 예정`
+    : mode === "weekly-analyze" ? `주간 업계동향 관련도 분석 — ${range?.startDate} ~ ${range?.endDate}` : "규칙 기반 분석 기사 AI 재분석 시작";
+  log(job, "info", label);
   if (mode === "reanalyze") {
     const rules = (await listArticles({ sinceDays: 60 })).filter((a) => !a.isDemo && a.analysis?.mode === "rules" && a.status === "analyzed");
     job.analyzeQueue = rules.slice(0, settings.maxAnalyzePerRun).map((a) => a.id);
     job.stats.queued = job.analyzeQueue.length;
   }
+  if (mode === "weekly-analyze" && range) {
+    const inRange = (await listArticles({ sinceDays: Math.ceil((Date.now() - new Date(range.start).getTime()) / 86400_000) + 2 }))
+      .filter((a) => !a.isDemo && (a.publishedAt ?? a.discoveredAt) >= range.start && (a.publishedAt ?? a.discoveredAt) < range.end);
+    const need = inRange.filter((a) => a.status === "queued" || (a.status === "analyzed" && (!a.weekly || (aiConfigured() ? a.weekly.mode !== "ai" : true))));
+    need.sort((a, b) => b.preScore - a.preScore);
+    job.analyzeQueue = need.slice(0, settings.weekly.maxAnalyzePerRun).map((a) => a.id);
+    job.stats.queued = job.analyzeQueue.length;
+    log(job, "info", `분석 대상 ${job.analyzeQueue.length}건 (미분석 ${need.filter((a) => a.status === "queued").length}건 포함)${aiConfigured() ? "" : " — AI 미연결: 규칙 기반 분류"}`);
+  }
   await saveJob(job);
+  if (mode === "weekly" || mode === "weekly-analyze") return { job, created: true, resumed: false };
   await saveSettings({ ...settings, rotation: (settings.rotation ?? 0) + 1, ...(trigger === "scheduled" ? { lastScheduledRunAt: now } : {}) });
   return { job, created: true, resumed: false };
 }
@@ -94,12 +112,20 @@ export async function cancelJob(id: string): Promise<Job | null> {
 
 // ------------------------------------------------------------------ discovery
 
-async function runQuery(q: Job["queries"][number], settings: Settings): Promise<RawArticle[]> {
+async function runQuery(q: Job["queries"][number], settings: Settings, rangeStart?: string): Promise<RawArticle[]> {
   const sinceIso = new Date(Date.now() - settings.lookbackDays * 86400_000).toISOString();
+  if (q.provider === "gdelt" && q.query.startsWith("{")) {
+    const p = JSON.parse(q.query) as { q: string; start: string; end: string };
+    return searchGdelt(p.q, { timespanDays: 7, max: 75, englishOnly: true, start: p.start, end: p.end });
+  }
   if (q.provider === "gdelt") return searchGdelt(q.query, { timespanDays: settings.lookbackDays, max: 75, englishOnly: settings.englishOnly });
   if (q.provider === "rss") {
     const feed = settings.rssFeeds.find((f) => f.url === q.query);
-    return fetchRss(feed?.name ?? q.label, q.query, sinceIso);
+    return fetchRss(feed?.name ?? q.label, q.query, rangeStart ?? sinceIso, feed?.lang ?? "en");
+  }
+  if (q.provider === "googlenews") {
+    const p = JSON.parse(q.query) as { q: string; lang: "ko" | "en"; startDate?: string; endDate?: string };
+    return searchGoogleNews(p.q, { lang: p.lang, startDate: p.startDate, endDate: p.endDate, max: 30 });
   }
   if (q.provider === "gnews") return searchGnews(q.query, sinceIso);
   return [];
@@ -108,6 +134,7 @@ async function runQuery(q: Job["queries"][number], settings: Settings): Promise<
 function toArticle(r: RawArticle, job: Job, settings: Settings): Article {
   const urlNormalized = normalizeUrl(r.url);
   const text = `${r.title} ${r.description ?? ""}`;
+  const via = r.provider === "googlenews";
   return {
     id: hashId(urlNormalized),
     url: r.url,
@@ -115,7 +142,8 @@ function toArticle(r: RawArticle, job: Job, settings: Settings): Article {
     title: r.title,
     sourceName: r.sourceName,
     sourceDomain: r.domain || domainOf(r.url),
-    sourceType: classifySource(r.url),
+    sourceType: via ? classifySource(`https://${r.domain}/`) : classifySource(r.url),
+    viaGoogleNews: via,
     language: r.language,
     sourceCountry: r.sourceCountry,
     publishedAt: r.publishedAt,
@@ -127,19 +155,19 @@ function toArticle(r: RawArticle, job: Job, settings: Settings): Article {
     isDemo: false,
     status: "queued",
     statusNote: null,
-    preScore: preScore(r.title, r.description, settings),
+    preScore: Math.max(preScore(r.title, r.description, settings), job.mode === "weekly" ? weeklyPreScore(r.title, r.description) + 1 : -99),
     excerpt: r.description,
     verification: { status: "unchecked", httpStatus: null, finalUrl: null, redirects: 0, checkedAt: null, access: "unknown", note: null },
     analysis: null,
     opportunityId: null,
     duplicateOf: null,
-    competitors: settings.competitors.filter((c) => containsAny(text, c.aliases.length ? c.aliases : [c.name]).length).map((c) => c.name),
+    competitors: checkCompetitors(text, settings).filter((c) => c.confirmed).map((c) => c.name),
     feedback: null,
     feedbackAt: null,
   };
 }
 
-async function discoverStep(job: Job, settings: Settings, recentTitles: { id: string; t: string }[]): Promise<void> {
+async function discoverStep(job: Job, settings: Settings, recentTitles: { id: string; t: string; via?: boolean }[]): Promise<void> {
   const q = job.queries[job.cursor];
   let raw: RawArticle[] = [];
   // circuit breaker: if a provider failed 3 times in a row, skip its remaining queries this run
@@ -148,7 +176,7 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
     log(job, "warn", `건너뜀: ${q.label} — ${q.provider} 연속 3회 실패`);
   } else {
     try {
-      raw = await runQuery(q, settings);
+      raw = await runQuery(q, settings, job.range ? new Date(new Date(job.range.start).getTime() - 86400_000).toISOString() : undefined);
       fails[q.provider] = 0;
       log(job, "info", `검색 완료: ${q.label} → ${raw.length}건`);
     } catch (e) {
@@ -167,16 +195,44 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
   // de-duplicate within the batch
   const uniq = new Map<string, Article>();
   for (const c of candidates) if (!uniq.has(c.id)) uniq.set(c.id, c);
-  const existing = new Set((await getArticles([...uniq.keys()])).map((a) => a.id));
+  const existingRows = await getArticles([...uniq.keys()]);
+  const existing = new Set(existingRows.map((a) => a.id));
   const toSave: Article[] = [];
+  if (job.mode === "weekly") {
+    // articles dropped earlier by the opportunity-only pre-filter may still matter for the weekly report
+    for (const old of existingRows) {
+      if (old.status === "filtered" && !old.isDemo && weeklyPreScore(old.title, old.excerpt) >= 2) {
+        old.status = "queued";
+        old.statusNote = "주간 업계동향 기준으로 재검토 대상";
+        old.preScore = Math.max(old.preScore, weeklyPreScore(old.title, old.excerpt) + 1);
+        toSave.push(old);
+        job.stats.queued++;
+      }
+    }
+  }
   for (const a of uniq.values()) {
     if (existing.has(a.id)) {
       job.stats.duplicates++;
       continue; // already stored & analysed — never re-call AI for it
     }
+    if (job.range && a.publishedAt && a.publishedAt < new Date(new Date(job.range.start).getTime() - 86400_000).toISOString()) {
+      continue; // older than the requested period (RSS feeds return their latest items regardless of date)
+    }
     const nt = normalizeTitle(a.title);
     const dup = recentTitles.find((x) => x.t === nt || (nt.length > 20 && jaccard(x.t, nt) >= 0.85));
-    if (dup) {
+    if (dup && dup.via && !a.viaGoogleNews) {
+      // prefer the direct publisher link over an earlier Google News redirect copy
+      const [old] = await getArticles([dup.id]);
+      if (old && (old.status === "queued" || old.status === "filtered")) {
+        old.status = "duplicate";
+        old.duplicateOf = a.id;
+        old.statusNote = "동일 기사의 발행 매체 직접 링크로 대체됨";
+        toSave.push(old);
+        dup.id = a.id;
+        dup.via = false;
+      }
+    }
+    if (dup && dup.id !== a.id) {
       a.status = "duplicate";
       a.duplicateOf = dup.id;
       a.statusNote = "동일 제목 기사(재배포/신디케이션) — 분석 생략";
@@ -188,7 +244,7 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
     } else {
       job.stats.queued++;
     }
-    recentTitles.push({ id: a.id, t: nt });
+    if (!dup) recentTitles.push({ id: a.id, t: nt, via: Boolean(a.viaGoogleNews) });
     job.stats.newArticles++;
     toSave.push(a);
   }
@@ -196,7 +252,29 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
 }
 
 /** Pick which queued articles get analysed this run: score-ranked, with per-country / per-domain caps for balance. */
+async function buildWeeklyQueue(job: Job, settings: Settings) {
+  const r = job.range!;
+  const from = new Date(new Date(r.start).getTime() - 86400_000).toISOString();
+  const queued = (await listArticles({ sinceDays: Math.ceil((Date.now() - new Date(from).getTime()) / 86400_000) + 2 }))
+    .filter((a) => a.status === "queued" && !a.isDemo && (!a.publishedAt || a.publishedAt >= from));
+  // in-period first, direct publisher links before Google News copies, then by pre-score
+  const inPeriod = (a: Article) => (a.publishedAt ?? a.discoveredAt) >= r.start && (a.publishedAt ?? a.discoveredAt) < r.end;
+  queued.sort((a, b) => Number(inPeriod(b)) - Number(inPeriod(a)) || Number(Boolean(a.viaGoogleNews)) - Number(Boolean(b.viaGoogleNews)) || b.preScore - a.preScore);
+  const perDomain = new Map<string, number>();
+  const picked: string[] = [];
+  for (const a of queued) {
+    if (picked.length >= settings.weekly.maxAnalyzePerRun) break;
+    if ((perDomain.get(a.sourceDomain) ?? 0) >= 40) continue;
+    perDomain.set(a.sourceDomain, (perDomain.get(a.sourceDomain) ?? 0) + 1);
+    picked.push(a.id);
+  }
+  job.analyzeQueue = picked;
+  job.analyzeIndex = 0;
+  log(job, "info", `분석 대상 ${picked.length}건 선정 (대기 ${queued.length}건 중)${aiConfigured() ? " — AI 분석" : " — AI 미연결: 규칙 기반 분류"}`);
+}
+
 async function buildAnalyzeQueue(job: Job, settings: Settings) {
+  if (job.mode === "weekly" && job.range) return buildWeeklyQueue(job, settings);
   const queued = (await listArticles({ sinceDays: Math.max(14, settings.lookbackDays + 7) })).filter((a) => a.status === "queued" && !a.isDemo);
   queued.sort((a, b) => b.preScore - a.preScore || (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
   const perCountry = new Map<string, number>();
@@ -221,9 +299,23 @@ async function buildAnalyzeQueue(job: Job, settings: Settings) {
 
 async function processArticle(job: Job, id: string, settings: Settings, ctx: { opps: Opportunity[]; articles: Article[] }) {
   const [article] = await getArticles([id]);
-  if (!article || (article.status !== "queued" && job.mode === "collect")) return;
+  if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly"))) return;
   try {
-    const page = await verifyAndFetch(article.url);
+    if (job.mode === "weekly-analyze" && article.status === "analyzed" && !aiConfigured()) {
+      // no AI: (re)classify for the weekly report from stored data only — no network, no cost
+      const opp = article.opportunityId ? ctx.opps.find((o) => o.id === article.opportunityId) ?? null : null;
+      article.weekly = weeklyRules(article, settings, opp);
+      article.competitors = article.weekly.competitorChecks.filter((c) => c.confirmed).map((c) => c.name);
+      job.stats.analyzed++;
+      await saveArticles([article]);
+      return;
+    }
+    const page: Awaited<ReturnType<typeof verifyAndFetch>> = article.viaGoogleNews
+      ? {
+          verification: { status: "needs_check", httpStatus: null, finalUrl: null, redirects: 0, checkedAt: new Date().toISOString(), access: "unknown", note: "Google News 경유 링크 — 브라우저에서 원문으로 이동, 원문 URL·발행일 자동 확인 불가" },
+          title: null, siteName: null, description: null, text: null, publishedAt: null, publishedAtBasis: null,
+        }
+      : await verifyAndFetch(article.url);
     article.verification = page.verification;
     if (page.publishedAt) {
       article.publishedAt = page.publishedAt;
@@ -233,7 +325,7 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
     article.excerpt = page.description || article.excerpt || (page.text ? page.text.slice(0, 500) : null);
 
     const pre = classifySource(page.verification.finalUrl || article.url);
-    const { analysis, warning } = await analyzeArticle(
+    const { analysis, warning, weeklyAI } = await analyzeArticle(
       { title: article.title, url: article.url, sourceName: article.sourceName, sourceType: pre, publishedAt: article.publishedAt, sourceCountry: article.sourceCountry, description: page.description || article.excerpt, text: page.text },
       settings,
     );
@@ -248,14 +340,15 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
       const hit = settings.competitors.find((c) => [c.name, ...c.aliases].some((x) => x.toLowerCase() === m.toLowerCase() || m.toLowerCase().includes(x.toLowerCase())));
       if (hit) compNames.add(hit.name);
     }
-    article.competitors = [...compNames];
+    article.competitors = [...compNames].filter((n) => checkCompetitors(`${article.title}\n${article.excerpt ?? ""}\n${page.text ?? ""}`, settings).some((c) => c.name === n && c.confirmed) || analysis.mode === "ai");
     article.status = "analyzed";
     article.statusNote = null;
     job.stats.analyzed++;
 
     // An opportunity must be backed by a source that actually resolves
     const linkOk = article.verification.status !== "broken";
-    const eligible = linkOk && (analysis.category === "opportunity" || (analysis.category === "competitor" && analysis.scoreBreakdown.investment_signal.score >= 15));
+    const prSpam = isMarketResearchPR(article.title, article.sourceDomain, article.sourceName); // paid market-research releases are not projects
+    const eligible = linkOk && !prSpam && (analysis.category === "opportunity" || (analysis.category === "competitor" && analysis.scoreBreakdown.investment_signal.score >= 15));
     if (!linkOk) article.statusNote = "원문 링크 확인 불가 — 수주기회로 등록하지 않음";
     if (eligible) {
       const existing = article.opportunityId ? ctx.opps.find((o) => o.id === article.opportunityId) : null;
@@ -276,6 +369,15 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
         job.newOpportunityIds.push(o.id);
         log(job, "info", `신규 수주기회 [${o.priority} ${o.score}] ${o.company} — ${o.projectName} (${o.country})`);
       }
+    }
+    // weekly market-intelligence classification (separate Industry Relevance Score)
+    const opp = article.opportunityId ? ctx.opps.find((o) => o.id === article.opportunityId) ?? null : null;
+    article.weekly = weeklyAI ? weeklyFromAI(article, weeklyAI, settings, opp) : weeklyRules(article, settings, opp, page.text);
+    if (weeklyAI) {
+      const confirmed = article.weekly.competitorChecks.filter((c) => c.confirmed).map((c) => settings.competitors.find((x) => [x.name, ...x.aliases].some((n) => n.toLowerCase() === c.name.toLowerCase() || c.name.toLowerCase().includes(n.toLowerCase())))?.name).filter((x): x is string => Boolean(x));
+      article.competitors = [...new Set(confirmed)];
+    } else {
+      article.competitors = article.weekly.competitorChecks.filter((c) => c.confirmed).map((c) => c.name);
     }
     await saveArticles([article]);
   } catch (e) {
@@ -309,6 +411,35 @@ async function supplementStep(job: Job, settings: Settings, oppId: string, ctx: 
   }
 }
 
+/** Weekly: for important paywalled articles, look for a free/official article on the same story. */
+async function weeklyAlternatives(job: Job, settings: Settings, ctx: { opps: Opportunity[]; articles: Article[] }) {
+  const r = job.range!;
+  const arts = (await listArticles({ sinceDays: Math.ceil((Date.now() - new Date(r.start).getTime()) / 86400_000) + 2 }))
+    .filter((a) => a.status === "analyzed" && !a.isDemo && a.verification.access === "paywall" && !a.altSearchedAt && (a.weekly?.relevance ?? 0) >= 50)
+    .slice(0, 5);
+  for (const a of arts) {
+    const words = a.title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2).slice(0, 7).join(" ");
+    try {
+      const day = (a.publishedAt ?? r.start).slice(0, 10);
+      const lang = /[가-힣]/.test(a.title) ? "ko" : "en";
+      const res = await searchGoogleNews(words, { lang, startDate: day, endDate: day, max: 15 });
+      const cands = res.map((x) => toArticle(x, job, settings)).filter((c) => c.sourceDomain !== a.sourceDomain && jaccard(normalizeTitle(c.title), normalizeTitle(a.title)) >= 0.3);
+      const exist = new Set((await getArticles(cands.map((c) => c.id))).map((x) => x.id));
+      const fresh = cands.filter((c) => !exist.has(c.id)).slice(0, 2);
+      if (fresh.length) {
+        await saveArticles(fresh);
+        for (const f of fresh) await processArticle(job, f.id, settings, ctx);
+      }
+      a.altSearchedAt = new Date().toISOString();
+      a.altSourceIds = [...cands.filter((c) => exist.has(c.id)).map((c) => c.id), ...fresh.map((f) => f.id)];
+      await saveArticles([a]);
+      log(job, "info", `유료 기사 대체 출처 탐색: ${a.title.slice(0, 50)} → ${a.altSourceIds.length ? `${a.altSourceIds.length}건 발견` : "무료 대체 출처 없음"}`);
+    } catch (e) {
+      log(job, "warn", `대체 출처 탐색 실패: ${a.title.slice(0, 50)} — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
+
 // ------------------------------------------------------------------ slice runner
 
 const inProcess = new Set<string>();
@@ -336,8 +467,8 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
     };
 
     if (job.phase === "discover") {
-      const recent = await listArticles({ sinceDays: 14 });
-      const recentTitles = recent.map((a) => ({ id: a.id, t: normalizeTitle(a.title) }));
+      const recent = await listArticles({ sinceDays: job.range ? Math.ceil((Date.now() - new Date(job.range.start).getTime()) / 86400_000) + 14 : 14 });
+      const recentTitles = recent.map((a) => ({ id: a.id, t: normalizeTitle(a.title), via: Boolean(a.viaGoogleNews) }));
       while (job.cursor < job.queries.length && Date.now() < deadline) {
         await discoverStep(job, settings, recentTitles);
         await beat();
@@ -360,7 +491,7 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
         await beat();
       }
       if (job.analyzeIndex >= job.analyzeQueue.length) {
-        job.phase = job.mode === "collect" ? "supplement" : "done";
+        job.phase = job.mode === "collect" || job.mode === "weekly" ? "supplement" : "done";
         await beat();
       }
     }
@@ -374,6 +505,9 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
         await beat();
       }
       const remaining = job.newOpportunityIds.filter((id) => !job!.supplementDone.includes(id));
+      if ((!remaining.length || job.supplementDone.length >= 5) && job.mode === "weekly" && Date.now() < deadline - 60_000) {
+        await weeklyAlternatives(job, settings, ctx);
+      }
       if (!remaining.length || job.supplementDone.length >= 5) job.phase = "done";
     }
 

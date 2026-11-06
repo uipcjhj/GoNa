@@ -65,7 +65,21 @@ const AnalysisSchema = z.object({
   competitors_mentioned: z.array(z.string()),
   competitor_activity: z.string().describe("If a competitor is involved: contract win / partnership / technology / investment / project delivery. Else ''"),
   source_type: z.string().describe("One of: Official Company Press Release | Government Announcement | Media Report | Industry Publication | Tender / Procurement Notice"),
+  // ---- Weekly Market Intelligence fields (separate purpose from the opportunity score)
+  title_ko: z.string().describe("Korean title for the weekly report (keep English proper nouns). If the original is Korean, repeat it."),
+  weekly_categories: z.array(z.string()).describe("Zero or more of: domestic | global | competitor | policy | tech | opportunity. domestic = South Korea industry news; global = overseas industry news; competitor = news about the listed competitors' business; policy = government policy/regulation affecting logistics automation or manufacturing (not general politics); tech = technology/market trends; opportunity = concrete facility investment that could need automation."),
+  weekly_primary_category: z.string().describe("The single best category from weekly_categories for the report, or 'none' if not relevant to an industry report"),
+  weekly_summary: z.array(z.string()).describe("Korean weekly-report summary, about 4 lines, each ~20-30 Korean characters, noun-ending report style. Lines 1-3 start with '§ ' and state key facts/figures from the article; the last line starts with '⇒ ' and states the industry implication (policy: institutional change & industry impact; competitor: competitive landscape & orders; tech: technical meaning & market impact; opportunity: Hyundai Movex relevance). Never add facts not in the article; do not force a sales link."),
+  rel_business: scoreItem.describe("0-30: relevance to Hyundai Movex business (intralogistics automation, smart factory, airport/rail systems)"),
+  rel_impact: scoreItem.describe("0-25: industry impact and importance (scale, market significance, competitor major order, policy change). Pure product promotion scores low."),
+  rel_strategic: scoreItem.describe("0-15: strategic region (Korea, North America, Poland/Hungary, Southeast Asia, UAE/Middle East, Australia) and key industry"),
+  rel_credibility: scoreItem.describe("0-10: source credibility (official/government highest)"),
+  competitor_checks: z.array(z.object({ name: z.string(), is_actual_competitor: z.boolean(), note: z.string() })).describe("For each listed competitor name appearing in the text: is it the intralogistics company or a similarly named person/entity?"),
+  policy_kind: z.string().describe("For policy news: law | government_announcement | enforcement | other. Otherwise 'none'"),
+  policy_effective_date: z.string().describe("Policy effective/enforcement date if stated (YYYY-MM-DD), else empty"),
 });
+
+export type WeeklyAIRaw = Pick<z.infer<typeof AnalysisSchema>, "title_ko" | "weekly_categories" | "weekly_primary_category" | "weekly_summary" | "rel_business" | "rel_impact" | "rel_strategic" | "rel_credibility" | "competitor_checks" | "policy_kind" | "policy_effective_date">;
 
 const SYSTEM = `You are a market-intelligence analyst for HYUNDAI MOVEX, a Korean intralogistics automation company (AS/RS, 4-way shuttles, shuttle systems, AGV/AMR, conveyors, sorters, WMS/WCS, automated warehouses, production logistics, cold-chain automation, airport baggage & cargo handling systems).
 Competitors: Daifuku, Dematic, SSI Schäfer, KNAPP, Vanderlande, Swisslog.
@@ -78,7 +92,13 @@ Strict rules:
 - If the article only re-mentions an older investment, set flag_re_report=true. If the facility is already completed/operating, set flag_completed_project=true and give stage_timing a low score.
 - Separate facts (stated) from inferences (your reasoning). Solution matches are possibilities to review, not confirmed supply.
 - Keep original English titles and proper nouns as-is (company names, project names) even when writing in Korean.
-- Be conservative: general industry news without a concrete facility project should score low.`;
+- Be conservative: general industry news without a concrete facility project should score low.
+- The weekly_* and rel_* fields serve a different purpose (weekly industry report): policy changes, competitor orders and technology shifts can be highly relevant there even when the opportunity score is low.
+- Weekly summary style example (Korean report style):
+  § 폴란드 생산시설 신설·현대화 투자 추진
+  § 부품공장·생산라인 등 설비 확충 계획
+  § 주요 제조기업의 생산능력 확대 전망
+  ⇒ 중동부유럽 공정물류 자동화 수요 주목`;
 
 const CATS: ArticleCategory[] = ["opportunity", "competitor", "industry", "irrelevant"];
 const HIST: HistoryEventType[] = ["announcement", "follow_up_investment", "groundbreaking", "equipment_procurement", "tender", "completion", "update"];
@@ -88,7 +108,7 @@ function pick<T extends string>(v: string, allowed: readonly T[], fallback: T): 
   return allowed.find((a) => a.toLowerCase() === n) ?? allowed.find((a) => n && (a.toLowerCase().includes(n) || n.includes(a.toLowerCase()))) ?? fallback;
 }
 
-export async function analyzeWithAI(input: AnalysisInput, settings: Settings): Promise<Analysis> {
+export async function analyzeWithAI(input: AnalysisInput, settings: Settings): Promise<{ analysis: Analysis; weekly: WeeklyAIRaw }> {
   const client = new Anthropic({ maxRetries: 3, timeout: 120_000 });
   const lang = settings.analysisLanguage === "ko" ? "Korean (한국어)" : "English";
   const body = [
@@ -139,7 +159,12 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
   if (!o.is_relevant) category = "irrelevant";
   else if (category === "opportunity" && sc.score < 35) category = o.competitors_mentioned.length ? "competitor" : "industry";
 
-  return {
+  const weekly: WeeklyAIRaw = {
+    title_ko: o.title_ko, weekly_categories: o.weekly_categories, weekly_primary_category: o.weekly_primary_category, weekly_summary: o.weekly_summary,
+    rel_business: o.rel_business, rel_impact: o.rel_impact, rel_strategic: o.rel_strategic, rel_credibility: o.rel_credibility,
+    competitor_checks: o.competitor_checks, policy_kind: o.policy_kind, policy_effective_date: o.policy_effective_date,
+  };
+  const analysis: Analysis = {
     mode: "ai",
     model: aiModel(),
     analyzedAt: new Date().toISOString(),
@@ -175,6 +200,7 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
     competitorActivity: o.competitor_activity,
     sourceType: pick(o.source_type, SRC, input.sourceType),
   };
+  return { analysis, weekly };
 }
 
 // ------------------------------------------------------------------ rule-based fallback
@@ -288,10 +314,11 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
   };
 }
 
-export async function analyzeArticle(input: AnalysisInput, settings: Settings): Promise<{ analysis: Analysis; warning: string | null }> {
+export async function analyzeArticle(input: AnalysisInput, settings: Settings): Promise<{ analysis: Analysis; warning: string | null; weeklyAI?: WeeklyAIRaw }> {
   if (!aiConfigured()) return { analysis: analyzeWithRules(input, settings), warning: null };
   try {
-    return { analysis: await analyzeWithAI(input, settings), warning: null };
+    const r = await analyzeWithAI(input, settings);
+    return { analysis: r.analysis, weeklyAI: r.weekly, warning: null };
   } catch (e) {
     const msg = e instanceof Anthropic.APIError ? `Anthropic API ${e.status ?? ""}: ${e.message}` : e instanceof Error ? e.message : String(e);
     // fail soft: keep the pipeline running with rules, but report the AI error

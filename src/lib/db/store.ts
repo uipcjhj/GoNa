@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export type TableName = "articles" | "opportunities" | "jobs" | "settings";
+export type TableName = "articles" | "opportunities" | "jobs" | "settings" | "reports";
 
 export interface Row {
   id: string;
@@ -36,7 +36,9 @@ function sortAt(table: TableName, row: Row): string {
         ? (r.lastUpdatedAt as string)
         : table === "jobs"
           ? (r.startedAt as string)
-          : null;
+          : table === "reports"
+            ? (r.start as string)
+            : null;
   return v || new Date().toISOString();
 }
 
@@ -110,9 +112,9 @@ class LocalStore implements Store {
     try {
       this.data = JSON.parse(fs.readFileSync(this.file, "utf8")) as LocalData;
     } catch {
-      this.data = { articles: {}, opportunities: {}, jobs: {}, settings: {} };
+      this.data = { articles: {}, opportunities: {}, jobs: {}, settings: {}, reports: {} };
     }
-    for (const t of ["articles", "opportunities", "jobs", "settings"] as TableName[]) this.data[t] ??= {};
+    for (const t of ["articles", "opportunities", "jobs", "settings", "reports"] as TableName[]) this.data[t] ??= {};
     return this.data;
   }
 

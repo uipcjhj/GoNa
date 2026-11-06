@@ -1,17 +1,18 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Target, Newspaper, Swords, FileSpreadsheet, Settings, History, Radar, Menu, X } from "lucide-react";
+import { LayoutDashboard, Target, Newspaper, Swords, FileSpreadsheet, Settings, History, Radar, Menu, X, CalendarRange } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { SystemStatus } from "@/lib/status";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/weekly", label: "주간 업계동향", icon: CalendarRange },
   { href: "/opportunities", label: "Opportunities", icon: Target },
   { href: "/news", label: "News Feed", icon: Newspaper },
   { href: "/competitors", label: "Competitor Watch", icon: Swords },
-  { href: "/report", label: "Weekly Report", icon: FileSpreadsheet },
+  { href: "/report", label: "간편 Excel (수주기회)", icon: FileSpreadsheet },
   { href: "/runs", label: "실행 기록", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

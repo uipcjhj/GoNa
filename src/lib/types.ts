@@ -127,6 +127,62 @@ export interface Analysis {
   sourceType: SourceType;
 }
 
+// ------------------------------------------------------------------ Weekly Market Intelligence
+
+export type WeeklyCategory = "domestic" | "global" | "competitor" | "policy" | "tech" | "opportunity";
+export type ReportStatus = "unreviewed" | "selected" | "excluded" | "hold";
+export type DateStatus = "verified" | "search" | "unknown"; // 원문 확인 / 검색서비스 날짜(미확정) / 미확인
+
+export interface RelevanceBreakdown {
+  business: ScoreItem; // 현대무벡스 사업 연관성 30
+  impact: ScoreItem; // 업계 파급력 및 중요도 25
+  recency: ScoreItem; // 최신성 20
+  strategic: ScoreItem; // 전략지역·산업 관련성 15
+  credibility: ScoreItem; // 근거의 신뢰성 10
+}
+
+export interface CompetitorCheck {
+  name: string;
+  confirmed: boolean;
+  note: string;
+}
+
+export interface WeeklyAnalysis {
+  mode: AnalysisMode; // ai | rules | demo
+  analyzedAt: string;
+  categories: WeeklyCategory[];
+  primaryCategory: WeeklyCategory | null; // null = 업계동향 대상 아님
+  scope: "domestic" | "global";
+  country: string;
+  industry: string;
+  titleKo: string | null; // null = 번역 전 (AI 미연결)
+  summaryLines: string[]; // 보고서 문체 4줄 (§ ... / ⇒ ...)
+  summaryIsExcerpt: boolean; // true = 규칙 기반 원문 발췌 (AI 요약 아님)
+  relevance: number; // Industry Relevance Score 0-100
+  relevanceBreakdown: RelevanceBreakdown;
+  competitorChecks: CompetitorCheck[];
+  policy: { kind: "law" | "government_announcement" | "enforcement" | "other" | "none"; effectiveDate: string | null; note: string } | null;
+  eventDate: string | null;
+}
+
+export interface ReportItem {
+  status: ReportStatus;
+  category: WeeklyCategory | null; // 사용자가 지정한 보고서 기본 카테고리
+  recommended: boolean;
+  updatedAt: string;
+}
+
+export interface WeeklyReport {
+  id: string; // `${startDate}_${endDate}`
+  startDate: string;
+  endDate: string;
+  start: string; // ISO
+  end: string; // ISO (exclusive)
+  items: Record<string, ReportItem>;
+  recommendedAt: string | null;
+  updatedAt: string;
+}
+
 export interface Article {
   id: string; // hash of normalized URL
   url: string;
@@ -156,6 +212,10 @@ export interface Article {
   competitors: string[];
   feedback: "useful" | "not_useful" | null;
   feedbackAt: string | null;
+  weekly?: WeeklyAnalysis | null;
+  viaGoogleNews?: boolean; // link is a Google News redirect; original URL not machine-resolvable
+  altSearchedAt?: string | null; // paywalled article: free/official alternative search performed
+  altSourceIds?: string[]; // free/official articles covering the same story
 }
 
 export interface HistoryEntry {
@@ -237,7 +297,8 @@ export interface PlannedQuery {
 export interface Job {
   id: string;
   trigger: "manual" | "scheduled";
-  mode: "collect" | "reanalyze";
+  mode: "collect" | "reanalyze" | "weekly" | "weekly-analyze";
+  range?: { start: string; end: string; startDate: string; endDate: string; days?: string[] } | null;
   status: JobStatus;
   phase: JobPhase;
   startedAt: string;
@@ -279,13 +340,28 @@ export interface ScoringWeights {
   strategic_fit: number;
 }
 
+export interface WeeklySettings {
+  domesticQueries: string[]; // 한국어 (Google News, ko-KR)
+  globalQueries: string[]; // 영어 (Google News, en)
+  policyQueriesKo: string[];
+  policyQueriesEn: string[];
+  techQueriesKo: string[];
+  techQueriesEn: string[];
+  competitorQueriesKo: string[];
+  googleNews: boolean;
+  gdelt: boolean;
+  recommendCount: number; // 15~20
+  maxAnalyzePerRun: number;
+}
+
 export interface Settings {
   countries: CountrySetting[];
   industries: KeywordGroup[];
   signals: KeywordGroup[];
   customQueries: string[];
   competitors: { name: string; enabled: boolean; aliases: string[] }[];
-  rssFeeds: { name: string; url: string; enabled: boolean }[];
+  rssFeeds: { name: string; url: string; enabled: boolean; scope?: "domestic" | "global"; lang?: "ko" | "en" }[];
+  weekly: WeeklySettings;
   weights: ScoringWeights;
   hotThreshold: number;
   watchThreshold: number;

@@ -41,3 +41,13 @@ alter table public.articles enable row level security;
 alter table public.opportunities enable row level security;
 alter table public.jobs enable row level security;
 alter table public.settings enable row level security;
+
+-- 주간 업계동향 보고서 선정 상태 (주간별 1행)
+create table if not exists public.reports (
+  id text primary key,
+  data jsonb not null,
+  sort_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists reports_sort_at_idx on public.reports (sort_at desc);
+alter table public.reports enable row level security;

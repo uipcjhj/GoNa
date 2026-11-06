@@ -1,4 +1,4 @@
-import type { CountrySetting, KeywordGroup, Settings, ScoringWeights } from "@/lib/types";
+import type { CountrySetting, KeywordGroup, Settings, ScoringWeights, WeeklySettings } from "@/lib/types";
 
 const c = (name: string, region: CountrySetting["region"], priority: boolean, aliases: string[] = []): CountrySetting => ({
   name,
@@ -75,11 +75,50 @@ export const DEFAULT_COMPETITORS = [
   { name: "Swisslog", enabled: true, aliases: ["Swisslog"] },
 ];
 
-export const DEFAULT_RSS = [
-  { name: "Supply Chain Dive", url: "https://www.supplychaindive.com/feeds/news/", enabled: true },
-  { name: "Manufacturing Dive", url: "https://www.manufacturingdive.com/feeds/news/", enabled: true },
-  { name: "Logistics Management", url: "https://www.logisticsmgmt.com/rss", enabled: false },
+export const DEFAULT_RSS: Settings["rssFeeds"] = [
+  { name: "Supply Chain Dive", url: "https://www.supplychaindive.com/feeds/news/", enabled: true, scope: "global", lang: "en" },
+  { name: "Manufacturing Dive", url: "https://www.manufacturingdive.com/feeds/news/", enabled: true, scope: "global", lang: "en" },
+  { name: "Logistics Management", url: "https://www.logisticsmgmt.com/rss", enabled: false, scope: "global", lang: "en" },
 ];
+
+/** Feeds added with the Weekly Market Intelligence feature (also merged into existing saved settings). */
+export const WEEKLY_RSS: Settings["rssFeeds"] = [
+  { name: "물류신문", url: "https://www.klnews.co.kr/rss/allArticle.xml", enabled: true, scope: "domestic", lang: "ko" },
+  { name: "카고뉴스", url: "https://www.cargonews.co.kr/rss/allArticle.xml", enabled: true, scope: "domestic", lang: "ko" },
+  { name: "로봇신문", url: "https://www.irobotnews.com/rss/allArticle.xml", enabled: true, scope: "domestic", lang: "ko" },
+  { name: "전자신문 (오늘의뉴스)", url: "https://rss.etnews.com/Section901.xml", enabled: true, scope: "domestic", lang: "ko" },
+  { name: "The Robot Report", url: "https://www.therobotreport.com/feed/", enabled: true, scope: "global", lang: "en" },
+  { name: "Robotics & Automation News", url: "https://roboticsandautomationnews.com/feed/", enabled: true, scope: "global", lang: "en" },
+];
+
+export const DEFAULT_WEEKLY: WeeklySettings = {
+  domesticQueries: [
+    "물류센터 신설", "물류센터 증설 OR 물류센터 착공", "자동창고 OR 스마트물류", "물류로봇 OR AMR OR AGV",
+    "스마트팩토리 투자 OR 제조자동화", "풀필먼트센터 OR 이커머스 물류센터", "콜드체인 OR 냉동냉장 물류센터",
+    "배터리 공장 투자 OR 증설", "자동차 공장 투자 OR 타이어 공장 증설", "공정물류 자동화", "공항 물류 OR 수하물 처리시스템",
+    "승강장 안전문 OR 철도 시스템", "현대무벡스",
+  ],
+  globalQueries: [
+    "new factory Poland OR Hungary", "warehouse automation Europe investment", "distribution center construction automation",
+    "factory investment Vietnam OR Thailand OR Indonesia OR Malaysia", "logistics hub UAE OR Saudi Arabia warehouse",
+    "distribution centre Australia automation", "gigafactory OR battery plant investment", "cold storage facility investment",
+    "tire plant expansion", "air cargo terminal automation", "food beverage plant expansion automation", "petrochemical plant investment Middle East",
+  ],
+  policyQueriesKo: [
+    "스마트물류 지원 정책", "스마트공장 지원사업", "물류시설 투자 지원 국토교통부", "로봇산업 육성 정책",
+    "물류 예산 정부", "산업단지 인프라 투자", "관세 공급망 제조업 대응", "물류 탄소 규제 OR 친환경 물류 정책",
+  ],
+  policyQueriesEn: [
+    "manufacturing investment incentive government", "tariff supply chain manufacturing reshoring", "robot safety standard regulation", "logistics infrastructure funding government",
+  ],
+  techQueriesKo: ["디지털트윈 물류", "피지컬 AI 로봇", "WMS OR WCS 물류 시스템", "물류 자동화 시장 전망"],
+  techQueriesEn: ["warehouse robotics market", "AS/RS automated storage retrieval", "autonomous mobile robots warehouse", "physical AI robotics logistics", "digital twin warehouse"],
+  competitorQueriesKo: ["다이후쿠 OR 데마틱 OR 스위스로그", "크납 OR 반더란데 OR SSI쉐퍼"],
+  googleNews: true,
+  gdelt: true,
+  recommendCount: 18,
+  maxAnalyzePerRun: 150,
+};
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
   investment_signal: 30,
@@ -129,7 +168,8 @@ export const DEFAULT_SETTINGS: Settings = {
   signals: DEFAULT_SIGNALS,
   customQueries: [],
   competitors: DEFAULT_COMPETITORS,
-  rssFeeds: DEFAULT_RSS,
+  rssFeeds: [...DEFAULT_RSS, ...WEEKLY_RSS],
+  weekly: DEFAULT_WEEKLY,
   weights: DEFAULT_WEIGHTS,
   hotThreshold: 80,
   watchThreshold: 60,
@@ -150,5 +190,16 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export function mergeSettings(stored: Partial<Settings> | null | undefined): Settings {
-  return { ...DEFAULT_SETTINGS, ...(stored ?? {}), weights: { ...DEFAULT_WEIGHTS, ...(stored?.weights ?? {}) } };
+  const merged: Settings = {
+    ...DEFAULT_SETTINGS,
+    ...(stored ?? {}),
+    weights: { ...DEFAULT_WEIGHTS, ...(stored?.weights ?? {}) },
+    weekly: { ...DEFAULT_WEEKLY, ...(stored?.weekly ?? {}) },
+  };
+  // migration: settings saved before the weekly feature get the new domestic/global feeds once
+  if (stored && !stored.weekly && stored.rssFeeds) {
+    const have = new Set(stored.rssFeeds.map((f) => f.url));
+    merged.rssFeeds = [...stored.rssFeeds, ...WEEKLY_RSS.filter((f) => !have.has(f.url))];
+  }
+  return merged;
 }

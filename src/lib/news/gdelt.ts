@@ -15,7 +15,7 @@ function parseSeenDate(s: string | undefined): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-export async function searchGdelt(query: string, opts: { timespanDays: number; max: number; englishOnly: boolean }): Promise<RawArticle[]> {
+export async function searchGdelt(query: string, opts: { timespanDays: number; max: number; englishOnly: boolean; start?: string; end?: string }): Promise<RawArticle[]> {
   // GDELT asks clients to keep to ~1 request / 5 seconds.
   const wait = 6500 - (Date.now() - lastCall);
   if (wait > 0) await sleep(wait);
@@ -27,9 +27,13 @@ export async function searchGdelt(query: string, opts: { timespanDays: number; m
     mode: "artlist",
     format: "json",
     maxrecords: String(Math.min(opts.max, 250)),
-    timespan: `${Math.max(1, opts.timespanDays)}d`,
     sort: "datedesc",
   });
+  const gd = (iso: string) => iso.replace(/[-:T]/g, "").slice(0, 14); // YYYYMMDDHHMMSS (UTC)
+  if (opts.start && opts.end) {
+    params.set("startdatetime", gd(opts.start));
+    params.set("enddatetime", gd(opts.end));
+  } else params.set("timespan", `${Math.max(1, opts.timespanDays)}d`);
   const res = await fetchWithRetry(`${ENDPOINT}?${params}`, { timeoutMs: 30000 }, 2, 12000);
   const text = await res.text();
   lastCall = Date.now();
