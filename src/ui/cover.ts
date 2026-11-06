@@ -154,6 +154,7 @@ export class CoverScreen {
       };
       mk('🧪 뽀뽀괴물 테스트', () => this.start({ boss: 'kiss' }));
       mk('🧪 킁카괴물 테스트', () => this.start({ boss: 'sniff' }));
+      mk('🧪 몬스터 테스트 (3단계)', () => this.start({ devMonsters: true }));
       const label = (): string => (perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기');
       mk(label(), () => {
         setPerfOverlay(!perf.enabled);

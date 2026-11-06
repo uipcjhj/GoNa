@@ -83,6 +83,8 @@ export abstract class BossBattle {
   private stunMul = 1;
   private stars: Phaser.GameObjects.Image[] = [];
   private pendingRage = false;
+  /** 보스가 만든 효과 오브젝트 (예고 화살표·충전 하트·오라·잔상…) — cleanupCombat() 에서 한꺼번에 제거 */
+  private fxList: Phaser.GameObjects.GameObject[] = [];
   /** 필살 게이지 0~1 */
   special = 0;
   /** 연출 중: 세상(땅·고나·투사체)이 멈춤 */
@@ -249,7 +251,7 @@ export abstract class BossBattle {
     } else if (this.mode !== 'victory') {
       b.setFrame(this.moodFrame(this.idleFrame()));
     }
-    if (!this.detached) b.setPosition(Math.round(this.bx), Math.round(this.host.groundY - this.balt));
+    if (!this.detached) b.setPosition(Math.round(this.bx * 5) / 5, Math.round((this.host.groundY - this.balt) * 5) / 5);
     if (this.hurtT > 0) {
       this.hurtT -= dt;
       b.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
@@ -416,7 +418,7 @@ export abstract class BossBattle {
     // 부들부들 + 커졌다 작아짐 + 김
     scene.tweens.add({ targets: this.boss, scaleX: 1.12, scaleY: 1.12, duration: 160, yoyo: true, repeat: 3 });
     for (let i = 0; i < 8; i++) {
-      const p = scene.add.image(this.bx + (Math.random() - 0.5) * this.fw * 0.6, this.host.groundY - this.fh + 4, 'boss-dot').setDepth(12).setTint(0xffffff);
+      const p = this.fx(scene.add.image(this.bx + (Math.random() - 0.5) * this.fw * 0.6, this.host.groundY - this.fh + 4, 'boss-dot').setDepth(12).setTint(0xffffff));
       scene.tweens.add({ targets: p, y: p.y - 18 - Math.random() * 12, x: p.x + (Math.random() - 0.5) * 14, alpha: 0, scale: 2, duration: 900, delay: i * 90, onComplete: () => p.destroy() });
     }
     this.banner({ top: lv === 1 ? '💢 1차 분노!' : '💥 2차 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : '폭발했어요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' });
@@ -518,7 +520,7 @@ export abstract class BossBattle {
         continue;
       }
       if (h.spin) h.sprite.angle += h.spin * dt;
-      h.sprite.setPosition(Math.round(h.x), Math.round(h.y));
+      h.sprite.setPosition(Math.round(h.x * 5) / 5, Math.round(h.y * 5) / 5);
       // 방패: 막으면 피해 0 (탄은 부서지고, 파동·장판은 그냥 지나감)
       const sh = this.host.shieldRect();
       if (sh && !h.hitPlayer) {
@@ -599,17 +601,17 @@ export abstract class BossBattle {
     scene.tweens.add({ targets: this.dim, fillAlpha: 0.45, duration: 200 });
     const head = this.host.playerHead();
     this.host.sparkle(12, head.x, head.y);
-    const big = scene.add.image(head.x, head.y, this.host.hairTexture()).setDepth(13).setScale(0);
+    const big = this.fx(scene.add.image(head.x, head.y, this.host.hairTexture()).setDepth(13).setScale(0));
     scene.tweens.add({ targets: big, scale: 4, angle: -720, duration: 420, ease: 'Back.Out' });
     // 회오리 잔상
-    const trail = scene.add.particles(0, 0, this.host.hairTexture(), {
+    const trail = this.fx(scene.add.particles(0, 0, this.host.hairTexture(), {
       follow: big,
       lifespan: 300,
       scale: { start: 2.4, end: 0 },
       alpha: { start: 0.5, end: 0 },
       rotate: { min: 0, max: 360 },
       frequency: 30,
-    }).setDepth(12.9);
+    }).setDepth(12.9));
     const r = this.bossRect();
     this.after(0.5, () => {
       scene.tweens.add({ targets: big, x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2, angle: big.angle - 1080, duration: 380, ease: 'Quad.In' });
@@ -656,14 +658,13 @@ export abstract class BossBattle {
 
   private victory(): void {
     this.mode = 'victory';
-    this.stunT = 0;
-    this.clearStars();
-    this.onInterrupt();
-    this.ai = [];
+    // 보스 체력 0: 모든 공격 즉시 중단 + 날아오던 것·예고·효과 제거 (예약된 공격이 뒤늦게 나오지 않게)
+    this.cleanupCombat();
+    this.host.scene.tweens.killTweensOf(this.boss);
+    this.boss.setScale(1);
     this.motion = null;
     this.balt = 0;
     if (this.bx < 20 || this.bx > this.host.W - 10) this.bx = this.homeX;
-    this.clearHostiles();
     const scene = this.host.scene;
     const cam = scene.cameras.main;
     sound.bossDown();
@@ -700,10 +701,53 @@ export abstract class BossBattle {
     this.host.floatText(text, x, y, color);
   }
 
-  destroy(): void {
+  /** 효과 오브젝트 등록 (전투가 끝나면 cleanupCombat 이 지움) */
+  protected fx<T extends Phaser.GameObjects.GameObject>(o: T): T {
+    // 이미 사라진 것은 목록에서 정리 (오래 싸워도 목록이 쌓이지 않게)
+    if (this.fxList.length > 64) this.fxList = this.fxList.filter((x) => x.active);
+    this.fxList.push(o);
+    return o;
+  }
+
+  /** 하위 클래스가 가진 효과 (오라 등) 정리 */
+  protected onCleanup(): void {}
+
+  /**
+   * 전투 상태 전부 정리 — 승리 · 패배 · 다시하기 · 씬 전환에서 공통으로 호출.
+   * 예약된 공격(ai·연출 타이머) 취소, 날아오던 투사체·예고 화살표·충전 하트·오라·잔상 제거, 관련 트윈 중지,
+   * 흡입·어둡게·멈춤 상태 복구. (보스 본체는 승리 연출을 위해 남김 — destroy() 에서 지움)
+   */
+  cleanupCombat(): void {
+    const tw = this.host.scene.tweens;
+    this.ai = [];
+    this.cine = [];
+    this.busy = true;
+    this.pendingRage = false;
+    this.stunT = 0;
     this.clearStars();
-    for (const h of this.hostiles) h.sprite.destroy();
+    this.onInterrupt();
+    this.onCleanup();
+    for (const h of this.hostiles) {
+      tw.killTweensOf(h.sprite);
+      h.sprite.destroy();
+    }
     this.hostiles = [];
+    for (const o of this.fxList) {
+      tw.killTweensOf(o);
+      if (o.active) o.destroy();
+    }
+    this.fxList = [];
+    tw.killTweensOf(this.dim);
+    this.dim.setFillStyle(0x1a0f24, 0);
+    this.warnT = 0;
+    this.warnMark.setVisible(false);
+    this.frozen = false;
+    this.host.pull = 0;
+  }
+
+  destroy(): void {
+    this.cleanupCombat();
+    this.host.scene.tweens.killTweensOf(this.boss);
     this.boss.destroy();
     this.warnMark.destroy();
     this.dim.destroy();

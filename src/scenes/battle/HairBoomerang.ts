@@ -90,7 +90,7 @@ export class HairBoomerang {
       this.x += (dx / d) * v;
       this.y += (dy / d) * v;
     }
-    this.sprite.setPosition(Math.round(this.x), Math.round(this.y));
+    this.sprite.setPosition(Math.round(this.x * 5) / 5, Math.round(this.y * 5) / 5);
     this.sprite.angle -= 900 * dt;
   }
 

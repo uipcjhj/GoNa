@@ -129,7 +129,7 @@ export class SniffBattle extends BossBattle {
         const m = this.nose();
         // 흡입 범위가 넓을수록 더 멀리서 빨려 옴
         const reach = 90 * this.inhalePower;
-        const p = host.scene.add.image(m.x - 40 - Math.random() * reach, m.y - 30 + Math.random() * 50, 'boss-dot').setDepth(10.8);
+        const p = this.fx(host.scene.add.image(m.x - 40 - Math.random() * reach, m.y - 30 + Math.random() * 50, 'boss-dot').setDepth(10.8));
         host.scene.tweens.add({ targets: p, x: m.x, y: m.y, alpha: 0.2, duration: 420, ease: 'Quad.In', onComplete: () => p.destroy() });
       }
     } else if (host.pull > 0) {
@@ -164,7 +164,7 @@ export class SniffBattle extends BossBattle {
       // 사방으로 퍼지는 냄새 (보이기만)
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
-        const c = this.host.scene.add.image(this.bx, m.y, 'boss-bigcloud').setDepth(10.7).setAlpha(0.9);
+        const c = this.fx(this.host.scene.add.image(this.bx, m.y, 'boss-bigcloud').setDepth(10.7).setAlpha(0.9));
         this.host.scene.tweens.add({ targets: c, x: this.bx + Math.cos(a) * 46, y: m.y + Math.sin(a) * 30, alpha: 0, scale: 1.6, duration: 700, onComplete: () => c.destroy() });
       }
       // 땅을 따라 오는 큰 파동 (한 번 점프)
@@ -229,7 +229,7 @@ export class SniffBattle extends BossBattle {
     const arrows: Phaser.GameObjects.Image[] = [];
     for (const alt of [16, 40]) {
       for (let x = 10; x < this.bx - 20; x += 34) {
-        const a = scene.add.image(x, this.host.groundY - alt, 'boss-wind').setDepth(10.7).setFlipX(true).setScale(1.4).setAlpha(0.85);
+        const a = this.fx(scene.add.image(x, this.host.groundY - alt, 'boss-wind').setDepth(10.7).setFlipX(true).setScale(1.4).setAlpha(0.85));
         arrows.push(a);
         scene.tweens.add({ targets: a, x: x + 34, alpha: { from: 0.85, to: 0.2 }, duration: 600, repeat: -1 });
       }
@@ -282,9 +282,9 @@ export class SniffBattle extends BossBattle {
     this.boss.setScale(1);
   }
 
-  destroy(): void {
+  protected onCleanup(): void {
     this.aura?.destroy();
-    this.host.pull = 0;
-    super.destroy();
+    this.aura = null;
+    this.inhaling = 0;
   }
 }

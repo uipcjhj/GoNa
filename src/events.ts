@@ -111,6 +111,8 @@ export interface GameOverInfo {
 export interface RestartOptions {
   /** 저장된 체크포인트에서 이어하기 */
   checkpoint?: boolean;
+  /** (개발용) 3단계에서 바로 일반 몬스터 확인 */
+  devMonsters?: boolean;
   /** 이 보스전부터 바로 다시 (점수·간식 수는 이어서) */
   boss?: BossId;
   score?: number;

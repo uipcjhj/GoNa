@@ -199,7 +199,7 @@ export class KissBattle extends BossBattle {
     const h = this.spawn('boss-wave', m.x, y, { vx: -100, shape: 'box', w: 10, h: 12, pierce: true, breakable: false, life: 1.6, dmg: DAMAGE.kissWave });
     h.sprite.setScale(2);
     // 퍼지는 고리 (보이기만)
-    const g = this.host.scene.add.ellipse(m.x, y, 8, 6).setStrokeStyle(1, 0xff7aa8, 1).setDepth(10.9);
+    const g = this.fx(this.host.scene.add.ellipse(m.x, y, 8, 6).setStrokeStyle(1, 0xff7aa8, 1).setDepth(10.9));
     this.host.scene.tweens.add({ targets: g, scaleX: 9, scaleY: 3, alpha: 0, duration: 650, onComplete: () => g.destroy() });
   }
 
@@ -214,7 +214,7 @@ export class KissBattle extends BossBattle {
     sound.smooch();
     const m = this.lips();
     const head = this.host.playerHead();
-    const big = scene.add.image(m.x, m.y, 'boss-heart').setScale(2).setDepth(12);
+    const big = this.fx(scene.add.image(m.x, m.y, 'boss-heart').setScale(2).setDepth(12));
     scene.tweens.add({ targets: big, x: head.x + 22, y: head.y - 4, scale: 3, duration: 900, ease: 'Sine.InOut' });
     this.after(0.95, () => {
       // 머리카락이 반짝! 하트를 튕겨 냄
@@ -241,10 +241,10 @@ export class KissBattle extends BossBattle {
     this.banner({ top: '💗 필살기', name: '왕뽀뽀!', desc: '분홍 화살표 길로 큰 하트가 와요 — 점프하거나 방패!', ms: 1700, tone: 'boss' });
     // 경로 미리 보기 (깜빡이는 화살표)
     const arrows: Phaser.GameObjects.Image[] = [];
-    for (let x = m.x - 16; x > -8; x -= 15) arrows.push(scene.add.image(x, y, 'boss-arrow').setDepth(10.8).setScale(1.3).setAlpha(0.2));
+    for (let x = m.x - 16; x > -8; x -= 15) arrows.push(this.fx(scene.add.image(x, y, 'boss-arrow').setDepth(10.8).setScale(1.3).setAlpha(0.2)));
     scene.tweens.add({ targets: arrows, alpha: 0.95, duration: 200, yoyo: true, repeat: 3 });
     // 입술 앞에 하트가 점점 커짐
-    const charge = scene.add.image(m.x - 4, y, 'boss-heart').setDepth(11).setScale(0.5);
+    const charge = this.fx(scene.add.image(m.x - 4, y, 'boss-heart').setDepth(11).setScale(0.5));
     scene.tweens.add({ targets: charge, scale: 3, duration: 1500, ease: 'Sine.In' });
     const speed = 105;
     this.after(1.7, () => {
@@ -279,9 +279,10 @@ export class KissBattle extends BossBattle {
     return level === 1 ? '하트탄이 두 발씩! 통통 뛰며 자리를 바꿔요' : '왕뽀뽀 필살기 — 화살표 길을 보고 피해요';
   }
 
-  destroy(): void {
+  protected onCleanup(): void {
     this.aura?.destroy();
-    super.destroy();
+    this.aura = null;
+    this.dashing = false;
   }
 
   protected onInterrupt(): void {

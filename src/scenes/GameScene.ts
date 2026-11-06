@@ -118,8 +118,10 @@ export class GameScene extends Phaser.Scene {
   kills = 0;
   spawned = 0;
   eventCount = 0;
+  /** 마지막 몬스터 이후 지난 시간(초) — 너무 오래 안 나오면 다음 패턴은 몬스터 (3단계 첫 몬스터는 금방) */
+  private sinceMonster = 8;
   /** 떠오르는 점수 글자 재사용 (매번 Text 를 새로 만들면 텍스처 생성으로 멈칫) */
-  private popPool: Phaser.GameObjects.Text[] = [];
+  private popPool: Phaser.GameObjects.Image[] = [];
   private host!: BattleHost;
 
   // 화면 배치
@@ -129,7 +131,9 @@ export class GameScene extends Phaser.Scene {
   private playerX = VIEW.playerX;
 
   // 배경
-  private sky!: Phaser.GameObjects.Graphics;
+  /** 하늘: 한 번 그린 그림 한 장 (예전엔 디더링 사각형 약 1000개를 매 프레임 다시 그렸음) */
+  private sky!: Phaser.GameObjects.Image;
+  private skySeq = 0;
   private deepDirt!: Phaser.GameObjects.Graphics;
   private sun!: Phaser.GameObjects.Image;
   private clouds: { img: Phaser.GameObjects.Image; x: number; yRatio: number; speed: number }[] = [];
@@ -210,6 +214,7 @@ export class GameScene extends Phaser.Scene {
     this.kills = 0;
     this.spawned = 0;
     this.eventCount = 0;
+    this.sinceMonster = data?.devMonsters ? 99 : 8;
     this.hp = BATTLE_HP.perHeart;
     this.shieldUntil = 0;
     this.shieldReadyAt = 0;
@@ -220,8 +225,8 @@ export class GameScene extends Phaser.Scene {
     this.pull = 0;
     this.hudKey = '';
     this.pendingBoss = null;
-    // 체크포인트에서 이어하기
-    const cp = data?.checkpoint ? loadCheckpoint() : null;
+    // 체크포인트에서 이어하기 (개발용 몬스터 테스트는 3단계 체크포인트와 같은 상태, 저장은 안 함)
+    const cp = data?.checkpoint ? loadCheckpoint() : data?.devMonsters ? { id: 'walker' as const, score: 0, snacks: 0, at: 0 } : null;
     if (cp?.id === 'walker') {
       // 뽀뽀괴물을 이긴 직후: 3단계 처음, 머리카락 부메랑 있음
       this.growth.stageIndex = GROWTH_STAGES.findIndex((g) => g.id === 'walker');
@@ -260,7 +265,7 @@ export class GameScene extends Phaser.Scene {
     this.buildBattleTextures();
     this.host = this.makeHost();
 
-    this.sky = this.add.graphics();
+    this.sky = this.add.image(0, -40, '__DEFAULT').setOrigin(0, 0);
     this.sun = this.add.image(0, 0, TEX.sun);
     for (let i = 0; i < 4; i++) {
       const img = this.add.image(0, 0, TEX.cloud).setAlpha(0.95);
@@ -318,9 +323,10 @@ export class GameScene extends Phaser.Scene {
 
     // 떠오르는 글자 미리 만들어 둠 (첫 간식 때 텍스처 생성으로 멈칫하지 않게)
     this.popPool = [];
-    for (let i = 0; i < 6; i++) {
-      this.popPool.push(this.add.text(0, 0, '+10', { fontFamily: FONT, fontSize: '12px', color: '#fff4c2', stroke: '#7a3f1f', strokeThickness: 3 }).setOrigin(0.5).setDepth(15).setVisible(false));
-    }
+    for (let i = 0; i < 8; i++) this.popPool.push(this.add.image(0, 0, '__DEFAULT').setOrigin(0.5).setDepth(15).setVisible(false));
+    // 자주 쓰는 글자는 미리 그려 둠
+    for (const t of ['+5', '+10', '+20', '+30', '+40', '+50', '+60']) this.textTexture(t, '#fff4c2');
+    for (const t of ['-20', '-25', '-30', '-35', '-50']) this.textTexture(t, '#ff8f8f');
 
     // HUD
     for (let i = 0; i < PLAYER.maxHearts; i++) {
@@ -344,7 +350,7 @@ export class GameScene extends Phaser.Scene {
     const onRequestStart = (opt?: RestartOptions): void => {
       if (this.state !== 'ready') return;
       // 이어하기(체크포인트) · 개발용 보스전 바로가기
-      if (opt?.checkpoint || opt?.boss) this.scene.restart({ autoStart: true, ...opt });
+      if (opt?.checkpoint || opt?.boss || opt?.devMonsters) this.scene.restart({ autoStart: true, ...opt });
       else this.startGame();
     };
     const onRestart = (opt?: RestartOptions): void => {
@@ -443,27 +449,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawSky(): void {
-    const g = this.sky;
-    g.clear();
-    // 따뜻한 오후 하늘: 위에서 아래로 띠 + 도트 디더링 경계
-    const colors = [0x8ccbe0, 0x9fd5e3, 0xb4dfe2, 0xcbe7dc, 0xe3ecd0, 0xf8eac0, 0xfde1b0];
-    const top = 0;
-    const bottom = this.groundY;
-    const bandH = Math.ceil((bottom - top) / colors.length);
-    colors.forEach((c, i) => {
-      g.fillStyle(c, 1);
-      // 첫 띠는 화면 위쪽 바깥까지 칠해 둠 (높은 점프 때 카메라가 살짝 올라가도 빈 곳이 안 보이게)
-      const extraTop = i === 0 ? 40 : 0;
-      g.fillRect(0, top + i * bandH - extraTop, this.W, bandH + 1 + extraTop);
+    // 따뜻한 오후 하늘: 위에서 아래로 띠 + 도트 디더링 경계 — 캔버스에 한 번 그려 텍스처 한 장으로
+    const colors = ['#8ccbe0', '#9fd5e3', '#b4dfe2', '#cbe7dc', '#e3ecd0', '#f8eac0', '#fde1b0'];
+    const extra = 40; // 높은 점프 때 카메라가 살짝 올라가도 빈 곳이 안 보이게
+    const W = Math.max(1, this.W);
+    const bottom = Math.max(1, this.groundY);
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = bottom + extra;
+    const ctx = c.getContext('2d')!;
+    const bandH = Math.ceil(bottom / colors.length);
+    colors.forEach((col, i) => {
+      ctx.fillStyle = col;
+      const y0 = i === 0 ? 0 : extra + i * bandH;
+      ctx.fillRect(0, y0, W, (i === 0 ? extra : 0) + bandH + 1);
     });
-    // 띠 경계 디더링
     for (let i = 1; i < colors.length; i++) {
-      const y = top + i * bandH;
-      g.fillStyle(colors[i - 1], 1);
-      for (let x = 0; x < this.W; x += 2) g.fillRect(x + (i % 2), y, 1, 1);
-      g.fillStyle(colors[i], 1);
-      for (let x = 0; x < this.W; x += 2) g.fillRect(x + ((i + 1) % 2), y - 1, 1, 1);
+      const y = extra + i * bandH;
+      ctx.fillStyle = colors[i - 1];
+      for (let x = 0; x < W; x += 2) ctx.fillRect(x + (i % 2), y, 1, 1);
+      ctx.fillStyle = colors[i];
+      for (let x = 0; x < W; x += 2) ctx.fillRect(x + ((i + 1) % 2), y - 1, 1, 1);
     }
+    const old = this.sky.texture.key;
+    const key = `sky-${this.skySeq++}`;
+    this.textures.addCanvas(key, c);
+    this.sky.setTexture(key).setPosition(0, -extra);
+    if (old.startsWith('sky-') && this.textures.exists(old)) this.textures.remove(old);
   }
 
   // ───────────────────────── 상태 전환 ─────────────────────────
@@ -621,6 +633,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.state === 'playing' && !this.battle) {
       this.eventT -= dt;
+      this.sinceMonster += dt;
       this.distToNext -= move;
       if (this.distToNext <= 0) this.distToNext = this.spawnPattern() + this.randomGap();
     }
@@ -633,18 +646,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private scrollBackground(dt: number): void {
-    this.ground.tilePositionX = Math.round(this.distance);
-    this.near.tilePositionX = Math.round(this.distance * 0.7);
-    this.mid.tilePositionX = Math.round(this.distance * 0.35);
-    this.far.tilePositionX = Math.round(this.distance * 0.1);
-    if (this.bgImage) this.bgImage.tilePositionX = (this.distance * GAME_BG.scroll) / this.bgScale;
+    // 스크롤은 캔버스 픽셀(논리 1/5) 단위로 — 논리 1px(=5 캔버스 px) 단위로 자르면 한 프레임 5px·10px 로 들쭉날쭉 움직여 끊겨 보임
+    const sp = (v: number): number => Math.round(v * VIEW.renderScale) / VIEW.renderScale;
+    this.ground.tilePositionX = sp(this.distance);
+    if (this.near.visible) this.near.tilePositionX = sp(this.distance * 0.7);
+    if (this.mid.visible) this.mid.tilePositionX = sp(this.distance * 0.35);
+    if (this.far.visible) this.far.tilePositionX = sp(this.distance * 0.1);
+    if (this.bgImage) this.bgImage.tilePositionX = sp(this.distance * GAME_BG.scroll) / this.bgScale;
     // 폭포 물 흐름 (2프레임 교대)
     this.waterfallTimer += dt;
-    if (this.waterfallTimer > 0.22) {
+    if (this.far.visible && this.waterfallTimer > 0.22) {
       this.waterfallTimer = 0;
       this.far.setTexture(this.far.texture.key === TEX.far ? TEX.far2 : TEX.far);
     }
-    for (const c of this.clouds) {
+    for (const c of this.bgImage ? [] : this.clouds) {
       c.x -= (c.speed + this.speed * 0.04) * dt;
       if (c.x < -24) {
         c.x = this.W + 24 + Math.random() * 60;
@@ -869,6 +884,12 @@ export class GameScene extends Phaser.Scene {
     const alive = this.entities.filter((e) => !e.done && e.type === 'monster').length;
     const mw = this.clearedBosses.has('kiss') && alive < maxMonsters(this.growth.stageIndex) ? monsterWeight(this.growth.stageIndex, this.growth.ratio) : 0;
     if (mw > 0) {
+      // 오래 안 나왔으면(3단계 14초 · 4단계 10초) 이번엔 꼭 몬스터 — 무작위라 한참 안 보이는 일 방지
+      const due = this.sinceMonster >= (this.growth.stageIndex >= 3 ? 10 : 14);
+      if (due) {
+        this.addMonster(Math.random() < 0.55 ? 'glasses' : 'farter', x0 + 10);
+        return 40 + Math.round(this.speed * 0.9);
+      }
       for (const kind of ['glasses', 'farter'] as const) {
         patterns.push({
           w: mw * (kind === 'glasses' ? 0.55 : 0.45),
@@ -916,7 +937,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       const bob = e.type === 'snack' ? Math.round(Math.sin(time * 0.006 + e.phase) * 1.5) : 0;
-      e.sprite.setPosition(Math.round(e.x), Math.round(this.groundY - e.alt + bob));
+      e.sprite.setPosition(Math.round(e.x * VIEW.renderScale) / VIEW.renderScale, Math.round(this.groundY - e.alt + bob));
 
       if (this.state === 'playing') {
         const left = e.x - e.w / 2;
@@ -935,14 +956,23 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    // 화면 밖으로 나간 것 정리
-    this.entities = this.entities.filter((e) => {
-      if ((e.x < -30 || e.x > this.W + 400) && !e.done) {
-        e.sprite.destroy();
-        return false;
+    // 화면 밖으로 나간 것 정리 (정리할 게 있을 때만 새 배열 — 매 프레임 쓰레기 줄이기)
+    let dirty = false;
+    for (const e of this.entities) {
+      if (((e.x < -30 || e.x > this.W + 400) && !e.done) || (e.done && !e.sprite.active)) {
+        dirty = true;
+        break;
       }
-      return !(e.done && !e.sprite.active);
-    });
+    }
+    if (dirty) {
+      this.entities = this.entities.filter((e) => {
+        if ((e.x < -30 || e.x > this.W + 400) && !e.done) {
+          e.sprite.destroy();
+          return false;
+        }
+        return !(e.done && !e.sprite.active);
+      });
+    }
   }
 
   // ───────────────────────── 일반 몬스터 ─────────────────────────
@@ -953,6 +983,7 @@ export class GameScene extends Phaser.Scene {
     const d = MONSTERS[kind];
     const sprite = this.add.image(x, 0, `mon-${kind}`, 0).setOrigin(0.5, 1).setDepth(6);
     this.spawned++;
+    this.sinceMonster = 0;
     this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.25, tele: 0, flash: 0, id: this.monsterSeq++, hold: -1 } });
   }
 
@@ -964,7 +995,9 @@ export class GameScene extends Phaser.Scene {
     const rockAhead = this.entities.some((o) => o !== e && !o.done && (o.type === 'rock' || o.type === 'monster') && o.x < e.x && e.x - o.x < 46);
     e.vx = e.x < this.W - 4 && dx > 30 && !rockAhead ? d.walk : 0;
     // 가까이 오면 잠시 화면에 머묾 (제자리 = 땅 흐름만큼 거슬러 감) — 그동안 공격하고, 고나는 부메랑으로 잡을 수 있음
-    if (m.hold < 0 && dx <= d.holdAt && this.state === 'playing' && !this.battle) m.hold = d.holdSec;
+    // 머무는 자리는 화면 안쪽 (세로 화면은 폭이 좁아 오른쪽 끝에 반쯤 걸리지 않게)
+    const holdAt = Math.min(d.holdAt, this.W - this.playerX - e.w / 2 - 10);
+    if (m.hold < 0 && dx <= holdAt && this.state === 'playing' && !this.battle) m.hold = d.holdSec;
     if (m.hold > 0) {
       m.hold = Math.max(0, m.hold - dt);
       e.vx = -this.speed;
@@ -1130,6 +1163,7 @@ export class GameScene extends Phaser.Scene {
     if (this.shieldOn) return false;
     if (this.time.now < this.invincibleUntil) return false;
     this.damageLog.push(`${source}:${damage}`);
+    if (this.damageLog.length > 60) this.damageLog.shift();
     this.hp = Math.max(0, this.hp - damage);
     sound.hit();
     this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
@@ -1246,7 +1280,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateHud(): void {
     this.heartIcons.forEach((h, i) => h.setTexture(i < this.hearts ? TEX.heartFull : TEX.heartEmpty));
-    this.scoreText.setText(`점수 ${this.score}`);
+    // (점수는 화면 UI 에 표시 — 숨긴 캔버스 글자를 매번 다시 그리지 않음)
     this.drawGauge();
   }
 
@@ -1624,20 +1658,33 @@ export class GameScene extends Phaser.Scene {
     this.floatText(`+${points}`, x, y, '#fff4c2');
   }
 
+  /** 글자 그림 (글자·색마다 한 번만 그려 텍스처로 재사용 — 매번 다시 그리면 텍스처 생성·업로드로 멈칫) */
+  private textTexture(text: string, color: string): string {
+    const key = `ft:${color}:${text}`;
+    if (this.textures.exists(key)) return key;
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d')!;
+    ctx.font = `12px ${FONT}`;
+    c.width = Math.ceil(ctx.measureText(text).width) + 8;
+    c.height = 18;
+    ctx.font = `12px ${FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#7a3f1f';
+    ctx.strokeText(text, 4, 9);
+    ctx.fillStyle = color;
+    ctx.fillText(text, 4, 9);
+    this.textures.addCanvas(key, c);
+    return key;
+  }
+
   /** 떠오르는 글자 (풀에서 꺼내 씀) */
   private floatText(text: string, x: number, y: number, color: string): void {
     let t = this.popPool.find((p) => !p.visible);
-    if (!t) {
-      if (this.popPool.length >= 8) t = this.popPool[0];
-      else {
-        t = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: '12px', color, stroke: '#7a3f1f', strokeThickness: 3 }).setOrigin(0.5).setDepth(15);
-        this.popPool.push(t);
-      }
-    }
+    if (!t) t = this.popPool[0];
     this.tweens.killTweensOf(t);
-    if (t.text !== text) t.setText(text);
-    if (t.style.color !== color) t.setColor(color);
-    t.setPosition(Math.round(x), Math.round(y)).setAlpha(1).setVisible(true);
+    t.setTexture(this.textTexture(text, color)).setPosition(Math.round(x), Math.round(y)).setAlpha(1).setVisible(true);
     const pop = t;
     this.tweens.add({ targets: pop, y: pop.y - 16, alpha: 0, duration: 750, ease: 'Quad.Out', onComplete: () => pop.setVisible(false) });
   }
@@ -1696,6 +1743,7 @@ export class GameScene extends Phaser.Scene {
     if (BOSSES[id].afterWin === 'evolve') {
       // 첫 보스 클리어 → 체크포인트 (게임 오버가 나도 3단계부터)
       saveCheckpoint('walker', this.score, this.snacksEaten);
+      this.sinceMonster = 8; // 3단계 첫 몬스터는 약 6초 뒤
       this.startEvolution();
     } else this.finishGame();
   }

@@ -45,6 +45,11 @@ class Perf {
   private uiT = 0;
   /** 전체 기록 (테스트·복사용) */
   frames = 0;
+  /** 게임 계산·그리기 누적 (평균용) */
+  private sumStep = 0;
+  private sumRender = 0;
+  private sumN = 0;
+  private sumDt = 0;
   maxDt = 0;
 
   constructor() {
@@ -93,7 +98,11 @@ class Perf {
   private onFrame(dt: number): void {
     this.frames++;
     this.dts.push(dt);
-    if (this.dts.length > HISTORY) this.dts.shift();
+    this.sumDt += dt;
+    if (this.dts.length > HISTORY) this.sumDt -= this.dts.shift()!;
+    this.sumStep += this.step;
+    this.sumRender += this.render;
+    this.sumN++;
     // 탭이 백그라운드였던 긴 공백(>500ms)은 끊김으로 치지 않음
     if (dt > LONG_MS && dt < 500) {
       this.maxDt = Math.max(this.maxDt, dt);
@@ -101,8 +110,8 @@ class Perf {
       if (this.long.length > 40) this.long.pop();
     }
     this.frameEvents = [];
-    // 저사양 자동 판정: 3초 넘게 평균 22ms(약 45fps) 이상이면
-    const avg = this.dts.slice(-60).reduce((a, b) => a + b, 0) / Math.min(60, this.dts.length);
+    // 저사양 자동 판정: 3초 넘게 평균 22ms(약 45fps) 이상이면 (매 프레임 배열을 새로 만들지 않게 누적 합 사용)
+    const avg = this.sumDt / this.dts.length;
     const now = performance.now();
     if (avg > 22 && this.dts.length >= 60) {
       if (!this.slowSince) this.slowSince = now;
@@ -115,6 +124,11 @@ class Perf {
       this.uiT = now;
       this.renderPanel();
     }
+  }
+
+  /** 프레임당 평균 게임 계산(step)·그리기(render) ms */
+  costs(): { step: number; render: number; frames: number } {
+    return { step: r1(this.sumStep / Math.max(1, this.sumN) * 10) / 10, render: r1(this.sumRender / Math.max(1, this.sumN) * 10) / 10, frames: this.sumN };
   }
 
   stats(): { fps: number; avg: number; p95: number; max: number; long: number; low: boolean } {
@@ -133,6 +147,10 @@ class Perf {
   reset(): void {
     this.long.length = 0;
     this.dts = [];
+    this.sumDt = 0;
+    this.sumStep = 0;
+    this.sumRender = 0;
+    this.sumN = 0;
     this.maxDt = 0;
   }
 
