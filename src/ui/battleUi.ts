@@ -38,6 +38,11 @@ export class BattleUi {
   private playerHearts: HTMLImageElement[] = [];
   private playerHp: HTMLDivElement;
   private playerHpText: HTMLSpanElement;
+  private growRow: HTMLDivElement;
+  private scoreEl: HTMLDivElement;
+  private lastScore = -1;
+  private growFill: HTMLDivElement;
+  private growText: HTMLSpanElement;
   private bossBar: HTMLDivElement;
   private bossName: HTMLSpanElement;
   private bossPhase: HTMLSpanElement;
@@ -86,7 +91,14 @@ export class BattleUi {
     const track = el('div', 'bt-hp-track');
     this.playerHp = el('div', 'bt-hp-fill');
     track.append(this.playerHp);
-    this.me.append(hearts, track);
+    // 성장 게이지 (보스전 중엔 숨김)
+    this.growRow = el('div', 'bt-grow');
+    this.growText = el('span', 'bt-grow-text', '성장 1/4');
+    const gTrack = el('div', 'bt-grow-track');
+    this.growFill = el('div', 'bt-grow-fill');
+    gTrack.append(this.growFill);
+    this.growRow.append(this.growText, gTrack);
+    this.me.append(hearts, track, this.growRow);
 
     this.bossBar = el('div', 'boss-bar');
     const bTop = el('div', 'bb-top');
@@ -100,7 +112,9 @@ export class BattleUi {
     this.top.append(this.me, this.bossBar);
 
     this.banner = el('div', 'battle-banner hidden');
-    root.append(this.top, this.banner, this.pad);
+    // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
+    this.scoreEl = el('div', 'hud-score hidden', '점수 0');
+    root.append(this.scoreEl, this.top, this.banner, this.pad);
 
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
@@ -166,6 +180,7 @@ export class BattleUi {
     if (prev?.mode !== h.mode) {
       this.pad.className = `battle-pad mode-${h.mode}`;
       document.body.classList.toggle('in-battle', h.mode === 'battle');
+      document.body.classList.toggle('has-pad', h.mode !== 'none');
     }
     const off = !h.enabled;
     // 방패
@@ -184,8 +199,21 @@ export class BattleUi {
     this.sp.classList.toggle('ready', h.specialReady && !off);
     this.sp.classList.toggle('off', off || !h.specialReady);
     this.setText(this.spLabel, h.specialReady ? '필살!' : `${Math.round(h.special * 100)}%`);
-    // 위: 고나 하트 + HP · 보스
-    this.top.classList.toggle('hidden', !(h.player && h.boss));
+    // 위: 점수 · 고나 하트 + HP + 성장 · 보스 (보스전에서만)
+    this.scoreEl.classList.toggle('hidden', !h.player);
+    if (h.score !== this.lastScore) {
+      this.setText(this.scoreEl, `점수 ${h.score}`);
+      if (this.lastScore >= 0 && h.score > this.lastScore) this.scoreEl.animate?.([{ transform: 'scale(1.18)' }, { transform: 'scale(1)' }], { duration: 160 });
+      this.lastScore = h.score;
+    }
+    this.top.classList.toggle('hidden', !h.player);
+    this.bossBar.classList.toggle('hidden', !h.boss);
+    this.growRow.classList.toggle('hidden', !h.growth);
+    if (h.growth) {
+      this.setStyle(this.growFill, 'width', `${Math.round(h.growth.ratio * 100)}%`);
+      this.growFill.classList.toggle('final', h.growth.final);
+      this.setText(this.growText, `성장 ${h.growth.level}/${h.growth.levels}`);
+    }
     if (h.player) {
       const p = h.player;
       this.playerHearts.forEach((img, i) => {
@@ -202,6 +230,7 @@ export class BattleUi {
     if (h.boss) {
       this.setText(this.bossName, h.boss.name);
       this.bossPhase.classList.toggle('hidden', h.boss.phase < 2);
+      this.setText(this.bossPhase, h.boss.phase >= 3 ? '💥 2차 분노' : '💢 1차 분노');
       this.bossBar.classList.toggle('phase2', h.boss.phase >= 2);
       this.setStyle(this.bossHp, 'width', `${Math.max(0, (h.boss.hp / h.boss.maxHp) * 100)}%`);
       if (this.lastHp >= 0 && h.boss.hp < this.lastHp) this.shake(this.bossBar);
@@ -230,7 +259,10 @@ export class BattleUi {
   private reset(): void {
     this.pad.className = 'battle-pad mode-none';
     document.body.classList.remove('in-battle');
+    document.body.classList.remove('has-pad');
     this.top.classList.add('hidden');
+    this.scoreEl.classList.add('hidden');
+    this.lastScore = -1;
     this.hideBanner();
     this.hud = null;
   }

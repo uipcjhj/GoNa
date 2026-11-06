@@ -82,7 +82,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     level: 1,
     name: '갓난아기 고나',
     description: '둥지에서 꼬물꼬물!',
-    gaugeToNext: 12,
+    // 성장을 충분히 즐기도록 (기존 12 → 1.5배)
+    gaugeToNext: 18,
     anim: { run: [12, 12, 12, 11], runFps: 4, jump: 12, idle: 12, happy: -1, surprised: -1, scale: 1, wiggleDeg: 3, wiggleSpeed: 0.012, bob: 0 },
     // 둥지째 움직이므로 판정도 둥지+아기 모양에 맞춤 (그림 폭 약 36px · 키 약 23px)
     hitbox: { width: 18, height: 17 },
@@ -95,7 +96,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     level: 2,
     name: '기어 다니는 고나',
     description: '네 발로 슝슝 기어가요!',
-    gaugeToNext: 20,
+    // 2단계 → 첫 보스 (기존 20 → 2배)
+    gaugeToNext: 40,
     anim: { run: [9, 10], runFps: 10, jump: 9, idle: 10, happy: -1, surprised: -1, scale: 1, wiggleDeg: 0, wiggleSpeed: 0, bob: 2 },
     hitbox: SAME_HITBOX,
     controls: SAME_CONTROLS,
@@ -106,7 +108,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     level: 3,
     name: '직립보행 고나',
     description: '두 발로 씩씩하게! 머리카락 부메랑으로 바위도 깨요',
-    gaugeToNext: 30,
+    // 3단계 → 4단계 (기존 30 → 2배)
+    gaugeToNext: 60,
     anim: { run: [1, 2, 3, 4], runFps: 10, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.2, wiggleDeg: 0, wiggleSpeed: 0, bob: 0 },
     hitbox: SAME_HITBOX,
     controls: SAME_CONTROLS,
@@ -118,7 +121,7 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     name: '빅베이비 곤룡',
     description: '쿵쿵! 최종 진화 완료!',
     // 마지막 단계: 게이지가 가득 차면 최종 보스 킁카괴물 → 엔딩
-    gaugeToNext: 30,
+    gaugeToNext: 60, // 4단계 → 최종 보스 (기존 30 → 2배)
     // (bigbaby.png 가 없을 때의 임시: 직립보행 포즈를 1.6배) / 있으면 전용 체형 그림, 묵직하게 통통
     anim: { run: [1, 2, 3, 4], runFps: 7, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.6, wiggleDeg: 0, wiggleSpeed: 0, bob: 2 },
     hitbox: SAME_HITBOX,
@@ -132,6 +135,7 @@ export const SNACK_GROWTH: Record<SnackKind, number> = {
   strawberry: 1,
   banana: 2,
   cookie: 3,
+  jelly: 4,
 };
 
 /**

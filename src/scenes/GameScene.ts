@@ -10,6 +10,9 @@ import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '..
 import { StageManager } from '../game/stages';
 import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
+import { clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../game/checkpoint';
+import { MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
+import { dizzyStar, fartCloud, monsterSheet, pathArrow, sparkShot } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
@@ -27,7 +30,8 @@ const EVO_TOTAL = 2.5;
 
 interface Entity {
   sprite: Phaser.GameObjects.Image;
-  type: 'rock' | 'snack';
+  /** rock 바위 · snack 간식 · monster 일반 몬스터 · mshot 몬스터 투사체 · cloud 방귀 구름(땅에 잠시 남음) */
+  type: 'rock' | 'snack' | 'monster' | 'mshot' | 'cloud';
   snack?: SnackKind;
   /** 화면 x (중심) */
   x: number;
@@ -38,6 +42,15 @@ interface Entity {
   h: number;
   phase: number;
   done: boolean;
+  /** 땅보다 더 빨리 왼쪽으로 (몬스터 걷기·투사체) px/s */
+  vx?: number;
+  /** 남은 시간(초) — 구름 */
+  life?: number;
+  /** 맞으면 HP 피해 */
+  dmg?: number;
+  /** 이미 고나를 맞힘 (구름은 한 번만) */
+  hit?: boolean;
+  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; hold: number };
 }
 
 const FONT = 'Galmuri11, monospace';
@@ -45,6 +58,7 @@ const SNACK_TEX: Record<SnackKind, string> = {
   strawberry: TEX.strawberry,
   banana: TEX.banana,
   cookie: TEX.cookie,
+  jelly: TEX.jelly,
 };
 
 export class GameScene extends Phaser.Scene {
@@ -98,6 +112,12 @@ export class GameScene extends Phaser.Scene {
   /** 부메랑이 돌아오기 직전에 누른 공격은 기억했다가 돌아오자마자 발사 */
   private attackBufferUntil = 0;
   private phaserHearts = true;
+  /** 일반 스테이지에서 모은 필살 게이지 (몬스터 처치) → 다음 보스전에서 이어서 */
+  private specialCarry = 0;
+  /** (검증용) 처치한 몬스터 수 · 나온 몬스터 수 · 이벤트 수 */
+  kills = 0;
+  spawned = 0;
+  eventCount = 0;
   /** 떠오르는 점수 글자 재사용 (매번 Text 를 새로 만들면 텍스처 생성으로 멈칫) */
   private popPool: Phaser.GameObjects.Text[] = [];
   private host!: BattleHost;
@@ -186,13 +206,35 @@ export class GameScene extends Phaser.Scene {
     this.nestShake = 0;
     this.nestLeft = false;
     this.battle = null;
+    this.specialCarry = 0;
+    this.kills = 0;
+    this.spawned = 0;
+    this.eventCount = 0;
+    this.hp = BATTLE_HP.perHeart;
+    this.shieldUntil = 0;
+    this.shieldReadyAt = 0;
+    this.attackBufferUntil = 0;
+    this.eventT = 35;
     this.boomerangAwake = false;
     this.clearedBosses = new Set();
     this.pull = 0;
     this.hudKey = '';
     this.pendingBoss = null;
-    // 보스전 다시 도전 (또는 테스트용 주소 ?boss=kiss / ?boss=sniff — 처음 한 번만)
-    let boss = data?.boss ?? null;
+    // 체크포인트에서 이어하기
+    const cp = data?.checkpoint ? loadCheckpoint() : null;
+    if (cp?.id === 'walker') {
+      // 뽀뽀괴물을 이긴 직후: 3단계 처음, 머리카락 부메랑 있음
+      this.growth.stageIndex = GROWTH_STAGES.findIndex((g) => g.id === 'walker');
+      this.growth.gauge = 0;
+      this.growth.maxStageIndex = this.growth.stageIndex;
+      this.nestLeft = true;
+      this.clearedBosses.add('kiss');
+      this.score = cp.score;
+      this.snacksEaten = cp.snacks;
+    }
+    // 보스전 다시 도전 · 최종 보스 체크포인트 (또는 테스트용 주소 ?boss=kiss / ?boss=sniff — 처음 한 번만)
+    let boss = data?.boss ?? (cp?.id === 'sniff' ? 'sniff' : null);
+    if (cp?.id === 'sniff') data = { ...data, score: cp.score, snacks: cp.snacks };
     if (!boss && !this.registry.get('debugBossUsed')) {
       const q = new URLSearchParams(window.location.search).get('boss');
       if (q === 'kiss' || q === 'sniff') boss = q;
@@ -299,14 +341,14 @@ export class GameScene extends Phaser.Scene {
     const onTap = (): void => this.handleTap();
     const onPause = (): void => this.pauseGame();
     const onResume = (): void => this.resumeGame();
-    const onRequestStart = (boss?: BossId): void => {
+    const onRequestStart = (opt?: RestartOptions): void => {
       if (this.state !== 'ready') return;
-      // 개발용 보스전 바로가기: 성장 과정을 건너뛰고 그 보스전으로
-      if (boss) this.scene.restart({ autoStart: true, boss });
+      // 이어하기(체크포인트) · 개발용 보스전 바로가기
+      if (opt?.checkpoint || opt?.boss) this.scene.restart({ autoStart: true, ...opt });
       else this.startGame();
     };
     const onRestart = (opt?: RestartOptions): void => {
-      const retry = opt?.boss ? { boss: opt.boss, score: this.retryCarry.score, snacks: this.retryCarry.snacks } : {};
+      const retry = opt?.checkpoint ? { checkpoint: true } : opt?.boss ? { boss: opt.boss, score: this.retryCarry.score, snacks: this.retryCarry.snacks } : {};
       this.scene.restart({ autoStart: true, ...retry });
     };
     const onAttack = (): void => this.throwHair();
@@ -474,9 +516,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setHudVisible(v: boolean): void {
-    this.heartIcons.forEach((h) => h.setVisible(v));
-    this.scoreText.setVisible(v);
-    this.gaugeGfx?.setVisible(v);
+    // 하트·HP·성장 게이지·점수는 모두 화면 UI(ui/battleUi.ts) — 캔버스 HUD 는 쓰지 않음 (겹침 방지)
+    void v;
+    this.heartIcons.forEach((h) => h.setVisible(false));
+    this.gaugeGfx?.setVisible(false);
+    this.scoreText.setVisible(false);
   }
 
   // ───────────────────────── 점프 ─────────────────────────
@@ -576,11 +620,12 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'dead') this.updatePlayer(dt, time);
 
     if (this.state === 'playing' && !this.battle) {
+      this.eventT -= dt;
       this.distToNext -= move;
       if (this.distToNext <= 0) this.distToNext = this.spawnPattern() + this.randomGap();
     }
 
-    this.updateEntities(move, time);
+    this.updateEntities(move, time, dt);
     if (this.battle && this.state === 'playing') this.battle.update(dt);
     this.updateBoomerang(dt);
     this.updateShield();
@@ -718,12 +763,36 @@ export class GameScene extends Phaser.Scene {
 
   private randomSnack(): SnackKind {
     const r = Math.random();
+    // 2단계부터 드물게 별 젤리
+    if (this.growth.stageIndex >= 1 && r < 0.05) return 'jelly';
     return r < 0.55 ? 'strawberry' : r < 0.85 ? 'banana' : 'cookie';
+  }
+
+  /** 다음 '간식 비' 이벤트까지(초) — 성장이 길어진 만큼 중간중간 즐길 거리 */
+  private eventT = 35;
+
+  /** 간식 비: 안내 + 무지개 모양 간식 줄 (바위 없음) */
+  private snackRain(x0: number): number {
+    this.eventCount++;
+    bus.emit(EV.banner, { top: '🍓 이벤트', name: '간식 비가 내려요!', desc: '하늘에서 간식이 쏟아져요', ms: 1800, tone: 'good' });
+    sound.newRecord();
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const alt = 6 + Math.sin(t * Math.PI) * 52;
+      this.addSnack(i === Math.floor(n / 2) ? 'jelly' : this.randomSnack(), x0 + i * 20, alt);
+    }
+    for (let i = 0; i < 4; i++) this.addSnack(this.randomSnack(), x0 + 30 + i * 30, 4);
+    return n * 20 + 40;
   }
 
   /** 패턴 하나를 화면 오른쪽 밖에 만들고 그 길이(px)를 돌려줍니다. */
   private spawnPattern(): number {
     const x0 = this.W + 20;
+    if (this.eventT <= 0) {
+      this.eventT = 45 + Math.random() * 20;
+      return this.snackRain(x0);
+    }
     const d = this.difficulty();
     const airHalf = (this.speed * (PHYSICS.jumpVelocity / PHYSICS.gravity)) | 0; // 점프 체공 거리의 절반
     const peak = (PHYSICS.jumpVelocity * PHYSICS.jumpVelocity) / (2 * PHYSICS.gravity);
@@ -796,6 +865,22 @@ export class GameScene extends Phaser.Scene {
       },
     ];
 
+    // 3단계부터 일반 몬스터 (뽀뽀괴물을 이기고 부메랑을 얻은 뒤) — 처음엔 한 마리씩, 성장할수록 조금씩 자주
+    const alive = this.entities.filter((e) => !e.done && e.type === 'monster').length;
+    const mw = this.clearedBosses.has('kiss') && alive < maxMonsters(this.growth.stageIndex) ? monsterWeight(this.growth.stageIndex, this.growth.ratio) : 0;
+    if (mw > 0) {
+      for (const kind of ['glasses', 'farter'] as const) {
+        patterns.push({
+          w: mw * (kind === 'glasses' ? 0.55 : 0.45),
+          run: () => {
+            this.addMonster(kind, x0 + 10);
+            // 몬스터 뒤로 넉넉한 빈칸 (바위·몬스터·투사체가 한꺼번에 겹치지 않게)
+            return 40 + Math.round(this.speed * 0.9);
+          },
+        });
+      }
+    }
+
     const total = patterns.reduce((s, p) => s + p.w, 0);
     let r = Math.random() * total;
     for (const p of patterns) {
@@ -815,34 +900,139 @@ export class GameScene extends Phaser.Scene {
     this.entities.push({ sprite, type: 'snack', snack: kind, x, alt, w: 12, h: 12, phase: x * 0.07, done: false });
   }
 
-  private updateEntities(move: number, time: number): void {
+  private updateEntities(move: number, time: number, dt = 0): void {
     const p = this.playerBox();
     for (const e of this.entities) {
-      e.x -= move;
-      if (!e.done) {
-        const bob = e.type === 'snack' ? Math.round(Math.sin(time * 0.006 + e.phase) * 1.5) : 0;
-        e.sprite.setPosition(Math.round(e.x), Math.round(this.groundY - e.alt + bob));
+      e.x -= move + (e.vx ?? 0) * dt;
+      if (e.done) continue;
+      if (e.type === 'monster') this.updateMonster(e, dt, time);
+      if (e.life !== undefined) {
+        e.life -= dt;
+        if (e.life < 0.4) e.sprite.setAlpha(Math.max(0, e.life / 0.4));
+        if (e.life <= 0) {
+          e.done = true;
+          e.sprite.destroy();
+          continue;
+        }
+      }
+      const bob = e.type === 'snack' ? Math.round(Math.sin(time * 0.006 + e.phase) * 1.5) : 0;
+      e.sprite.setPosition(Math.round(e.x), Math.round(this.groundY - e.alt + bob));
 
-        if (this.state === 'playing') {
-          const left = e.x - e.w / 2;
-          const right = e.x + e.w / 2;
-          const bottom = e.alt;
-          const top = e.alt + e.h;
-          if (right > p.left && left < p.right && top > p.bottom && bottom < p.top) {
-            if (e.type === 'snack') this.collect(e);
-            else if (time >= this.invincibleUntil) this.hitRock(e);
+      if (this.state === 'playing') {
+        const left = e.x - e.w / 2;
+        const right = e.x + e.w / 2;
+        const bottom = e.alt;
+        const top = e.alt + e.h;
+        if (right > p.left && left < p.right && top > p.bottom && bottom < p.top) {
+          if (e.type === 'snack') this.collect(e);
+          else if (e.type === 'rock') this.hitRock(e);
+          else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
+            if (e.type === 'mshot') {
+              e.done = true;
+              e.sprite.destroy();
+            } else if (e.type === 'cloud') e.hit = true;
           }
         }
       }
     }
     // 화면 밖으로 나간 것 정리
     this.entities = this.entities.filter((e) => {
-      if (e.x < -30 && !e.done) {
+      if ((e.x < -30 || e.x > this.W + 400) && !e.done) {
         e.sprite.destroy();
         return false;
       }
       return !(e.done && !e.sprite.active);
     });
+  }
+
+  // ───────────────────────── 일반 몬스터 ─────────────────────────
+
+  private monsterSeq = 1;
+
+  private addMonster(kind: MonsterKind, x: number): void {
+    const d = MONSTERS[kind];
+    const sprite = this.add.image(x, 0, `mon-${kind}`, 0).setOrigin(0.5, 1).setDepth(6);
+    this.spawned++;
+    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.25, tele: 0, flash: 0, id: this.monsterSeq++, hold: -1 } });
+  }
+
+  private updateMonster(e: Entity, dt: number, time: number): void {
+    const m = e.mon!;
+    const d = MONSTERS[m.kind];
+    const dx = e.x - this.playerX;
+    // 화면 안에 들어오면 걸어옴 — 앞(왼쪽)에 바위가 가까우면 멈춤 (바위·몬스터가 겹쳐 못 피하는 일 방지)
+    const rockAhead = this.entities.some((o) => o !== e && !o.done && (o.type === 'rock' || o.type === 'monster') && o.x < e.x && e.x - o.x < 46);
+    e.vx = e.x < this.W - 4 && dx > 30 && !rockAhead ? d.walk : 0;
+    // 가까이 오면 잠시 화면에 머묾 (제자리 = 땅 흐름만큼 거슬러 감) — 그동안 공격하고, 고나는 부메랑으로 잡을 수 있음
+    if (m.hold < 0 && dx <= d.holdAt && this.state === 'playing' && !this.battle) m.hold = d.holdSec;
+    if (m.hold > 0) {
+      m.hold = Math.max(0, m.hold - dt);
+      e.vx = -this.speed;
+    }
+    // 걷기 2프레임 · 맞으면 하얗게
+    const frame = m.tele > 0 ? 2 : Math.floor(time / 220) % 2;
+    e.sprite.setFrame(frame);
+    if (m.flash > 0) {
+      m.flash -= dt;
+      e.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+      if (m.flash <= 0) e.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+    }
+    if (this.state !== 'playing' || this.battle) return;
+    // 공격: 예고(반짝·들썩) 동안은 화면에서 제자리 (고나가 피할 시간 · 부메랑 맞힐 기회) → 발사
+    if (m.tele > 0) {
+      e.vx = -this.speed;
+      m.tele -= dt;
+      if (m.tele <= 0) this.monsterAttack(e);
+      return;
+    }
+    m.cd -= dt;
+    const inRange = dx >= d.attackFrom && dx <= d.attackTo;
+    // 고나와 몬스터 사이에 바위가 있으면 쏘지 않음 (바위 + 탄을 한 번에 못 피하는 상황 방지)
+    const rockBetween = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud') && o.x > this.playerX - 10 && o.x < e.x);
+    if (m.cd <= 0 && inRange && !rockBetween) {
+      m.tele = d.telegraph;
+      if (m.kind === 'glasses') this.sparkleEmitter.explode(perf.low ? 1 : 3, e.x - 6, this.groundY - 10);
+    }
+  }
+
+  private monsterAttack(e: Entity): void {
+    const m = e.mon!;
+    const d = MONSTERS[m.kind];
+    m.cd = d.cooldown;
+    if (m.kind === 'glasses') {
+      // 낮게 날아오는 반짝이 → 점프 (부메랑으로 부술 수도 있음)
+      sound.boing();
+      const sprite = this.add.image(e.x - 8, 0, 'mon-spark').setOrigin(0.5, 1).setDepth(6.5);
+      this.entities.push({ sprite, type: 'mshot', x: e.x - 8, alt: 4, w: 6, h: 6, phase: 0, done: false, vx: 55, dmg: d.shotDamage });
+    } else {
+      // 방귀 구름: 할배 바로 앞 땅에 잠시 남음 → 점프로 넘기
+      sound.puff();
+      const sprite = this.add.image(e.x - 14, 0, 'mon-cloud').setOrigin(0.5, 1).setDepth(6.5).setAlpha(0.95);
+      this.entities.push({ sprite, type: 'cloud', x: e.x - 14, alt: 0, w: 14, h: 11, phase: 0, done: false, vx: 0, life: 2.4, dmg: d.shotDamage });
+    }
+  }
+
+  /** 부메랑에 맞음 → 체력 -1, 0 이면 처치 (점수·필살 게이지·간식) */
+  private hitMonster(e: Entity): void {
+    const m = e.mon!;
+    const d = MONSTERS[m.kind];
+    m.hp--;
+    m.flash = 0.12;
+    m.tele = 0;
+    e.x += 6; // 뒤로 밀림
+    sound.bossHit();
+    this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x, this.groundY - e.h / 2);
+    this.cameras.main.shake(60, 0.003);
+    if (m.hp > 0) return;
+    e.done = true;
+    sound.pickup(30);
+    this.dustEmitter.explode(perf.low ? 4 : 10, e.x, this.groundY - 6);
+    this.sparkleEmitter.explode(perf.low ? 4 : 8, e.x, this.groundY - 10);
+    this.tweens.add({ targets: e.sprite, scale: 1.5, alpha: 0, angle: 20, y: e.sprite.y - 6, duration: 260, onComplete: () => e.sprite.destroy() });
+    this.addPoints(d.score, e.x, this.groundY - 22);
+    this.specialCarry = Math.min(1, this.specialCarry + d.special);
+    this.kills++;
+    if (Math.random() < d.dropChance) this.addSnack(Math.random() < 0.15 ? 'jelly' : this.randomSnack(), e.x, 4);
   }
 
   /** 플레이어 충돌 박스 (땅 기준 높이 좌표계) */
@@ -902,7 +1092,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hitRock(e: Entity): void {
-    if (this.hurt()) this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
+    if (!this.hurtHp(ROCK_DAMAGE, 'rock')) return;
+    this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
+    // 살짝 튕겨 오르기 (바위 위로 넘어가게)
+    if (this.grounded && this.state === 'playing') {
+      this.vy = 170;
+      this.grounded = false;
+      this.jumpsUsed = 1;
+    }
   }
 
   // ───────────────────────── 보스전 체력 · 방패 ─────────────────────────
@@ -920,6 +1117,15 @@ export class GameScene extends Phaser.Scene {
   lastAttackLog: string[] = [];
 
   private hurtBattle(damage: number, source = '?'): boolean {
+    return this.hurtHp(damage, source);
+  }
+
+  /**
+   * 체력 (보스전·일반 스테이지 공통): 하트 3개 × HP 100.
+   * 맞으면 HP 만 깎이고, 0 이 되면 하트 -1 → 남은 하트가 있으면 HP 100 (넘친 피해는 버림).
+   * 맞은 직후 0.7초 · 하트 잃은 직후 1.5초 무적. 방패 중엔 피해 0.
+   */
+  private hurtHp(damage: number, source = '?'): boolean {
     if (this.state !== 'playing') return false;
     if (this.shieldOn) return false;
     if (this.time.now < this.invincibleUntil) return false;
@@ -928,6 +1134,10 @@ export class GameScene extends Phaser.Scene {
     sound.hit();
     this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
     this.floatText(`-${damage}`, this.playerX, this.player.y - this.player.displayHeight / 2 - 4, '#ff8f8f');
+    if (this.inNest) {
+      this.nestShake = 0.35; // 둥지가 덜컹
+      this.babyVel = -90;
+    }
     if (this.hp > 0) {
       this.invincibleUntil = this.time.now + BATTLE_HP.hitInvulnMs;
       this.cameras.main.shake(120, 0.006);
@@ -979,37 +1189,6 @@ export class GameScene extends Phaser.Scene {
       .setVisible(true)
       .setAlpha(a)
       .setPosition(Math.round(this.playerX + 11), Math.round(this.groundY - this.alt + 2));
-  }
-
-  /** 고나가 맞음 (바위·보스 공격 공통). 무적 중이면 false */
-  private hurt(): boolean {
-    if (this.state !== 'playing' || this.time.now < this.invincibleUntil) return false;
-    this.hearts = Math.max(0, this.hearts - 1);
-    this.updateHud();
-    sound.hit();
-    this.showExpression(this.vis.surprisedFrame, CHARACTER_ASSET.surprisedMs);
-    if (this.inNest) {
-      this.nestShake = 0.35; // 둥지가 덜컹
-      this.babyVel = -90;
-    }
-    this.cameras.main.shake(180, 0.012);
-    this.cameras.main.flash(140, 255, 120, 110);
-
-    const icon = this.heartIcons[this.hearts];
-    if (icon) this.tweens.add({ targets: icon, scale: 1.5, duration: 120, yoyo: true });
-
-    if (this.hearts <= 0) {
-      this.die();
-      return true;
-    }
-    this.invincibleUntil = this.time.now + PLAYER.invincibleMs;
-    // 살짝 튕겨 오르기
-    if (this.grounded) {
-      this.vy = 170;
-      this.grounded = false;
-      this.jumpsUsed = 1;
-    }
-    return true;
   }
 
   private die(): void {
@@ -1207,9 +1386,10 @@ export class GameScene extends Phaser.Scene {
       if (tm.exists(key)) continue;
       const src = `boss-src-${id}`;
       if (tm.exists(src)) {
-        // 정식 PNG (프레임 3장 가로)
+        // 정식 PNG (프레임 3장 또는 5장 가로 — 4·5번째가 없으면 화남·어지러움은 가까운 프레임으로)
         const img = tm.get(src).getSourceImage() as HTMLImageElement;
-        addSheet(this, key, img, Math.floor(img.width / 3), img.height);
+        const count = img.width >= img.height * 4.5 ? 5 : 3;
+        addSheet(this, key, img, Math.floor(img.width / count), img.height);
       } else {
         const sh = bossSheet(id);
         addSheet(this, key, sh.canvas, sh.fw, sh.fh);
@@ -1227,6 +1407,24 @@ export class GameScene extends Phaser.Scene {
       ['battle-shield', battleShield],
     ];
     for (const [k, f] of small) if (!tm.exists(k)) addCanvas(this, k, f());
+    // 일반 몬스터 (정식 PNG 가 있으면 그것, 없으면 코드 도트)
+    for (const kind of ['glasses', 'farter'] as const) {
+      const key = `mon-${kind}`;
+      if (tm.exists(key)) continue;
+      const src = `mon-src-${kind}`;
+      if (tm.exists(src)) {
+        const img = tm.get(src).getSourceImage() as HTMLImageElement;
+        addSheet(this, key, img, Math.floor(img.width / 3), img.height);
+      } else {
+        const sh = monsterSheet(kind);
+        addSheet(this, key, sh.canvas, sh.fw, sh.fh);
+      }
+    }
+    if (!tm.exists('mon-spark')) addCanvas(this, 'mon-spark', sparkShot());
+    if (!tm.exists('boss-star')) addCanvas(this, 'boss-star', dizzyStar());
+    if (!tm.exists('boss-arrow')) addCanvas(this, 'boss-arrow', pathArrow('#ff6f9f'));
+    if (!tm.exists('boss-wind')) addCanvas(this, 'boss-wind', pathArrow('#f0ffc8', '#3c5a14'));
+    if (!tm.exists('mon-cloud')) addCanvas(this, 'mon-cloud', fartCloud());
 
     const done = new Set<string>();
     for (const v of Object.values(this.visuals)) {
@@ -1377,7 +1575,7 @@ export class GameScene extends Phaser.Scene {
     const b = this.boomerang;
     if (!b.isOut) return;
     const h = this.headPos();
-    let aimY = this.groundY - 7; // 평소: 바위 높이로
+    let aimY = this.groundY - 8; // 평소: 바위·몬스터 높이로
     if (this.battle) {
       const r = this.battle.bossRect();
       aimY = Math.max(h.y, (r.y0 + r.y1) / 2 - 2);
@@ -1387,13 +1585,24 @@ export class GameScene extends Phaser.Scene {
     if (this.battle) {
       this.battle.checkBoomerang(b);
     }
-    // 평소: 바위를 깨고, 간식은 주워 옴 (보스전 중 나오는 간식도)
+    // 평소: 바위를 깨고 · 몬스터를 때리고 · 반짝이탄을 부수고 · 간식은 주워 옴
     for (const e of this.entities) {
       if (e.done) continue;
       const y = this.groundY - e.alt - e.h / 2;
       if (Math.abs(e.x - b.x) < e.w / 2 + b.r && Math.abs(y - b.y) < e.h / 2 + b.r) {
         if (e.type === 'snack') this.collect(e);
-        else if (!this.battle) {
+        else if (e.type === 'monster') {
+          const id = `m${e.mon!.id}`;
+          if (b.hitIds.has(id)) continue;
+          b.hitIds.add(id);
+          this.hitMonster(e);
+          b.bounce();
+        } else if (e.type === 'mshot') {
+          e.done = true;
+          this.sparkleEmitter.explode(3, e.x, y);
+          e.sprite.destroy();
+          b.bounce();
+        } else if (e.type === 'rock' && !this.battle) {
           this.breakRock(e);
           b.bounce();
         }
@@ -1453,11 +1662,23 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.retryCarry = { score: this.score, snacks: this.snacksEaten };
+    // 최종 보스 진입 → 체크포인트
+    if (id === 'sniff') saveCheckpoint('sniff', this.score, this.snacksEaten);
     this.hp = BATTLE_HP.perHeart;
     this.shieldUntil = 0;
     this.shieldReadyAt = 0;
     const tex = `boss-${id}`;
     this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : new SniffBattle(this.host, tex);
+    // 일반 스테이지에서 모은 필살 게이지를 이어서
+    this.battle.special = this.specialCarry;
+    this.specialCarry = 0;
+    // 화면의 몬스터·투사체는 퇴장
+    for (const e of this.entities) {
+      if (!e.done && (e.type === 'monster' || e.type === 'mshot' || e.type === 'cloud')) {
+        e.done = true;
+        this.tweens.add({ targets: e.sprite, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
+      }
+    }
     this.battle.start();
   }
 
@@ -1472,13 +1693,17 @@ export class GameScene extends Phaser.Scene {
     if (!win) return;
     this.clearedBosses.add(id);
     bus.emit(EV.bossEnd, { id, win });
-    if (BOSSES[id].afterWin === 'evolve') this.startEvolution();
-    else this.finishGame();
+    if (BOSSES[id].afterWin === 'evolve') {
+      // 첫 보스 클리어 → 체크포인트 (게임 오버가 나도 3단계부터)
+      saveCheckpoint('walker', this.score, this.snacksEaten);
+      this.startEvolution();
+    } else this.finishGame();
   }
 
   /** 마지막 보스 격파 → 엔딩 */
   private finishGame(): void {
     this.state = 'cleared';
+    clearCheckpoint(); // 이야기 끝 — 다음엔 새 게임
     this.boomerang.reset();
     sound.stopMusic();
     sound.evolveDone();
@@ -1511,6 +1736,7 @@ export class GameScene extends Phaser.Scene {
     const live = this.state === 'playing' || this.state === 'evolving' || this.state === 'paused';
     const b = this.battle && live ? this.battle : null;
     const mode: CombatHud['mode'] = !live ? 'none' : b ? 'battle' : this.canThrow ? 'run' : 'none';
+    const showPlayer = live || this.state === 'dead';
     const enabled = this.state === 'playing' && !b?.frozen && b?.mode !== 'victory' && b?.mode !== 'done';
     const attack: AttackState = mode === 'none' ? 'hidden' : !this.canThrow ? 'locked' : this.boomerang.isOut ? 'out' : 'ready';
     const now = this.time.now;
@@ -1522,19 +1748,21 @@ export class GameScene extends Phaser.Scene {
       cooldown: Math.ceil(this.boomerang.remaining * 20) / 20,
       shield,
       shieldCool: shield === 'cool' ? Math.ceil(((this.shieldReadyAt - now) / (SHIELD.cooldownMs - SHIELD.activeMs)) * 20) / 20 : 0,
-      special: b ? Math.floor(b.special * 20) / 20 : 0,
+      special: Math.floor((b ? b.special : this.specialCarry) * 20) / 20,
       specialReady: !!b?.specialReady,
       boss: b && b.mode !== 'done' ? b.hud() : null,
-      player: b ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
+      score: this.score,
+      player: showPlayer ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
+      growth: showPlayer && !b ? { ratio: Math.round(this.growth.ratio * 40) / 40, level: this.growth.stageIndex + 1, levels: GROWTH_STAGES.length, final: this.growth.isFinal } : null,
     };
-    // 보스전에는 위쪽 하트를 화면 UI(하트 + HP 게이지)로 대신 보여 줌
-    const wantPhaser = mode !== 'battle' && this.state !== 'ready';
+    // 하트·HP·성장 게이지는 화면 UI(왼쪽 위 패널)로 — 캔버스 하트·게이지는 쓰지 않음 (점수와 겹치던 '단계 칸' 제거)
+    const wantPhaser = false;
     if (wantPhaser !== this.phaserHearts) {
       this.phaserHearts = wantPhaser;
       this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
       this.gaugeGfx.setVisible(wantPhaser);
     }
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}`;
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);

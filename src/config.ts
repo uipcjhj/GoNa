@@ -65,12 +65,14 @@ export const PLAYER = {
   hitboxHeight: 19,
 };
 
-export type SnackKind = 'strawberry' | 'banana' | 'cookie';
+export type SnackKind = 'strawberry' | 'banana' | 'cookie' | 'jelly';
 
 export const SNACKS: Record<SnackKind, { points: number; label: string }> = {
   strawberry: { points: 10, label: '딸기' },
   banana: { points: 20, label: '바나나' },
   cookie: { points: 30, label: '쿠키' },
+  /** 새 간식: 드물게 나오는 별 젤리 (2단계부터, 간식 비 이벤트) */
+  jelly: { points: 50, label: '별 젤리' },
 };
 
 /**
@@ -82,6 +84,7 @@ export const SNACK_ASSETS: Record<SnackKind, string> = {
   strawberry: 'assets/snacks/strawberry.png',
   banana: 'assets/snacks/banana.png',
   cookie: 'assets/snacks/cookie.png',
+  jelly: 'assets/snacks/jelly.png',
 };
 
 /**

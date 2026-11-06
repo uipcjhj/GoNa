@@ -1,9 +1,9 @@
 /**
  * 보스전 도트 그림 (코드로 그림 — 정식 PNG 가 들어오면 BOSS_ASSETS 로 교체).
  *
- * 보스 시트: 같은 크기 프레임 3장을 가로로 이어 붙임 (왼쪽을 바라봄)
- *   뽀뽀괴물 0 대기 · 1 통통(찌그러짐) · 2 뽀뽀(입술 쭉, 눈 감음)
- *   킁카괴물 0 대기 · 1 흡입(코 벌렁) · 2 부풀기(냄새 폭발 직전)
+ * 보스 시트: 같은 크기 프레임 5장을 가로로 이어 붙임 (왼쪽을 바라봄)
+ *   뽀뽀괴물 0 대기 · 1 통통(찌그러짐) · 2 뽀뽀(입술 쭉, 눈 감음) · 3 화남(분노) · 4 어지러움(지침)
+ *   킁카괴물 0 대기 · 1 흡입(코 벌렁) · 2 부풀기(냄새 폭발 직전) · 3 화남(분노) · 4 어지러움(기절)
  */
 import { PixelCanvas } from './PixelCanvas';
 
@@ -136,11 +136,42 @@ function sniffFrame(frame: 0 | 1 | 2): HTMLCanvasElement {
   return pc.canvas;
 }
 
-/** 보스 시트 (프레임 3장 가로) */
+/** 화남 / 어지러움 표정: 대기 프레임 위에 눈썹·눈만 덧그림 */
+function moodFace(base: HTMLCanvasElement, eyes: { x: number; y: number }[], body: string, ink: string, mood: 'angry' | 'dizzy'): HTMLCanvasElement {
+  const pc = new PixelCanvas(base.width, base.height);
+  pc.ctx.drawImage(base, 0, 0);
+  for (const [i, e] of eyes.entries()) {
+    if (mood === 'angry') {
+      // 안쪽으로 내려간 눈썹 (두 눈 사이가 낮게) + 눈동자 작게
+      const dir = i === 0 ? 1 : -1;
+      for (let k = 0; k < 5; k++) pc.px(e.x - 1 + k, e.y - 4 + (dir > 0 ? Math.floor(k / 2) : 2 - Math.floor(k / 2)), ink);
+      for (let k = 0; k < 5; k++) pc.px(e.x - 1 + k, e.y - 3 + (dir > 0 ? Math.floor(k / 2) : 2 - Math.floor(k / 2)), ink);
+    } else {
+      // 눈을 지우고 X 눈
+      pc.rect(e.x - 1, e.y - 1, 6, 6, body);
+      for (let k = 0; k < 4; k++) {
+        pc.px(e.x + k, e.y + k, ink);
+        pc.px(e.x + 3 - k, e.y + k, ink);
+      }
+    }
+  }
+  return pc.canvas;
+}
+
+function kissMood(mood: 'angry' | 'dizzy'): HTMLCanvasElement {
+  return moodFace(kissFrame(0), [{ x: 11, y: 14 }, { x: 20, y: 14 }], '#e58bc0', '#3a1630', mood);
+}
+
+function sniffMood(mood: 'angry' | 'dizzy'): HTMLCanvasElement {
+  return moodFace(sniffFrame(0), [{ x: 17, y: 16 }, { x: 25, y: 16 }], '#7fae5a', '#1f2a14', mood);
+}
+
+/** 보스 시트 (프레임 5장 가로) */
 export function bossSheet(id: 'kiss' | 'sniff'): { canvas: HTMLCanvasElement; fw: number; fh: number } {
   const f = id === 'kiss' ? KISS_FRAME : SNIFF_FRAME;
-  const pc = new PixelCanvas(f.w * 3, f.h);
-  ([0, 1, 2] as const).forEach((i) => pc.ctx.drawImage(id === 'kiss' ? kissFrame(i) : sniffFrame(i), i * f.w, 0));
+  const pc = new PixelCanvas(f.w * 5, f.h);
+  const frames = id === 'kiss' ? [kissFrame(0), kissFrame(1), kissFrame(2), kissMood('angry'), kissMood('dizzy')] : [sniffFrame(0), sniffFrame(1), sniffFrame(2), sniffMood('angry'), sniffMood('dizzy')];
+  frames.forEach((c, i) => pc.ctx.drawImage(c, i * f.w, 0));
   return { canvas: pc.canvas, fw: f.w, fh: f.h };
 }
 

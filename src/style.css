@@ -1139,7 +1139,8 @@ h2 {
   animation: intro-fade 0.6s ease 0.5s both;
 }
 
-.cover-btn {
+.cover-btn,
+.cover-continue {
   pointer-events: auto;
   font-size: calc(var(--b) * 5.4);
 }
@@ -1169,7 +1170,8 @@ h2 {
   display: none;
 }
 
-.cover.side .cover-btn {
+.cover.side .cover-btn,
+.cover.side .cover-continue {
   font-size: calc(var(--b) * 4.4);
 }
 
@@ -1380,7 +1382,8 @@ h2 {
   }
 }
 
-.cover.portrait .cover-btn {
+.cover.portrait .cover-btn,
+.cover.portrait .cover-continue {
   font-size: calc(var(--b) * 5.6);
 }
 
@@ -1972,7 +1975,8 @@ h2 {
 }
 .battle-pad.mode-none,
 .battle-pad.mode-run .bt-left,
-.battle-pad.mode-run .bt-special,
+.boss-bar.hidden,
+.bt-grow.hidden,
 .battle-top.hidden,
 .battle-banner.hidden,
 .bb-phase.hidden {
@@ -2124,7 +2128,7 @@ h2 {
   position: absolute;
   left: max(6px, env(safe-area-inset-left));
   right: max(6px, env(safe-area-inset-right));
-  top: calc(max(6px, env(safe-area-inset-top)) + 40px);
+  top: calc(max(6px, env(safe-area-inset-top)) + 50px);
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -2149,6 +2153,8 @@ h2 {
 }
 .bt-hp-text {
   margin-left: auto;
+  padding-left: 4px;
+  white-space: nowrap;
   font-size: 11px;
   color: #eaffd8;
 }
@@ -2191,8 +2197,13 @@ h2 {
 .boss-bar.phase2 .bb-hp {
   background: linear-gradient(#ffb08a 0 40%, #e0503a 40%);
 }
-body.in-battle .touch-hint {
+body.in-battle .touch-hint,
+body.has-pad .touch-hint {
   display: none;
+}
+.bt-heart {
+  width: 18px;
+  height: auto;
 }
 
 /* 가운데 큰 안내 */
@@ -2282,7 +2293,7 @@ body.in-battle .touch-hint {
     font-size: 12px;
   }
   .battle-top {
-    top: calc(max(4px, env(safe-area-inset-top)) + 32px);
+    top: calc(max(4px, env(safe-area-inset-top)) + 46px);
     left: max(8px, calc(env(safe-area-inset-left) + 6px));
     right: max(118px, calc(env(safe-area-inset-right) + 112px));
   }
@@ -2361,4 +2372,68 @@ body.in-battle .touch-hint {
   font: 11px inherit;
   min-height: 28px;
   padding: 0 8px;
+}
+
+/* 성장 게이지 (하트·HP 아래) */
+.bt-grow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+.bt-grow-text {
+  flex: none;
+  font-size: 10px;
+  color: #fff3c4;
+}
+.bt-grow-track {
+  flex: 1;
+  height: 6px;
+  background: #2a1c14;
+  border: 2px solid #120a06;
+}
+.bt-grow-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(#d8f5a2 0 40%, #8fd35a 40%);
+}
+.bt-grow-fill.final {
+  background: linear-gradient(#fff1a8 0 40%, #ffcf4d 40%);
+}
+
+/* 점수: 위 왼쪽 (오른쪽 위 버튼 자리를 피해 폭 제한) */
+.hud-score {
+  position: absolute;
+  left: max(8px, calc(env(safe-area-inset-left) + 6px));
+  top: calc(max(6px, env(safe-area-inset-top)) + 6px);
+  max-width: calc(100% - 130px);
+  padding: 4px 10px;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #fff8e6;
+  background: rgba(40, 26, 14, 0.55);
+  border: 2px solid #4a2a14;
+  border-radius: 6px;
+  text-shadow: 0 2px 0 #5a3a22;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: left center;
+  z-index: 3;
+}
+.hud-score.hidden {
+  display: none;
+}
+
+/* 이어하기 버튼 (체크포인트가 있을 때) */
+.cover-continue {
+  background: linear-gradient(#8fd35a, #5fa83a) !important;
+  border-color: #2f5a1a !important;
+}
+.cover-continue.hidden {
+  display: none;
+}
+.cover-continue:not(.hidden) + .cover-btn {
+  transform: scale(0.82);
+  opacity: 0.92;
 }

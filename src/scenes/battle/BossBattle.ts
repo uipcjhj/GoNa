@@ -70,7 +70,19 @@ const SNACKS: SnackKind[] = ['strawberry', 'banana', 'cookie'];
 export abstract class BossBattle {
   readonly def: BossDef;
   hp: number;
-  phase2 = false;
+  /**
+   * 분노 단계: 0 일반(HP 100~71%) · 1 1차 분노(70~36%) · 2 2차 분노(35~0%).
+   * 바뀔 때 1.5초 멈추고 화내는 연출 + 경고 문구.
+   */
+  rage: 0 | 1 | 2 = 0;
+  get phase2(): boolean {
+    return this.rage >= 1;
+  }
+  /** 지침·기절 남은 시간(초) — 공격 안 하고 약점 노출 */
+  stunT = 0;
+  private stunMul = 1;
+  private stars: Phaser.GameObjects.Image[] = [];
+  private pendingRage = false;
   /** 필살 게이지 0~1 */
   special = 0;
   /** 연출 중: 세상(땅·고나·투사체)이 멈춤 */
@@ -131,8 +143,10 @@ export abstract class BossBattle {
 
   /** 다음 공격 하나 시작 (끝나면 endAttack) */
   protected abstract chooseAttack(): void;
-  /** 2페이즈 진입 */
-  protected abstract onPhase2(): void;
+  /** 분노 단계 진입 (연출이 끝난 뒤 오라 등) */
+  protected abstract onRage(level: 1 | 2): void;
+  /** 분노 안내 문구 */
+  protected abstract rageText(level: 1 | 2): string;
   /** 전투 시작 직후 (각성 등) */
   protected onFightStart(): void {}
   /** 매 프레임 (흡입 같은 지속 효과) */
@@ -187,6 +201,13 @@ export abstract class BossBattle {
       this.updateHostiles(dt);
       this.bodyContact();
     }
+    if (this.stars.length) {
+      this.stunT = Math.max(0, this.stunT - (this.frozen ? 0 : dt));
+      this.stars.forEach((st, i) => {
+        const a = this.time * 5 + (i * Math.PI * 2) / this.stars.length;
+        st.setPosition(Math.round(this.bx + Math.cos(a) * this.fw * 0.32), Math.round(this.host.groundY - this.balt - this.fh * 0.92 + Math.sin(a) * 3));
+      });
+    }
     this.render(dt);
   }
 
@@ -223,9 +244,10 @@ export abstract class BossBattle {
     const b = this.boss;
     if (this.pose.t > 0) {
       this.pose.t -= dt;
-      b.setFrame(this.pose.frame);
+      const n = b.texture.frameTotal - 1;
+      b.setFrame(this.pose.frame < n ? this.pose.frame : this.pose.frame === 4 ? 0 : 2);
     } else if (this.mode !== 'victory') {
-      b.setFrame(this.idleFrame());
+      b.setFrame(this.moodFrame(this.idleFrame()));
     }
     if (!this.detached) b.setPosition(Math.round(this.bx), Math.round(this.host.groundY - this.balt));
     if (this.hurtT > 0) {
@@ -246,7 +268,8 @@ export abstract class BossBattle {
   }
 
   protected applyTint(): void {
-    if (this.phase2) this.boss.setTint(0xffb0a0);
+    if (this.rage === 2) this.boss.setTint(0xff9a8a);
+    else if (this.rage === 1) this.boss.setTint(0xffc4b8);
     else this.boss.clearTint();
   }
 
@@ -339,9 +362,70 @@ export abstract class BossBattle {
     return false;
   }
 
-  /** 약점 배율 (킁카괴물 흡입 중 코 등) */
+  /** 약점 배율 (지침·기절 중엔 더 아픔 / 킁카괴물 흡입 중 코 등은 하위 클래스) */
   protected weakMul(): number {
-    return 1;
+    return this.stunT > 0 ? this.stunMul : 1;
+  }
+
+  /** 표정 프레임 (0 대기 · 1 통통 · 2 공격 · 3 화남 · 4 어지러움) — 정식 PNG 가 3장뿐이면 가까운 프레임으로 */
+  protected moodFrame(base: number): number {
+    const n = this.boss.texture.frameTotal - 1; // __BASE 제외
+    const want = this.stunT > 0 ? 4 : this.rage >= 1 && base !== 2 ? 3 : base;
+    if (want < n) return want;
+    return want === 4 ? 0 : want === 3 ? base : want;
+  }
+
+  /**
+   * 지침·기절: sec 초 동안 공격하지 않고, 맞으면 mul 배 피해 (부메랑·필살기 기회)
+   * 머리 위로 별이 빙글빙글.
+   */
+  protected stun(sec: number, mul: number, text: string): void {
+    this.stunT = sec;
+    this.stunMul = mul;
+    this.busy = true;
+    this.banner({ top: '⭐ 지금이 기회!', name: text, desc: '머리카락 부메랑으로 공격해요', ms: Math.min(1800, sec * 1000), tone: 'good' });
+    const scene = this.host.scene;
+    for (let i = 0; i < 3; i++) this.stars.push(scene.add.image(this.bx, this.host.groundY - this.fh, 'boss-star').setDepth(12));
+    this.after(sec, () => {
+      this.stunT = 0;
+      this.stunMul = 1;
+      this.clearStars();
+      this.endAttack(1.0);
+    });
+  }
+
+  private clearStars(): void {
+    for (const st of this.stars) st.destroy();
+    this.stars = [];
+  }
+
+  /** 분노 전환: 1.5초 멈춤 + 화내는 연출 + 경고 문구 */
+  private enterRage(): void {
+    const lv = this.rage as 1 | 2;
+    this.pendingRage = false;
+    this.ai = [];
+    this.onInterrupt();
+    this.stunT = 0;
+    this.clearStars();
+    const scene = this.host.scene;
+    const cam = scene.cameras.main;
+    sound.rage();
+    cam.shake(500, lv === 2 ? 0.014 : 0.009);
+    cam.flash(220, 255, 90, 90);
+    this.setPose(3, 1.5);
+    // 부들부들 + 커졌다 작아짐 + 김
+    scene.tweens.add({ targets: this.boss, scaleX: 1.12, scaleY: 1.12, duration: 160, yoyo: true, repeat: 3 });
+    for (let i = 0; i < 8; i++) {
+      const p = scene.add.image(this.bx + (Math.random() - 0.5) * this.fw * 0.6, this.host.groundY - this.fh + 4, 'boss-dot').setDepth(12).setTint(0xffffff);
+      scene.tweens.add({ targets: p, y: p.y - 18 - Math.random() * 12, x: p.x + (Math.random() - 0.5) * 14, alpha: 0, scale: 2, duration: 900, delay: i * 90, onComplete: () => p.destroy() });
+    }
+    this.banner({ top: lv === 1 ? '💢 1차 분노!' : '💥 2차 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : '폭발했어요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' });
+    this.cutscene(1.5, () => {
+      this.busy = false;
+      this.cooldown = 0.9;
+      this.returnHome();
+      this.onRage(lv);
+    });
   }
 
   protected damage(n: number): void {
@@ -356,10 +440,15 @@ export abstract class BossBattle {
       this.victory();
       return;
     }
-    if (!this.phase2 && this.hp <= this.def.maxHp * this.def.phase2At) {
-      this.phase2 = true;
+    // 분노 단계 (HP 비율)
+    const ratio = this.hp / this.def.maxHp;
+    const want = ratio <= 0.35 ? 2 : ratio <= 0.7 ? 1 : 0;
+    if (want > this.rage) {
+      this.rage = want as 1 | 2;
       this.applyTint();
-      this.onPhase2();
+      // 필살기 연출 중이면 그게 끝난 뒤
+      if (this.mode === 'cutscene') this.pendingRage = true;
+      else this.enterRage();
     }
   }
 
@@ -499,6 +588,8 @@ export abstract class BossBattle {
     this.mode = 'cutscene';
     this.frozen = true;
     this.ai = [];
+    this.stunT = 0;
+    this.clearStars();
     this.onInterrupt();
     const scene = this.host.scene;
     const cam = scene.cameras.main;
@@ -543,6 +634,7 @@ export abstract class BossBattle {
         this.busy = false;
         this.cooldown = 1.0;
         this.returnHome();
+        if (this.pendingRage) this.enterRage();
       }
     }, true);
     return true;
@@ -556,6 +648,7 @@ export abstract class BossBattle {
       this.frozen = false;
       if (this.mode === 'cutscene') this.mode = 'fight';
       end?.();
+      if (this.pendingRage && this.mode === 'fight') this.enterRage();
     }, true);
   }
 
@@ -563,6 +656,8 @@ export abstract class BossBattle {
 
   private victory(): void {
     this.mode = 'victory';
+    this.stunT = 0;
+    this.clearStars();
     this.onInterrupt();
     this.ai = [];
     this.motion = null;
@@ -594,7 +689,7 @@ export abstract class BossBattle {
   // ───────────────────────── UI ─────────────────────────
 
   hud(): { name: string; hp: number; maxHp: number; phase: number } {
-    return { name: this.def.name, hp: this.hp, maxHp: this.def.maxHp, phase: this.phase2 ? 2 : 1 };
+    return { name: this.def.name, hp: this.hp, maxHp: this.def.maxHp, phase: this.rage + 1 };
   }
 
   protected banner(b: BannerInfo): void {
@@ -606,6 +701,7 @@ export abstract class BossBattle {
   }
 
   destroy(): void {
+    this.clearStars();
     for (const h of this.hostiles) h.sprite.destroy();
     this.hostiles = [];
     this.boss.destroy();

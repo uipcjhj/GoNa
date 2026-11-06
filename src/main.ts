@@ -41,7 +41,7 @@ async function boot(): Promise<void> {
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
   // 흐름: 스토리 프롤로그(알 부화 포함, Phaser + 자막) → 카메라가 물러나며 대표 타이틀 → 게임 시작 → 1단계
-  const cover = new CoverScreen(ui, (boss) => bus.emit(EV.requestStart, boss));
+  const cover = new CoverScreen(ui, (opt) => bus.emit(EV.requestStart, opt));
   const subs = new Subtitles(ui);
   // 프롤로그 중 화면 위 작은 UI: 건너뛰기
   let openingActive = false;

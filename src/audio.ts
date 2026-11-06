@@ -75,13 +75,13 @@ export const narrationUrl = (i: number): string => `assets/voice/prologue-${Stri
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
-  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield',
+  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage',
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 /** 효과음 메서드 (성능 기록용) */
 const SFX_METHODS = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'pickup', 'hit', 'gameOver', 'evolve',
-  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield',
+  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage',
 ] as const;
 
 /** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
@@ -768,6 +768,14 @@ class Sound {
     this.noise(0.5, 0.7, 0, 'lowpass', 800);
     ['G4', 'E4', 'C4'].forEach((n, i) => this.tone(hz(n), 0.18, 'square', 0.2, i * 0.12));
     ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.24, 0.5 + i * 0.1));
+  }
+  /** 보스 분노 (으르렁 + 쾅) */
+  rage(): void {
+    if (this.sfxFile('rage')) return;
+    this.tone(120, 0.5, 'sawtooth', 0.28, 0, 70);
+    this.tone(180, 0.45, 'square', 0.16, 0.05, 90);
+    this.noise(0.4, 0.5, 0.05, 'lowpass', 500);
+    this.noise(0.25, 0.6, 0.45, 'bandpass', 900);
   }
   /** 방패 (반짝 웅) */
   shield(): void {

@@ -95,6 +95,10 @@ export const SHIELD = { activeMs: 1000, cooldownMs: 4000 };
 export const DAMAGE = {
   kissHeart: 20,
   kissWave: 25,
+  /** 2차 분노 필살기 왕뽀뽀 */
+  kissRoyal: 35,
+  /** 2차 분노 필살기 킁카 폭풍의 냄새 파동 */
+  sniffStorm: 35,
   sniffCloud: 25,
   sniffBlast: 35,
   sniffPuddle: 20,

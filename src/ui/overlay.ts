@@ -8,6 +8,7 @@ import { heartCanvas } from '../art/textures';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { sound } from '../audio';
 import { el, pixelImg } from './dom';
+import { CHECKPOINT_LABEL, loadCheckpoint } from '../game/checkpoint';
 
 const ICON_PALETTE = { k: '#5a3a22', w: '#fff8e6' };
 const ICON_SOUND_ON = [
@@ -51,6 +52,7 @@ export class Overlay {
   private overStory!: HTMLElement;
   private overHearts!: HTMLElement;
   private bossRetry: BossId | null = null;
+  private cpBtn!: HTMLButtonElement;
   private canRetryAt = 0;
   /** 소리 테스트 화면 열기 (main 에서 연결) */
   onAudioTest: (() => void) | null = null;
@@ -100,13 +102,15 @@ export class Overlay {
     this.overStory = el('p', 'ending-story hidden');
     this.bossRetryBtn = el('button', 'pixel-btn boss-retry hidden', '보스전 다시');
     this.bossRetryBtn.type = 'button';
+    this.cpBtn = el('button', 'pixel-btn cp-retry hidden', '💾 이어하기');
+    this.cpBtn.type = 'button';
     this.overNew = el('p', 'new-best hidden', '★ 최고 기록! ★');
     this.overScore = el('p', 'score-big', '0');
     this.overSnacks = el('p', 'sub');
     this.overGrowth = el('p', 'sub growth-line');
     this.overBest = el('p', 'best');
     this.retryBtn = el('button', 'pixel-btn retry-btn', '다시하기');
-    p.append(this.overTitle, hearts, this.overStory, this.overNew, this.overScore, this.overSnacks, this.overGrowth, this.overBest, this.bossRetryBtn, this.retryBtn);
+    p.append(this.overTitle, hearts, this.overStory, this.overNew, this.overScore, this.overSnacks, this.overGrowth, this.overBest, this.cpBtn, this.bossRetryBtn, this.retryBtn);
     return p;
   }
 
@@ -126,6 +130,7 @@ export class Overlay {
 
     this.retryBtn.addEventListener('click', () => this.tryRetry());
     this.bossRetryBtn.addEventListener('click', () => this.tryRetry(true));
+    this.cpBtn.addEventListener('click', () => this.tryRetry(false, true));
     this.soundBtn.addEventListener('click', () => {
       sound.unlock();
       sound.setMuted(!sound.muted);
@@ -151,11 +156,11 @@ export class Overlay {
   }
 
   /** 다시하기 (게임 오버 직후 연타 방지). boss = 보스전부터 다시 */
-  tryRetry(boss = false): void {
+  tryRetry(boss = false, checkpoint = false): void {
     if (!this.isGameOverVisible || performance.now() < this.canRetryAt) return;
     sound.unlock();
     this.over.classList.add('hidden');
-    const opt: RestartOptions = boss && this.bossRetry ? { boss: this.bossRetry } : {};
+    const opt: RestartOptions = checkpoint ? { checkpoint: true } : boss && this.bossRetry ? { boss: this.bossRetry } : {};
     bus.emit(EV.restart, opt);
   }
 
@@ -180,9 +185,14 @@ export class Overlay {
       ? '뽀뽀괴물과 킁카괴물을 모두 물리친 고나는 맛있는 간식을 잔뜩 안고 집으로 돌아갔어요. 다음 이야기를 기대해 주세요!'
       : '';
     this.bossRetry = info.bossRetry ?? null;
+    // 체크포인트(뽀뽀괴물 이후 3단계 · 최종 보스)가 있으면 거기서 이어하기
+    const cp = cleared ? null : loadCheckpoint();
+    this.cpBtn.classList.toggle('hidden', !cp);
+    if (cp) this.cpBtn.textContent = `💾 이어하기 · ${CHECKPOINT_LABEL[cp.id]}`;
+    if (cp?.id === 'sniff' && this.bossRetry === 'sniff') this.bossRetry = null; // 같은 곳이라 하나만
     this.bossRetryBtn.classList.toggle('hidden', !this.bossRetry);
     if (this.bossRetry) this.bossRetryBtn.textContent = `${this.bossRetry === 'kiss' ? '뽀뽀괴물' : '킁카괴물'}전 다시`;
-    this.retryBtn.textContent = cleared ? '처음부터 다시' : this.bossRetry ? '처음부터 다시하기' : '다시하기';
+    this.retryBtn.textContent = cleared ? '처음부터 다시' : cp ? '처음부터 새 게임' : this.bossRetry ? '처음부터 다시하기' : '다시하기';
     this.overScore.textContent = `${info.score}점`;
     this.overSnacks.textContent = `먹은 간식 ${info.snacks}개`;
     this.overGrowth.textContent = `성장 ${info.growthLevel}/${info.growthLevels}단계 · ${info.growthName}`;

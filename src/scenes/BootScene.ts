@@ -7,10 +7,11 @@ import { cropHairTuft } from '../art/nest';
 import { bus, EV } from '../events';
 import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
 import { BOSSES } from '../game/boss';
+import { MONSTERS } from '../game/monsters';
 
 const CUSTOM_KEY = 'dino-custom-src';
-const SNACK_KINDS: SnackKind[] = ['strawberry', 'banana', 'cookie'];
-const SNACK_TEX: Record<SnackKind, string> = { strawberry: TEX.strawberry, banana: TEX.banana, cookie: TEX.cookie };
+const SNACK_KINDS: SnackKind[] = ['strawberry', 'banana', 'cookie', 'jelly'];
+const SNACK_TEX: Record<SnackKind, string> = { strawberry: TEX.strawberry, banana: TEX.banana, cookie: TEX.cookie, jelly: TEX.jelly };
 const snackSrcKey = (k: SnackKind): string => `snack-src-${k}`;
 
 /** 타이틀 화면에 보낼 캐릭터 그림 */
@@ -83,6 +84,8 @@ export class BootScene extends Phaser.Scene {
     }
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
+    // 일반 몬스터 정식 그림 (선택)
+    for (const m of Object.values(MONSTERS)) this.load.image(`mon-src-${m.kind}`, m.sheetUrl);
   }
 
   create(): void {

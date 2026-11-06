@@ -1,3 +1,4 @@
+import { jellyCanvas } from './monsterArt';
 /**
  * 코드로 도트 텍스처를 만들어 Phaser 텍스처 매니저에 등록합니다.
  * (외부 이미지 없이도 게임이 바로 실행되도록)
@@ -29,6 +30,7 @@ export const TEX = {
   strawberry: 'snack-strawberry',
   banana: 'snack-banana',
   cookie: 'snack-cookie',
+  jelly: 'snack-jelly',
   rock: 'rock',
   heartFull: 'heart-full',
   heartEmpty: 'heart-empty',
@@ -97,7 +99,8 @@ export function heartCanvas(full: boolean): HTMLCanvasElement {
   return mapToCanvas(HEART_ROWS, full ? HEART_FULL : HEART_EMPTY);
 }
 
-export function snackCanvas(kind: 'strawberry' | 'banana' | 'cookie'): HTMLCanvasElement {
+export function snackCanvas(kind: 'strawberry' | 'banana' | 'cookie' | 'jelly'): HTMLCanvasElement {
+  if (kind === 'jelly') return jellyCanvas();
   const art = kind === 'strawberry' ? STRAWBERRY : kind === 'banana' ? BANANA : COOKIE;
   return mapToCanvas(art.rows, art.palette);
 }
@@ -189,6 +192,7 @@ export function buildAllTextures(scene: Phaser.Scene): void {
   addCanvas(scene, TEX.strawberry, snackCanvas('strawberry'));
   addCanvas(scene, TEX.banana, snackCanvas('banana'));
   addCanvas(scene, TEX.cookie, snackCanvas('cookie'));
+  addCanvas(scene, TEX.jelly, snackCanvas('jelly'));
   addCanvas(scene, TEX.rock, mapToCanvas(ROCK.rows, ROCK.palette));
   addCanvas(scene, TEX.heartFull, heartCanvas(true));
   addCanvas(scene, TEX.heartEmpty, heartCanvas(false));

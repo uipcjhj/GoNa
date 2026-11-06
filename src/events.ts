@@ -74,8 +74,12 @@ export interface CombatHud {
   special: number;
   specialReady: boolean;
   boss: { name: string; hp: number; maxHp: number; phase: number } | null;
-  /** 보스전 고나 체력: 하트 + 지금 하트의 HP */
+  /** 고나 체력: 하트 + 지금 하트의 HP (일반 스테이지·보스전 공통) */
   player: { hearts: number; maxHearts: number; hp: number; maxHp: number } | null;
+  /** 점수 (화면 위 왼쪽) */
+  score: number;
+  /** 성장 게이지 (보스전 중엔 null) */
+  growth: { ratio: number; level: number; levels: number; final: boolean } | null;
 }
 
 export interface BannerInfo {
@@ -105,6 +109,8 @@ export interface GameOverInfo {
 
 /** 다시하기 요청 옵션 */
 export interface RestartOptions {
+  /** 저장된 체크포인트에서 이어하기 */
+  checkpoint?: boolean;
   /** 이 보스전부터 바로 다시 (점수·간식 수는 이어서) */
   boss?: BossId;
   score?: number;

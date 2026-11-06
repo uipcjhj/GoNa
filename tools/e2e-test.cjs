@@ -40,7 +40,7 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   const isRun = (f) => info.run.map(String).includes(String(f)) || String(f) === String(info.idle);
   check(`${label}: game started`, info.state === 'playing', `${info.stage} ${JSON.stringify(info.run)}`);
   await ev((sc) => { sc.distToNext = 1e9; sc.entities.forEach(e => { e.sprite.destroy(); }); sc.entities = []; });
-  const frame = () => ev((sc) => ({ f: sc.player.frame.name, y: sc.player.y, alt: sc.alt, score: sc.score, hearts: sc.hearts, inv: sc.invincibleUntil - sc.time.now, grounded: sc.grounded }));
+  const frame = () => ev((sc) => ({ f: sc.player.frame.name, y: sc.player.y, alt: sc.alt, score: sc.score, hearts: sc.hearts, hp: sc.hp, inv: sc.invincibleUntil - sc.time.now, grounded: sc.grounded }));
 
   // 간식 획득 + 점수
   for (const [kind, pts] of [['strawberry', 10], ['banana', 20], ['cookie', 30]]) {
@@ -78,20 +78,19 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   await page.waitForTimeout(200);
 
   // 바위 충돌 + 무적 시간
-  const h0 = (await frame()).hearts;
+  const f0 = await frame();
+  const h0 = f0.hearts;
   await ev((sc) => sc.addRock(sc.playerX + 22));
-  let r; for (let i = 0; i < 40; i++) { r = await frame(); if (r.hearts !== h0) break; await page.waitForTimeout(15); }
-  check(`${label}: rock hit -1 heart`, r.hearts === h0 - 1, `hearts ${h0}->${r.hearts}`);
-  check(`${label}: invincible after hit`, r.inv > 1100, `inv ${Math.round(r.inv)}ms`);
+  let r; for (let i = 0; i < 40; i++) { r = await frame(); if (r.hp !== f0.hp) break; await page.waitForTimeout(15); }
+  check(`${label}: rock hit -50 HP (hearts kept)`, r.hp === f0.hp - 50 && r.hearts === h0, `hp ${f0.hp}->${r.hp} hearts ${h0}->${r.hearts}`);
+  check(`${label}: short invincibility after hit`, r.inv > 400, `inv ${Math.round(r.inv)}ms`);
+  // 무적 중 바로 또 충돌 → HP 유지
+  await ev((sc) => sc.addRock(sc.playerX + 4));
+  await page.waitForTimeout(150);
+  check(`${label}: no damage while invincible`, (await frame()).hp === r.hp, `hp ${(await frame()).hp}`);
   await page.waitForTimeout(120);
   const sface = await frame();
   if (info.sur >= 0) { check(`${label}: surprised face on hit`, String(sface.f) === String(info.sur), `frame ${sface.f}`); await page.screenshot({ path: `${S}/t5-${label}-surprised.png` }); }
-  // 무적 중 다시 충돌 → 하트 유지
-  for (let i = 0; i < 60; i++) { if ((await frame()).grounded) break; await page.waitForTimeout(20); }
-  await ev((sc) => sc.addRock(sc.playerX + 18));
-  await page.waitForTimeout(450);
-  const r2 = await frame();
-  check(`${label}: no damage while invincible`, r2.hearts === h0 - 1, `hearts ${r2.hearts} inv ${Math.round(r2.inv)}`);
   await page.waitForTimeout(300);
   const r3 = await frame();
   check(`${label}: back to run after surprised`, isRun(r3.f) || !r3.grounded, `frame ${r3.f}`);
@@ -105,15 +104,18 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   const p2 = await ev((sc) => sc.state);
   check(`${label}: resume`, p2 === 'playing', p2);
 
-  // 무적 끝난 뒤 충돌 → 하트 감소 → 게임 오버
-  for (let k = 0; k < 3; k++) {
+  // 무적 끝난 뒤 충돌 → HP 0 이면 하트 -1 · HP 100 으로 → 하트가 다 없어지면 게임 오버
+  let heartLossOk = true;
+  for (let k = 0; k < 8; k++) {
     for (let i = 0; i < 100; i++) { const f = await frame(); if (f.inv <= 0 && f.grounded) break; await page.waitForTimeout(30); }
-    const hb = (await frame()).hearts; if (hb <= 0) break;
+    const fb = await frame(); if (fb.hearts <= 0) break;
     await ev((sc) => sc.addRock(sc.playerX + 22));
     await page.waitForTimeout(450);
-    const ha = await ev((sc) => sc.hearts);
-    check(`${label}: hit after invincibility ends`, ha === hb - 1, `hearts ${hb}->${ha}`);
+    const fa = await frame();
+    if (fb.hp === 50) heartLossOk = heartLossOk && (fa.hearts === fb.hearts - 1 && (fa.hearts === 0 || fa.hp === 100));
+    if (fa.hearts <= 0) break;
   }
+  check(`${label}: HP 0 → heart -1 → HP 100 (until game over)`, heartLossOk);
   await page.waitForTimeout(1600);
   const over = await page.evaluate(() => !document.querySelector('.over-screen').classList.contains('hidden'));
   const scoreTxt = await page.locator('.score-big').textContent();
@@ -146,7 +148,7 @@ async function growthTests(label, device) {
   const s1 = await g();
   check(`${label}: cookie +30 score, +3 gauge`, s1.score - s0.score === 30 && s1.gauge - s0.gauge === 3, `score ${s1.score} gauge ${s1.gauge}`);
   // 게이지 가득 → 진화 연출 동안 정지
-  await ev((sc) => { sc.growth.gauge = 11; sc.addSnack('strawberry', sc.playerX + 18, 4); });
+  await ev((sc) => { sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
   let e1; for (let i = 0; i < 50; i++) { e1 = await g(); if (e1.state === 'evolving') break; await page.waitForTimeout(15); }
   check(`${label}: evolution starts when gauge full`, e1.state === 'evolving', e1.state);
   await page.waitForTimeout(150);
@@ -193,7 +195,7 @@ async function growthTests(label, device) {
   const hb = await ev((sc) => { const b = sc.playerBox(); return [b.right - b.left, b.top - b.bottom + 1]; });
   check(`${label}: hitbox unchanged at bigbaby`, Math.round(hb[0]) === 11 && Math.round(hb[1]) === 19, JSON.stringify(hb));
   // 게임 오버 → 다시하기는 갓난아기부터, 최고 단계 기록
-  await ev((sc) => { sc.hearts = 1; sc.invincibleUntil = 0; });
+  await ev((sc) => { sc.hearts = 1; sc.hp = 10; sc.invincibleUntil = 0; });
   for (let i = 0; i < 60; i++) { const f = await g(); if (f.grounded) break; await page.waitForTimeout(25); }
   await ev((sc) => sc.addRock(sc.playerX + 22));
   await page.waitForTimeout(2000);
@@ -356,6 +358,8 @@ async function bossTests(label, device) {
   await page.waitForTimeout(300);
   const sp = await battle();
   await page.waitForTimeout(1700);
+  // (보스 체력이 70% 아래로 내려가면 분노 전환 연출이 이어서 나옴 → 전투로 돌아올 때까지)
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 5000 }).catch(() => {});
   const sp2 = await battle();
   check(`${label}: special = cutscene + big damage`, sp.frozen && sp2.hp === Math.max(0, hp1 - 3) && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
   // 승리 → 3단계 직립보행
@@ -365,7 +369,8 @@ async function bossTests(label, device) {
   await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 9000 }).catch(() => {});
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
-  check(`${label}: boss UI hidden after battle (attack stays, dodge/special gone)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-special').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()));
+  // (필살 버튼은 평소에도 보임 — 몬스터 처치로 모은 게이지를 다음 보스전으로)
+  check(`${label}: boss UI hidden after battle (boss bar · shield gone, attack stays)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()));
   // 평소 달리기: 부메랑으로 바위 깨기
   const sc0 = await G(() => window.__gona.scene.getScene('Game').score);
   await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); sc.entities = []; sc.addRock(sc.playerX + 60); sc.distToNext = 9999; });
@@ -387,12 +392,12 @@ async function bossTests(label, device) {
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hearts = 3; g.updateHud(); g.debugGod(); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 8000 });
   let pull = 0, puddle = false; const t0 = Date.now();
-  while (Date.now() - t0 < 16000 && !(pull > 5 && puddle)) {
+  while (Date.now() - t0 < 16000 && !(pull > 5)) {
     const st = await G(() => { const g = window.__gona.scene.getScene('Game'); return { pull: g.pull, pud: g.battle.hostiles.some((h) => h.onGround) }; });
     pull = Math.max(pull, st.pull); puddle = puddle || st.pud;
     await page.waitForTimeout(150);
   }
-  check(`${label}: sniff inhale pulls GONA, stink puddles on ground`, pull > 5 && puddle, `pull ${pull.toFixed(1)} puddle ${puddle}`);
+  check(`${label}: sniff inhale pulls GONA`, pull > 5, `pull ${pull.toFixed(1)} (장판은 1차 분노부터)`);
   await page.screenshot({ path: `${S}/boss-${label}-sniff.png` });
   const shp = (await battle()).hp;
   await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 }).catch(() => {});
@@ -578,10 +583,77 @@ async function controlTests(label, device) {
   await b.close();
 }
 
+/** 이번 개선: 위쪽 HUD 겹침 · 일반 몬스터 · 보스 분노 · 체크포인트 */
+async function featureTests(label, device) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  const G = (f, a) => page.evaluate(f, a);
+  await page.goto(URL + '?test');
+  await G(() => localStorage.removeItem('gona.checkpoint'));
+  await startFromTitle(page);
+  // HUD: 점수 · 하트+HP+성장 · 일시정지 버튼이 겹치지 않음 (점수 큰 값, 3단계 공격 버튼까지)
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.add('kiss'); g.debugSetStage(2); g.growth.gauge = 30; g.score = 123456; g.updateHud(); });
+  await page.waitForTimeout(300);
+  const rects = await G(() => {
+    const r = (sel) => { const e = document.querySelector(sel); const q = e.getBoundingClientRect(); return [q.left, q.top, q.right, q.bottom]; };
+    return { score: r('.hud-score'), me: r('.bt-me'), btns: r('.top-buttons'), attack: r('.bt-attack .bt-face'), vw: innerWidth, vh: innerHeight, canvasHearts: window.__gona.scene.getScene('Game').heartIcons.some((h) => h.visible), grow: document.querySelector('.bt-grow-text').textContent };
+  });
+  const ov = (a, c) => a[0] < c[2] && a[2] > c[0] && a[1] < c[3] && a[3] > c[1];
+  const inside = (a) => a[0] >= 0 && a[1] >= 0 && a[2] <= rects.vw && a[3] <= rects.vh;
+  check(`${label}: HUD score / hearts+HP+growth / pause don't overlap`, !ov(rects.score, rects.me) && !ov(rects.score, rects.btns) && !ov(rects.me, rects.btns) && [rects.score, rects.me, rects.btns, rects.attack].every(inside), JSON.stringify(rects));
+  check(`${label}: old canvas stage cells gone, growth shown as text`, !rects.canvasHearts && rects.grow === '성장 3/4', rects.grow);
+  // 몬스터: 1·2단계엔 안 나옴
+  const early = await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.clear(); g.debugSetStage(1); let n = 0; for (let i = 0; i < 300; i++) { const before = g.spawned; g.spawnPattern(); n += g.spawned - before; } g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; return n; });
+  check(`${label}: no monsters in stage 1-2`, early === 0, `spawned ${early}`);
+  const later = await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.add('kiss'); g.debugSetStage(2); let n = 0; for (let i = 0; i < 300; i++) { const before = g.spawned; g.spawnPattern(); n += g.spawned - before; g.entities.filter((e) => e.type === 'monster').forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = g.entities.filter((e) => !e.done); } g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.distToNext = 1e9; return n; });
+  check(`${label}: monsters appear from stage 3`, later > 10, `spawned ${later} / 300 patterns`);
+  // 몬스터 공격(예고 뒤) → 맞으면 HP / 부메랑 처치 → 점수·필살 게이지
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.invincibleUntil = 0; g.addMonster('glasses', g.W + 5); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'mshot'), null, { timeout: 8000 }).catch(() => {});
+  const shotDist = await G(() => { const g = window.__gona.scene.getScene('Game'); const sh = g.entities.find((e) => !e.done && e.type === 'mshot'); return sh ? Math.round(sh.x - g.playerX) : -1; });
+  check(`${label}: glasses fires a dodgeable shot from distance`, shotDist > 70, `shot at +${shotDist}px`);
+  const k0 = await G(() => window.__gona.scene.getScene('Game').kills);
+  for (let i = 0; i < 6; i++) { if (!(await G(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'monster')))) break; await page.keyboard.press('KeyX'); await page.waitForTimeout(650); }
+  const kd = await G(() => { const g = window.__gona.scene.getScene('Game'); return { kills: g.kills, special: g.specialCarry, score: g.score }; });
+  check(`${label}: boomerang kills monster → score + special gauge`, kd.kills > k0 && kd.special > 0, JSON.stringify(kd));
+  // 체크포인트
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.boomerangAwake = true; g.debugStartBoss('kiss'); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 8000 });
+  // 분노 1·2단계 (HP 70% / 35%) — 전환 때 멈춤
+  const rage = [];
+  for (const hp of [6, 3]) {
+    await G((h) => window.__gona.scene.getScene('Game').debugBoss(h), hp);
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(400); const r = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { rage: bt.rage, frozen: bt.frozen, label: document.querySelector('.bb-phase').textContent }; }); if (r.rage >= rage.length + 1) { rage.push(r); break; } }
+    await page.waitForTimeout(1700);
+  }
+  check(`${label}: boss rage 1 (≤70%) and rage 2 (≤35%) with freeze`, rage.length === 2 && rage[0].frozen && rage[1].rage === 2 && rage[1].label.includes('2차'), JSON.stringify(rage));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal')), null, { timeout: 25000 }).catch(() => {});
+  check(`${label}: rage 2 uses 왕뽀뽀 special`, await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal'))));
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
+  for (let i = 0; i < 8 && (await G(() => window.__gona.scene.getScene('Game').debugBattle()?.mode)) === 'fight'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(700); }
+  await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.growth.stageIndex === 2 && g.state === 'playing'; }, null, { timeout: 12000 }).catch(() => {});
+  const cp = await G(() => JSON.parse(localStorage.getItem('gona.checkpoint') || 'null'));
+  check(`${label}: checkpoint saved after first boss`, cp?.id === 'walker', JSON.stringify(cp));
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.hearts = 1; g.hp = 10; g.invincibleUntil = 0; g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.addRock(g.playerX + 25); });
+  await page.waitForSelector('.over-screen:not(.hidden)', { timeout: 8000 });
+  await page.waitForTimeout(600);
+  check(`${label}: game over offers checkpoint continue + new game`, (await page.locator('.cp-retry').isVisible()) && (await page.locator('.over-screen .retry-btn').textContent()).includes('새 게임'));
+  await page.locator('.cp-retry').click();
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').state === 'playing', null, { timeout: 6000 });
+  const rs = await G(() => { const g = window.__gona.scene.getScene('Game'); return { stage: g.growth.stageIndex, hp: g.hp, hearts: g.hearts, kiss: g.clearedBosses.has('kiss'), throw: g.canThrow }; });
+  check(`${label}: continue from checkpoint = stage 3, HP 100, boomerang`, rs.stage === 2 && rs.hp === 100 && rs.hearts === 3 && rs.kiss && rs.throw, JSON.stringify(rs));
+  check(`${label}: no page errors (features)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.some((o) => n.startsWith(o));
+  if (want('feat-se')) await featureTests('feat-se', devices['iPhone SE']);
+  if (want('feat-land')) await featureTests('feat-land', devices['iPhone 13 landscape']);
   if (want('ctrl-port')) await controlTests('ctrl-port', devices['iPhone 13']);
   if (want('ctrl-land')) await controlTests('ctrl-land', devices['iPhone 13 landscape']);
   if (want('boss-port')) await bossTests('boss-port', devices['iPhone 13']);

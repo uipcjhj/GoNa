@@ -1,6 +1,7 @@
 import { DEV } from '../config';
 import { perf, setPerfOverlay } from '../perf';
-import type { BossId } from '../events';
+import type { RestartOptions } from '../events';
+import { CHECKPOINT_LABEL, loadCheckpoint } from '../game/checkpoint';
 /**
  * 대표 타이틀 화면 — 알 부화 시네마틱이 끝나면 카메라가 물러나며 나타남.
  *
@@ -58,6 +59,9 @@ export class CoverScreen {
   private sides: HTMLElement[] = [];
   private ui: HTMLElement;
   private btn: HTMLButtonElement;
+  private btnLabel!: HTMLSpanElement;
+  private contBtn!: HTMLButtonElement;
+  private hint!: HTMLElement;
   private started = false;
   private shown = false;
   private fallTimer = 0;
@@ -68,7 +72,7 @@ export class CoverScreen {
 
   constructor(
     parent: HTMLElement,
-    private onStart: (boss?: BossId) => void,
+    private onStart: (opt?: RestartOptions) => void,
   ) {
     this.root = el('section', 'cover hidden');
     this.root.setAttribute('aria-label', GAME_TITLE);
@@ -116,10 +120,15 @@ export class CoverScreen {
 
     this.btn = el('button', 'start-btn cover-btn');
     this.btn.type = 'button';
-    this.btn.append(el('span', 'cover-play', '▶'), el('span', '', '게임 시작'));
-    const hint = el('p', 'cover-hint', '버튼을 누르면 모험이 시작돼요');
+    this.btnLabel = el('span', '', '게임 시작');
+    this.btn.append(el('span', 'cover-play', '▶'), this.btnLabel);
+    // 이어하기 (체크포인트가 있을 때만)
+    this.contBtn = el('button', 'start-btn cover-continue hidden');
+    this.contBtn.type = 'button';
+    this.contBtn.addEventListener('click', () => this.start({ checkpoint: true }));
+    this.hint = el('p', 'cover-hint', '버튼을 누르면 모험이 시작돼요');
     this.ui = el('div', 'cover-ui');
-    this.ui.append(this.btn, hint);
+    this.ui.append(this.contBtn, this.btn, this.hint);
 
     const test = el('button', 'ap-open cover-test', '🔊 소리 테스트');
     test.type = 'button';
@@ -143,8 +152,8 @@ export class CoverScreen {
         b.addEventListener('click', fn);
         list.append(b);
       };
-      mk('🧪 뽀뽀괴물 테스트', () => this.start('kiss'));
-      mk('🧪 킁카괴물 테스트', () => this.start('sniff'));
+      mk('🧪 뽀뽀괴물 테스트', () => this.start({ boss: 'kiss' }));
+      mk('🧪 킁카괴물 테스트', () => this.start({ boss: 'sniff' }));
       const label = (): string => (perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기');
       mk(label(), () => {
         setPerfOverlay(!perf.enabled);
@@ -219,6 +228,12 @@ export class CoverScreen {
    */
   reveal(instant: boolean): void {
     this.started = false;
+    // 저장된 진행이 있으면 '이어하기' + '새 게임'
+    const cp = loadCheckpoint();
+    this.contBtn.classList.toggle('hidden', !cp);
+    this.contBtn.replaceChildren(el('span', 'cover-play', '💾'), el('span', '', `이어하기 · ${cp ? CHECKPOINT_LABEL[cp.id] : ''}`));
+    this.btnLabel.textContent = cp ? '새 게임' : '게임 시작';
+    this.hint.textContent = cp ? `저장: ${CHECKPOINT_LABEL[cp.id]} · 점수 ${cp.score}` : '버튼을 누르면 모험이 시작돼요';
     this.root.classList.remove('hidden', 'leaving', 'revealed', 'instant');
     this.btn.classList.remove('pressed');
     this.shown = true;
@@ -342,7 +357,7 @@ export class CoverScreen {
   // ───────────────────────── 시작 ─────────────────────────
 
   /** 게임 시작 버튼 (Space 키도). boss = 개발용 보스전 바로가기 */
-  start(boss?: BossId): void {
+  start(opt?: RestartOptions): void {
     if (this.started || !this.shown) return;
     this.started = true;
     sound.unlock();
@@ -350,7 +365,7 @@ export class CoverScreen {
     sound.startMusic('title');
     this.btn.classList.add('pressed');
     this.root.classList.add('leaving');
-    window.setTimeout(() => this.onStart(boss), 350);
+    window.setTimeout(() => this.onStart(opt), 350);
     window.setTimeout(() => {
       this.root.classList.add('hidden');
       this.shown = false;
