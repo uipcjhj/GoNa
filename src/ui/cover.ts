@@ -145,9 +145,11 @@ export class CoverScreen {
       };
       mk('🧪 뽀뽀괴물 테스트', () => this.start('kiss'));
       mk('🧪 킁카괴물 테스트', () => this.start('sniff'));
-      mk(perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기', () => {
+      const label = (): string => (perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기');
+      mk(label(), () => {
         setPerfOverlay(!perf.enabled);
-        window.location.reload();
+        const last = list.lastElementChild;
+        if (last) last.textContent = label();
       });
     }
 

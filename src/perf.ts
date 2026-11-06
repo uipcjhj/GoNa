@@ -29,7 +29,7 @@ const LONG_MS = 25;
 const HISTORY = 240;
 
 class Perf {
-  readonly enabled: boolean;
+  enabled: boolean;
   /** 저사양 모드: 계속 느리면 자동으로 켜짐 (먼지 꼬리·반짝이 줄임) */
   low = false;
   private frameEvents: PerfEvent[] = [];
@@ -148,6 +148,16 @@ class Perf {
 
   private pre: HTMLPreElement | null = null;
 
+  /** 화면 표시 켜기/끄기 (새로고침 없이) */
+  show(on: boolean): void {
+    this.enabled = on;
+    if (on) this.mountPanel();
+    else {
+      this.panel?.remove();
+      this.panel = null;
+    }
+  }
+
   private mountPanel(): void {
     if (this.panel) return;
     const p = document.createElement('div');
@@ -194,8 +204,9 @@ function r1(v: number): number {
 
 export const perf = new Perf();
 
-/** 테스트 메뉴에서 켜고 끄기 (다시 불러오면 적용) */
+/** 테스트 메뉴에서 켜고 끄기 (바로 적용 + 가능하면 다음에도 기억) */
 export function setPerfOverlay(on: boolean): void {
+  perf.show(on);
   try {
     window.localStorage.setItem('gona.perf', on ? '1' : '0');
   } catch {

@@ -2301,7 +2301,7 @@ body.in-battle .touch-hint {
 .perf-panel {
   position: fixed;
   left: max(4px, env(safe-area-inset-left));
-  top: calc(max(4px, env(safe-area-inset-top)) + 64px);
+  top: calc(max(4px, env(safe-area-inset-top)) + 100px);
   z-index: 50;
   max-width: 70vw;
   padding: 4px 6px;
