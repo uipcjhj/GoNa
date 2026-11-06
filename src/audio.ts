@@ -23,7 +23,7 @@ import { STORAGE_KEYS } from './config';
 import { storage } from './storage';
 
 type Wave = OscillatorType;
-export type MusicMode = 'title' | 'game';
+export type MusicMode = 'title' | 'game' | 'kiss' | 'kiss2' | 'sniff' | 'sniff2' | 'ending';
 
 /** 음 이름 → 주파수 (예: 'F4', 'Bb3', 'C#5') */
 function hz(n: string): number {
@@ -62,11 +62,85 @@ const MELODY: [number, string, number][][] = [
 const ARP_STEPS_TITLE = [2, 6, 10, 14];
 const ARP_STEPS_GAME = [1, 3, 5, 7, 9, 11, 13, 15];
 
-const TEMPO: Record<MusicMode, number> = { title: 68, game: 96 };
+// ───────────────────────── 보스전 · 엔딩 BGM (오리지널 작곡) ─────────────────────────
+// 모두 'Dream Nest' 의 첫 동기(높은음 → 한 칸씩 내려왔다 다시 오름)를 변형해 기존 음악과 이어지게.
+type Notes = [number, string, number][][];
+/** 뽀뽀괴물: 장난스럽고 귀엽지만 살짝 위험 — D 단조, 빠른 8비트, 통통 튀는 베이스 */
+const KISS_CHORDS = ['D3', 'Bb2', 'C3', 'A2', 'D3', 'G2', 'C3', 'A2'];
+const KISS_TRIAD: string[][] = [
+  ['D4', 'F4', 'A4'], ['Bb3', 'D4', 'F4'], ['C4', 'E4', 'G4'], ['A3', 'C#4', 'E4'],
+  ['D4', 'F4', 'A4'], ['G3', 'Bb3', 'D4'], ['C4', 'E4', 'G4'], ['A3', 'C#4', 'E4'],
+];
+const KISS_LEAD: Notes = [
+  [[0, 'A5', 2], [2, 'F5', 1], [4, 'E5', 1], [6, 'F5', 2], [10, 'A5', 1], [12, 'D6', 2]],
+  [[0, 'D6', 2], [2, 'C6', 1], [4, 'Bb5', 2], [8, 'F5', 2], [12, 'G5', 1], [14, 'A5', 1]],
+  [[0, 'G5', 2], [4, 'E5', 2], [6, 'G5', 1], [8, 'C6', 3], [12, 'Bb5', 1], [14, 'A5', 1]],
+  [[0, 'A5', 3], [4, 'C#6', 2], [8, 'E6', 2], [12, 'A5', 2]],
+  [[0, 'A5', 2], [2, 'F5', 1], [4, 'E5', 1], [6, 'F5', 2], [10, 'D6', 1], [12, 'F6', 2]],
+  [[0, 'D6', 2], [4, 'Bb5', 2], [8, 'G5', 2], [12, 'D6', 2]],
+  [[0, 'F6', 2], [2, 'E6', 1], [4, 'D6', 2], [8, 'C6', 2], [10, 'Bb5', 1], [12, 'C6', 2]],
+  [[0, 'E6', 2], [4, 'C#6', 2], [8, 'A5', 4], [14, 'E5', 1]],
+];
+/** 킁카괴물: 최종 보스 — 웅장하면서 귀엽게, 낮은 신스 베이스 + 긴장감 있는 8비트 타악기 */
+const SNIFF_ROOT = ['D2', 'Bb1', 'G1', 'A1', 'D2', 'F1', 'G1', 'A1'];
+const SNIFF_TRIAD: string[][] = [
+  ['D4', 'F4', 'A4'], ['Bb3', 'D4', 'F4'], ['G3', 'Bb3', 'D4'], ['A3', 'C#4', 'E4'],
+  ['D4', 'F4', 'A4'], ['F3', 'A3', 'C4'], ['G3', 'Bb3', 'D4'], ['A3', 'C#4', 'E4'],
+];
+const SNIFF_LEAD: Notes = [
+  [[0, 'D5', 4], [4, 'F5', 4], [8, 'A5', 6], [14, 'G5', 2]],
+  [[0, 'F5', 4], [4, 'D5', 4], [8, 'Bb4', 8]],
+  [[0, 'G5', 4], [4, 'Bb5', 4], [8, 'D6', 6], [14, 'C6', 2]],
+  [[0, 'C#6', 8], [8, 'A5', 8]],
+  [[0, 'A5', 4], [4, 'D6', 4], [8, 'F6', 6], [14, 'E6', 2]],
+  [[0, 'C6', 4], [4, 'A5', 4], [8, 'F5', 8]],
+  [[0, 'Bb5', 4], [4, 'D6', 4], [8, 'G6', 4], [12, 'F6', 4]],
+  [[0, 'E6', 8], [8, 'C#6', 4], [12, 'E6', 4]],
+];
+/** 가족 엔딩 테마: 잔잔한 글로켄 + 부드러운 패드, 9마디부터 풍성해지고(가족에게 안기는 장면) 마지막 2마디 페이드아웃 — 16마디 1회 */
+const END_CHORDS: string[][] = [
+  ['F3', 'A3', 'C4', 'E4'], ['D3', 'F3', 'A3', 'C4'], ['Bb2', 'D3', 'F3', 'A3'], ['C3', 'F3', 'G3', 'Bb3'],
+  ['A2', 'C3', 'E3', 'G3'], ['D3', 'F3', 'A3', 'C4'], ['Bb2', 'D3', 'F3', 'A3'], ['C3', 'E3', 'G3', 'Bb3'],
+  ['F3', 'A3', 'C4', 'E4'], ['A2', 'C3', 'E3', 'G3'], ['Bb2', 'D3', 'F3', 'A3'], ['C3', 'F3', 'G3', 'Bb3'],
+  ['D3', 'F3', 'A3', 'C4'], ['Bb2', 'D3', 'F3', 'A3'], ['G2', 'Bb2', 'D3', 'F3'], ['F3', 'A3', 'C4', 'E4'],
+];
+const END_BASS = ['F2', 'D2', 'Bb1', 'C2', 'A1', 'D2', 'Bb1', 'C2', 'F2', 'A1', 'Bb1', 'C2', 'D2', 'Bb1', 'G1', 'F2'];
+const END_MELODY: Notes = [
+  [[0, 'C6', 4], [4, 'A5', 2], [6, 'G5', 2], [8, 'A5', 8]],
+  [[0, 'F5', 4], [4, 'G5', 2], [6, 'A5', 2], [8, 'D6', 8]],
+  [[0, 'C6', 4], [4, 'A5', 4], [8, 'F5', 8]],
+  [[0, 'G5', 12], [12, 'A5', 2], [14, 'Bb5', 2]],
+  [[0, 'C6', 4], [4, 'E6', 4], [8, 'D6', 4], [12, 'C6', 4]],
+  [[0, 'A5', 6], [6, 'F5', 2], [8, 'A5', 8]],
+  [[0, 'Bb5', 4], [4, 'D6', 4], [8, 'C6', 8]],
+  [[0, 'G5', 8], [8, 'E5', 8]],
+  [[0, 'C6', 4], [4, 'A5', 2], [6, 'G5', 2], [8, 'A5', 6], [14, 'C6', 2]],
+  [[0, 'E6', 4], [4, 'C6', 4], [8, 'A5', 8]],
+  [[0, 'D6', 4], [4, 'F6', 4], [8, 'E6', 4], [12, 'D6', 4]],
+  [[0, 'C6', 12], [12, 'G5', 2], [14, 'A5', 2]],
+  [[0, 'F6', 4], [4, 'E6', 4], [8, 'D6', 4], [12, 'A5', 4]],
+  [[0, 'D6', 6], [6, 'C6', 2], [8, 'Bb5', 8]],
+  [[0, 'A5', 4], [4, 'Bb5', 4], [8, 'G5', 8]],
+  [[0, 'F5', 16]],
+];
+/** 엔딩 곡 마디 수 (반복 없음) */
+export const ENDING_BARS = 16;
+
+const TEMPO: Record<MusicMode, number> = { title: 68, game: 96, kiss: 150, kiss2: 150, sniff: 124, sniff2: 124, ending: 84 };
 
 const AUDIO_DIR = 'assets/audio/';
 /** 미리 만든 소리 파일 (tools/render_audio.cjs) */
-export const MUSIC_FILES: Record<MusicMode, string> = { title: 'bgm-title.mp3', game: 'bgm-game.mp3' };
+export const MUSIC_FILES: Record<MusicMode, string> = {
+  title: 'bgm-title.mp3',
+  game: 'bgm-game.mp3',
+  kiss: 'bgm-kiss.mp3',
+  kiss2: 'bgm-kiss2.mp3',
+  sniff: 'bgm-sniff.mp3',
+  sniff2: 'bgm-sniff2.mp3',
+  ending: 'bgm-ending.mp3',
+};
+/** 반복하지 않는 곡 (엔딩) */
+const MUSIC_ONCE: Partial<Record<MusicMode, boolean>> = { ending: true };
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
@@ -76,7 +150,7 @@ export type SfxName = (typeof SFX_NAMES)[number];
 /** 효과음 메서드 (성능 기록용) */
 const SFX_METHODS = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'pickup', 'hit', 'gameOver', 'evolve',
-  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart',
+  'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart', 'curlyPop', 'curlyHit', 'starBurst', 'flaskThrow', 'glassBreak',
 ] as const;
 
 /** 아주 짧은 무음 WAV (iOS 오디오 세션을 '미디어 재생'으로 유지) */
@@ -289,7 +363,7 @@ class Sound {
       return a;
     };
     (Object.keys(MUSIC_FILES) as MusicMode[]).forEach((m) => {
-      const a = mk(AUDIO_DIR + MUSIC_FILES[m], true);
+      const a = mk(AUDIO_DIR + MUSIC_FILES[m], !MUSIC_ONCE[m]);
       a.addEventListener('error', () => {
         this.musicBroken[m] = true;
         this.log(`배경음악 파일 오류 (${MUSIC_FILES[m]})`, a.error?.message || `code ${a.error?.code}`);
@@ -299,6 +373,14 @@ class Sound {
       this.music[m] = a;
     });
     this.mkEl = mk;
+    // <audio>.volume 을 바꿀 수 있는 브라우저인지 (아이폰 Safari 는 항상 1 → 페이드 대신 바로 멈춤)
+    try {
+      const probe = new Audio();
+      probe.volume = 0.5;
+      this.volumeWorks = Math.abs(probe.volume - 0.5) < 0.01;
+    } catch {
+      this.volumeWorks = false;
+    }
     // 효과음 파일(<audio>)은 Web Audio 가 안 될 때만 쓰는 예비 수단 → 처음부터 54개를 만들지 않음
     // (예전: 시작할 때 54개 다운로드 + 첫 터치 때 전부 재생→정지 = 아이폰에서 프롤로그 첫 화면이 크게 멈칫)
     try {
@@ -309,6 +391,8 @@ class Sound {
   }
 
   private mkEl: ((src: string, loop: boolean) => HTMLAudioElement) | null = null;
+  private volumeWorks = false;
+  private fadeTimer = 0;
   private sfxFallbackReady = false;
 
   /** 효과음 예비 <audio> 만들기 (Web Audio 를 쓸 수 없을 때만, 사용자 입력 안에서) */
@@ -371,6 +455,16 @@ class Sound {
   private playFileMusic(mode: MusicMode): boolean {
     const el = this.music[mode];
     if (!el || this.musicBroken[mode]) return false;
+    clearInterval(this.fadeTimer);
+    if (this.volumeWorks) el.volume = 1;
+    // 반복하지 않는 곡(엔딩)은 처음부터
+    if (MUSIC_ONCE[mode] && el.paused) {
+      try {
+        el.currentTime = 0;
+      } catch {
+        /* 로드 전 */
+      }
+    }
     for (const m of Object.keys(this.music) as MusicMode[]) {
       if (this.music[m] !== el) this.music[m]?.pause();
     }
@@ -663,12 +757,18 @@ class Sound {
     this.noise(0.5, 0.55, 0, 'lowpass', 900);
     this.noise(0.35, 0.25, 0.08, 'highpass', 2500);
   }
-  /** 안경잽이몹 현금다발 '뽑!' — 짧고 통통 튀는 소리 (현금다발마다) */
-  cashPop(): void {
-    if (this.sfxFile('boing')) return;
-    this.tone(660, 0.07, 'square', 0.16, 0, 990);
-    this.tone(1320, 0.05, 'triangle', 0.12, 0.04);
-    this.noise(0.05, 0.18, 0, 'highpass', 3000);
+  /** 안경잽이몹 플라스크 던지기: 코르크 '뽁' + 휘익 */
+  flaskThrow(): void {
+    if (this.sfxFile('throw')) return;
+    this.tone(880, 0.05, 'square', 0.12, 0, 1320);
+    this.noise(0.18, 0.12, 0.03, 'bandpass', 2400);
+  }
+  /** 유리병 '팡!' 깨지는 소리 (짤랑) */
+  glassBreak(): void {
+    if (this.sfxFile('catch')) return;
+    this.noise(0.12, 0.28, 0, 'highpass', 4200);
+    [2637, 3136, 3951].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.07, 0.02 + i * 0.035));
+    this.tone(220, 0.08, 'square', 0.08, 0);
   }
   /** 배불뚝이 아저씨몹 방귀 '뿌웅' — 짧고 우스꽝스럽게 (낮은 부르릉 + 피식 바람) */
   fart(): void {
@@ -678,12 +778,38 @@ class Sound {
     this.tone(124, 0.16, 'square', 0.14, 0.21, 66);
     this.noise(0.34, 0.3, 0.02, 'lowpass', 520);
   }
-  /** 필살기 */
+  /** 고나 필살기 '초특급 꼬불머리 팡팡!' ① 컷인: 8비트 상승 아르페지오 + 반짝 (슬로모션 '슈우웅') */
   special(): void {
     if (this.sfxFile('special')) return;
-    ['C5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.25, i * 0.06));
-    this.noise(0.6, 0.5, 0.25, 'bandpass', 2000);
-    this.tone(110, 0.6, 'square', 0.25, 0.3, 55);
+    ['C5', 'E5', 'G5', 'C6', 'E6', 'G6', 'C7'].forEach((n, i) => this.tone(hz(n), 0.09, 'square', 0.13, i * 0.055));
+    this.tone(hz('C6'), 0.5, 'square', 0.07, 0.4);
+    this.tone(hz('G6'), 0.5, 'square', 0.05, 0.4);
+    this.bell(hz('C7'), 0.7, 0.14, 0.4, this.sfxBus, true);
+    this.noise(0.7, 0.18, 0, 'bandpass', 3200);
+  }
+  /** ② 머리카락이 '뽁!' 빠져서 빛나며 커짐 (위로 쭉 올라가는 소리) */
+  curlyPop(): void {
+    if (this.sfxFile('catch')) return;
+    this.tone(520, 0.06, 'square', 0.2, 0, 1040);
+    this.tone(330, 0.45, 'triangle', 0.16, 0.06, 1320);
+    this.tone(660, 0.45, 'square', 0.06, 0.08, 2640);
+    this.noise(0.4, 0.14, 0.05, 'bandpass', 2600);
+  }
+  /** ③ 거대 부메랑 타격 (i = 0,1,2 → 점점 높고 세게) */
+  curlyHit(i = 0): void {
+    if (this.sfxFile('bossHit')) return;
+    const up = 1 + i * 0.26;
+    this.noise(0.14, 0.6, 0, 'bandpass', 1400 * up);
+    this.tone(260 * up, 0.14, 'square', 0.24, 0, 120 * up);
+    this.tone(hz(['E6', 'G6', 'C7'][i] ?? 'C7'), 0.12, 'square', 0.1, 0.02);
+  }
+  /** ④ 커다란 별 폭발 '팡!' + 반짝 꼬리 */
+  starBurst(): void {
+    if (this.sfxFile('bossDown')) return;
+    this.tone(110, 0.5, 'square', 0.3, 0, 45);
+    this.noise(0.55, 0.65, 0, 'lowpass', 1600);
+    this.noise(0.3, 0.3, 0.02, 'highpass', 3600);
+    ['G6', 'E6', 'C7', 'G6', 'C7'].forEach((n, i) => this.tone(hz(n), 0.08, 'square', 0.09, 0.18 + i * 0.07));
   }
   /** 보스 쓰러짐 */
   bossDown(): void {
@@ -726,7 +852,62 @@ class Sound {
     this.startSynthMusic(mode);
   }
 
+  /**
+   * 배경음악을 자연스럽게 줄이며 멈춤 (ms). 음량을 못 바꾸는 아이폰은 바로 멈춤.
+   * 다음 곡은 startMusic 으로.
+   */
+  fadeOutMusic(ms = 700): void {
+    const el = this.wantedMusicEl();
+    this.wantMusic = null;
+    this.stopSynth();
+    clearInterval(this.fadeTimer);
+    if (!el || el.paused || !this.volumeWorks) {
+      this.pauseFileMusic();
+      this.emit();
+      return;
+    }
+    const t0 = performance.now();
+    this.fadeTimer = window.setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      el.volume = Math.max(0, 1 - k);
+      if (k >= 1) {
+        clearInterval(this.fadeTimer);
+        el.pause();
+        el.volume = 1;
+        this.emit();
+      }
+    }, 40);
+  }
+
+  /**
+   * 같은 길이·빠르기의 다른 판으로 같은 박자 위치에서 이어 바꿈 (분노 단계: kiss → kiss2 등)
+   */
+  switchMusicSync(mode: MusicMode): void {
+    if (this.wantMusic === mode) return;
+    const from = this.wantedMusicEl();
+    const to = this.music[mode];
+    if (!from || !to || from.paused || this.musicBroken[mode] || this.muted) {
+      this.startMusic(mode);
+      return;
+    }
+    try {
+      to.currentTime = from.currentTime % (to.duration || from.duration || 1);
+    } catch {
+      /* 로드 전 */
+    }
+    this.startMusic(mode);
+  }
+
+  /** 짧은 승리 팡파르 (보스 처치) */
+  fanfare(): void {
+    if (this.sfxFile('evolveDone')) return;
+    ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.tone(hz(n), 0.12, 'square', 0.16, i * 0.11));
+    ['C5', 'E5', 'G5', 'C6'].forEach((n) => this.tone(hz(n), 0.7, 'square', 0.08, 0.46));
+    this.bell(hz('C7'), 0.9, 0.12, 0.46, this.sfxBus, true);
+  }
+
   stopMusic(): void {
+    clearInterval(this.fadeTimer);
     this.wantMusic = null;
     this.pauseFileMusic();
     this.stopSynth();
@@ -766,6 +947,9 @@ class Sound {
   private playStep(step: number, when: number): void {
     const bus = this.musicBus;
     if (!bus) return;
+    if (this.mode === 'kiss' || this.mode === 'kiss2') return this.playKiss(step, when, bus, this.mode === 'kiss2');
+    if (this.mode === 'sniff' || this.mode === 'sniff2') return this.playSniff(step, when, bus, this.mode === 'sniff2');
+    if (this.mode === 'ending') return this.playEnding(step, when, bus);
     const game = this.mode === 'game';
     const s16 = 60 / TEMPO[this.mode] / 4;
     const bar = Math.floor(step / 16) % 8;
@@ -807,6 +991,94 @@ class Sound {
       }
       if (pos === 4 || pos === 12) this.noise(0.08, 0.06, when, 'bandpass', 1800, bus); // 손뼉 같은 스냅
       if (pos % 2 === 1) this.noise(0.03, pos % 4 === 3 ? 0.035 : 0.02, when, 'highpass', 7000, bus); // 셰이커
+    }
+  }
+
+  /** 뽀뽀괴물 전투곡 (intense = 분노: 킥 4박·16분 하이햇·리드 옥타브 겹침·아르페지오) */
+  private playKiss(step: number, when: number, bus: AudioNode, intense: boolean): void {
+    const s16 = 60 / TEMPO.kiss / 4;
+    const bar = Math.floor(step / 16) % 8;
+    const pos = step % 16;
+    const root = hz(KISS_CHORDS[bar]);
+    // 통통 튀는 신스 베이스 (8분음표, 옥타브 왔다 갔다)
+    if (pos % 2 === 0) this.tone(root * (pos % 4 === 2 ? 2 : 1), s16 * 1.5, 'square', 0.11, when, undefined, bus, 0.004);
+    if (intense && pos % 2 === 1 && pos % 4 === 3) this.tone(root * 2, s16 * 0.8, 'square', 0.06, when, undefined, bus, 0.003);
+    // 화음 '짝' (2·4박에 짧게)
+    if (pos === 4 || pos === 12) for (const n of KISS_TRIAD[bar]) this.tone(hz(n), s16 * 1.2, 'triangle', 0.035, when, undefined, bus, 0.005);
+    // 타악기
+    if (pos === 0 || pos === 8 || (intense && (pos === 4 || pos === 12 || pos === 14))) this.tone(130, 0.14, 'sine', 0.32, when, 48, bus, 0.003);
+    if (pos === 4 || pos === 12) this.noise(0.09, 0.09, when, 'bandpass', 1900, bus);
+    if (intense ? true : pos % 2 === 1) this.noise(0.025, pos % 4 === 2 ? 0.035 : 0.02, when, 'highpass', 7500, bus);
+    // 리드 (스타카토 사각파) — 분노 땐 한 옥타브 위를 작게 겹침
+    for (const [p, n, l] of KISS_LEAD[bar]) {
+      if (p !== pos) continue;
+      this.tone(hz(n), s16 * l * 0.85, 'square', 0.075, when, undefined, bus, 0.004);
+      if (intense) this.tone(hz(n) * 2, s16 * l * 0.6, 'square', 0.03, when, undefined, bus, 0.004);
+    }
+    // 마디 끝 '뾰옹' (장난스러운 미끄럼)
+    if (pos === 15 && bar % 2 === 1) this.tone(hz('A5'), s16 * 1.2, 'triangle', 0.05, when, hz('D6'), bus, 0.003);
+    // 분노: 16분 아르페지오 반짝이
+    if (intense) {
+      const tri = KISS_TRIAD[bar];
+      this.tone(hz(tri[pos % 3]) * 2, s16 * 0.7, 'triangle', 0.025, when, undefined, bus, 0.003);
+    }
+  }
+
+  /** 킁카괴물 전투곡 (intense = 2차 분노: 베이스 8분 펄스·16분 하이햇·북 추가·아르페지오) */
+  private playSniff(step: number, when: number, bus: AudioNode, intense: boolean): void {
+    const s16 = 60 / TEMPO.sniff / 4;
+    const bar = Math.floor(step / 16) % 8;
+    const pos = step % 16;
+    const root = hz(SNIFF_ROOT[bar]);
+    // 낮은 신스 베이스 (길게 + 분노 땐 8분 펄스)
+    if (pos === 0) this.tone(root, s16 * 7, 'sawtooth', 0.09, when, undefined, bus, 0.02);
+    if (pos === 8) this.tone(root, s16 * 6, 'sawtooth', 0.07, when, undefined, bus, 0.02);
+    if (intense && pos % 2 === 0) this.tone(root * 2, s16 * 1.4, 'square', 0.05, when, undefined, bus, 0.004);
+    // 웅장한 패드 (마디 첫 칸)
+    if (pos === 0) for (const n of SNIFF_TRIAD[bar]) this.tone(hz(n), s16 * 16, 'triangle', 0.035, when, undefined, bus, s16 * 4);
+    // 긴장감 있는 8비트 타악기: 낮은 북(톰) · 스네어 · 하이햇
+    if (pos === 0 || pos === 6 || pos === 10 || (intense && (pos === 3 || pos === 13))) this.tone(pos === 0 ? 95 : 140, 0.22, 'sine', 0.3, when, 45, bus, 0.003);
+    if (pos === 4 || pos === 12) this.noise(0.12, 0.1, when, 'bandpass', 1500, bus);
+    if (intense ? true : pos % 2 === 1) this.noise(0.03, 0.022, when, 'highpass', 6800, bus);
+    // 멜로디 (글로켄 + 사각파 겹침 — 귀엽고 웅장하게)
+    for (const [p, n, l] of SNIFF_LEAD[bar]) {
+      if (p !== pos) continue;
+      this.bell(hz(n), Math.min(2, s16 * l * 1.3 + 0.3), 0.1, when, bus, true);
+      this.tone(hz(n), s16 * l * 0.9, 'square', 0.04, when, undefined, bus, 0.01);
+    }
+    if (intense) {
+      const tri = SNIFF_TRIAD[bar];
+      this.tone(hz(tri[(pos + bar) % 3]) * 2, s16 * 0.7, 'square', 0.022, when, undefined, bus, 0.003);
+    }
+  }
+
+  /** 가족 엔딩 테마 (16마디 1회): 글로켄 + 패드 → 9마디부터 베이스·대선율·반짝이로 풍성 → 마지막 2마디 페이드아웃 */
+  private playEnding(step: number, when: number, bus: AudioNode): void {
+    if (step >= ENDING_BARS * 16) return;
+    const s16 = 60 / TEMPO.ending / 4;
+    const bar = Math.floor(step / 16);
+    const pos = step % 16;
+    const full = bar >= 8;
+    const fade = bar >= 14 ? Math.max(0.12, 1 - (step - 14 * 16) / 32) : 1;
+    const chord = END_CHORDS[bar];
+    if (pos === 0) {
+      const len = s16 * 16 * (bar === 15 ? 2.2 : 1.05);
+      for (const n of chord) {
+        this.tone(hz(n), len, 'triangle', 0.05 * fade, when, undefined, bus, len * 0.35);
+        this.tone(hz(n) * 1.005, len, 'sine', 0.045 * fade, when, undefined, bus, len * 0.4);
+      }
+    }
+    for (const [p, n, l] of END_MELODY[bar]) {
+      if (p === pos) this.bell(hz(n), Math.min(3, s16 * l * 1.6 + 0.5), 0.14 * fade, when, bus, true);
+    }
+    if (full) {
+      // 잔잔한 베이스 · 한 옥타브 아래 대선율 · 반짝이 아르페지오
+      if (pos === 0) this.tone(hz(END_BASS[bar]), s16 * 14, 'sine', 0.17 * fade, when, undefined, bus, 0.15);
+      if (pos === 8) this.tone(hz(END_BASS[bar]) * 1.5, s16 * 6, 'sine', 0.07 * fade, when, undefined, bus, 0.1);
+      for (const [p, n, l] of END_MELODY[bar]) if (p === pos && l >= 4) this.tone(hz(n) / 2, s16 * l * 0.9, 'sine', 0.05 * fade, when, undefined, bus, 0.05);
+      if (pos % 4 === 2) this.bell(hz(chord[(pos / 2 + bar) % chord.length]) * 4, 0.5, 0.04 * fade, when, bus, true);
+    } else if (pos === 0) {
+      this.tone(hz(END_BASS[bar]), s16 * 14, 'sine', 0.1, when, undefined, bus, 0.2);
     }
   }
 }

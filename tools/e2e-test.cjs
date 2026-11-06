@@ -441,11 +441,20 @@ async function bossTests(label, device) {
   // (엔딩 화면 확인용: HP 1 로 낮춰도 2차 분노 전환을 거친 뒤 쓰러짐 — 그동안 고나는 무적)
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.debugBoss(1); });
   for (let i = 0; i < 16 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
-  await page.waitForSelector('.over-screen.cleared:not(.hidden)', { timeout: 9000 }).catch(() => {});
-  const end = await page.locator('.over-screen h2').textContent();
-  check(`${label}: final boss win → ending screen`, end.includes('모험 완료'), end);
+  // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 12000 }).catch(() => {});
+  const en = await G(() => ({ e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: window.__gona.scene.getScene('Game').children.list.filter((o) => /^family-/.test(o.texture?.key || '')).length }));
+  check(`${label}: final boss win → family ending (6 family, ending BGM)`, en.e?.state === 'ending' && en.fam === 6 && en.music === 'ending', JSON.stringify(en));
+  await page.waitForTimeout(2500);
+  const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
+  check(`${label}: ending subtitle types by itself`, sub1.startsWith('길고 길었던'), sub1);
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 37.2; });
+  await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
+  const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
+  check(`${label}: THE END screen with 3 buttons`, endTxt.includes('THE END') && endTxt.includes('2026.04.10') && (await page.locator('.ending-ui .end-btn').count()) === 3, endTxt);
   await page.screenshot({ path: `${S}/boss-${label}-ending.png` });
-  await page.locator('.over-screen .retry-btn').click(); await page.waitForTimeout(800);
+  await page.waitForTimeout(700);
+  await page.locator('.end-restart').click(); await page.waitForTimeout(800);
   const rs = await combat();
   check(`${label}: ending → restart from newborn`, rs.stage === 0 && rs.state === 'playing', JSON.stringify(rs));
 
@@ -645,12 +654,16 @@ async function featureTests(label, device) {
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.invincibleUntil = 0; g.addMonster('glasses', g.W + 5); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'mshot'), null, { timeout: 8000 }).catch(() => {});
   const shotDist = await G(() => { const g = window.__gona.scene.getScene('Game'); const sh = g.entities.find((e) => !e.done && e.type === 'mshot'); return sh ? Math.round(sh.x - g.playerX) : -1; });
-  check(`${label}: glasses fires a dodgeable cash bundle from distance`, shotDist > 70, `shot at +${shotDist}px`);
-  // 현금다발 3개 연속 (돈가방에서 뽑! 뽑! 뽑!) — 그림은 크지만 판정은 작게
-  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); window.__cash = 0; const seen = new Set(); g.events.on('postupdate', window.__cashFn = () => { for (const e of g.entities) if (e.type === 'mshot' && !seen.has(e)) { seen.add(e); window.__cash++; window.__cashTex = e.sprite.texture.key; window.__cashBox = [e.w, e.h, e.sprite.displayWidth]; } }); });
-  await page.waitForTimeout(2200);
-  const cash = await G(() => { window.__gona.scene.getScene('Game').events.off('postupdate', window.__cashFn); return { n: window.__cash, tex: window.__cashTex, box: window.__cashBox }; });
-  check(`${label}: glasses fires 3 cash bundles in a row (big sprite, small hitbox)`, cash.n >= 2 && cash.tex === 'mon-cash' && cash.box[2] > cash.box[0] * 1.5, JSON.stringify(cash));
+  check(`${label}: glasses throws a dodgeable potion flask from distance`, shotDist > 70, `shot at +${shotDist}px`);
+  // 보라 물약 플라스크 2~3개 포물선 → 땅에서 '팡' 깨지고 웅덩이 / 부메랑에 맞으면 공중에서 깨짐
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); window.__fl = { n: 0, arcs: 0, maxAlt: 0, shatter: 0, puddle: 0 }; const seen = new Set(); g.events.on('postupdate', window.__flFn = () => { for (const e of g.entities) { if (e.type === 'mshot' && !e.done) { window.__fl.maxAlt = Math.max(window.__fl.maxAlt, e.alt); } if (seen.has(e)) continue; seen.add(e); if (e.type === 'mshot') { window.__fl.n++; window.__fl.tex = e.sprite.texture.key; if (e.grav) window.__fl.arcs++; window.__fl.box = [e.w, e.h]; } else if (e.type === 'puddle') window.__fl.puddle++; else if (e.sprite.texture?.key === 'mon-shatter') window.__fl.shatter++; } }); });
+  await page.waitForTimeout(2600);
+  const fl = await G(() => { window.__gona.scene.getScene('Game').events.off('postupdate', window.__flFn); return window.__fl; });
+  check(`${label}: glasses throws 2-3 purple flasks in arcs (shatter + puddle, no cash)`, fl.n >= 2 && fl.tex === 'mon-flask' && fl.arcs === fl.n && fl.maxAlt > 20 && fl.shatter >= 1 && fl.puddle >= 1, JSON.stringify(fl));
+  const pd = await G(() => new Promise((res) => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.invincibleUntil = 0; g.hp = 100; const f = { x: g.playerX + 14, alt: 30, done: false, sprite: g.add.sprite(0, 0, 'mon-flask', 0) }; g.breakFlask(f, true); setTimeout(() => res({ hp: g.hp, log: g.damageLog.slice(-1)[0] }), 900); }));
+  check(`${label}: stepping in the purple puddle costs HP`, pd.hp < 100 && pd.log === 'puddle:15', JSON.stringify(pd));
+  const bm = await G(() => new Promise((res) => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.entities.filter((e) => e.type === 'mshot' || e.type === 'puddle').forEach((e) => { e.done = true; e.sprite.destroy(); }); const sp = g.add.sprite(0, 0, 'mon-flask', 0).setOrigin(0.5, 1).setDepth(6); const fe = { sprite: sp, type: 'mshot', x: g.playerX + 40, alt: 12, w: 8, h: 10, phase: 0, done: false, vx: -g.speed, valt: 0, grav: 0.0001, dmg: 20, age: 0 }; g.entities.push(fe); const n0 = g.entities.filter((e) => e.type === 'puddle' && !e.done).length; g.throwHair(); setTimeout(() => res({ broke: fe.done, puddles: g.entities.filter((e) => e.type === 'puddle' && !e.done).length - n0 }), 900); }));
+  check(`${label}: boomerang shatters a flask in the air (no puddle)`, bm.broke && bm.puddles === 0, JSON.stringify(bm));
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.invincibleUntil = 0; });
   const k0 = await G(() => window.__gona.scene.getScene('Game').kills);
   // (몬스터는 화면 오른쪽에서 걸어 들어옴 — 부메랑 사거리에 올 때까지 계속 던짐)

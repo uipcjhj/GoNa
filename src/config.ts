@@ -201,3 +201,20 @@ export const TITLE_LAYOUT = {
   /** 캐릭터 키 (배경 높이 대비) */
   characterHeight: 0.3,
 };
+
+/**
+ * ───────────── 가족 엔딩: 가족 그림 교체 ─────────────
+ * 지금은 실루엣 임시 그림(src/art/familyArt.ts)을 씁니다. 진짜 그림이 생기면:
+ *   1) 투명 배경 PNG 를 public/assets/family/ 에 넣고 (예: public/assets/family/mom.png)
+ *   2) 아래 url 에 'assets/family/mom.png' 처럼 경로를 적으면 자동으로 그 그림을 씁니다.
+ * 시트 규격: 가로로 3프레임 [0 서 있기 · 1 손 흔들기 · 2 두 팔 벌리기], 같은 크기 프레임,
+ *   권장 프레임 24x32 px (1:1 도트, 키 32줄을 넘으면 32줄 높이로 자동 축소), 발이 맨 아래 줄, 왼쪽(고나 쪽)을 바라봄.
+ */
+export const FAMILY_ASSETS: Record<'mom' | 'dad' | 'aunt' | 'uncle' | 'grandma' | 'grandpa', string> = {
+  mom: '', // 엄마
+  dad: '', // 아빠
+  aunt: '', // 이모
+  uncle: '', // 삼촌
+  grandma: '', // 할머니
+  grandpa: '', // 할아버지
+};

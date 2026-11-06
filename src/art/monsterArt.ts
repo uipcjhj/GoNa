@@ -141,69 +141,83 @@ export function monsterSheet(kind: 'glasses' | 'farter'): { canvas: HTMLCanvasEl
 }
 
 /**
- * 안경잽이몹 현금다발 20x14 — 두툼하게 겹친 지폐(가장자리 층) + 가운데 큰 $ + 노란 띠
- * 프레임 0 = 반듯 · 1 = 살짝 기울어짐 (날아갈 때 번갈아 → 흔들흔들). 기울인 그림은 미리 그려 둠
+ * 안경잽이몹 보라색 물약 플라스크 12x15 — 삼각 플라스크(넓은 밑면·좁은 목) + 유리 테두리 + 코르크 + 보라 물약 + 작은 독 표시
+ * 3프레임: 물약 거품이 보글보글 (위치가 바뀜). 코믹한 판타지 물약.
  */
-export const CASH_FRAME = { w: 22, h: 16 };
-function cashBundle(): HTMLCanvasElement {
-  const pc = new PixelCanvas(20, 14);
-  const DK = '#1b4d22';
-  // 뒤쪽 지폐 층 (오른쪽 아래로 한 칸씩 — 두께)
-  pc.rect(3, 4, 17, 10, DK);
-  pc.rect(3, 4, 16, 9, '#3f8f3c');
-  pc.rect(2, 3, 17, 10, DK);
-  pc.rect(2, 3, 16, 9, '#5aae4c');
-  // 맨 앞 지폐
-  pc.rect(0, 0, 18, 11, DK);
-  pc.rect(1, 1, 16, 9, '#9be46f');
-  pc.rect(1, 1, 16, 1, '#d6ffb0');
-  pc.rect(2, 2, 14, 7, '#86d65e');
-  pc.rect(3, 3, 12, 5, '#9be46f');
-  // 가장자리 지폐 층 (아래·오른쪽 밝은 줄)
-  for (let x = 3; x < 19; x += 2) pc.px(x, 12, '#c8f0a0');
-  for (let y = 5; y < 13; y += 2) pc.px(19, y, '#c8f0a0');
-  // 노란 띠
-  pc.rect(4, 0, 3, 11, '#e0a83a');
-  pc.rect(4, 0, 1, 11, '#f7d070');
-  pc.rect(6, 0, 1, 11, '#a8701e');
-  // 큰 $ (진한 초록)
-  const S = '#145a1e';
-  pc.rect(11, 1, 1, 9, S);
-  pc.rect(9, 2, 4, 1, S);
-  pc.rect(9, 3, 1, 2, S);
-  pc.rect(9, 5, 4, 1, S);
-  pc.rect(13, 6, 1, 2, S);
-  pc.rect(9, 8, 5, 1, S);
-  pc.px(14, 2, S);
-  return pc.canvas;
-}
-export function cashSheet(): HTMLCanvasElement {
-  const { w, h } = CASH_FRAME;
-  const pc = new PixelCanvas(w * 2, h);
-  const b = cashBundle();
-  pc.ctx.imageSmoothingEnabled = false;
-  pc.ctx.drawImage(b, 1, 1);
-  // 1번 프레임: 오른쪽으로 갈수록 한 칸씩 올라감 (회전 대신 도트 기울임 — 또렷)
-  for (let x = 0; x < b.width; x++) pc.ctx.drawImage(b, x, 0, 1, b.height, w + 1 + x, 2 - Math.floor(x / 7), 1, b.height);
+export const FLASK_FRAME = { w: 12, h: 16 };
+export function flaskSheet(): HTMLCanvasElement {
+  const { w, h } = FLASK_FRAME;
+  const pc = new PixelCanvas(w * 3, h);
+  const GL = '#e8f4ff'; // 유리
+  const LQ = '#9b4dff'; // 보라 물약
+  const LQ2 = '#c38bff';
+  const LQ3 = '#6a2ad0';
+  const bubbles = [
+    [[5, 9], [7, 6], [6, 3]],
+    [[6, 8], [4, 10], [5, 4]],
+    [[7, 9], [5, 7], [6, 2]],
+  ];
+  for (let f = 0; f < 3; f++) {
+    const ox = f * w;
+    // 코르크
+    pc.rect(ox + 4, 0, 4, 2, '#b07a3a');
+    pc.px(ox + 5, 0, '#d8a060');
+    // 목 (좁음)
+    pc.rect(ox + 4, 2, 4, 4, GL);
+    // 몸통 (아래로 넓어지는 삼각)
+    for (let y = 6; y < 15; y++) {
+      const half = Math.min(5, 2 + Math.floor(((y - 6) / 7) * 4));
+      pc.rect(ox + 6 - half, y, half * 2, 1, y >= 8 ? LQ : GL);
+    }
+    // 물약 명암 · 바닥
+    for (let y = 9; y < 14; y++) pc.px(ox + 6 - Math.min(5, 2 + Math.floor(((y - 6) / 7) * 4)) + 1, y, LQ2);
+    pc.rect(ox + 1, 14, 10, 1, LQ3);
+    // 유리 반짝
+    pc.px(ox + 5, 3, '#ffffff');
+    pc.px(ox + 4, 7, '#ffffff');
+    // 작은 독 표시 (해골)
+    pc.rect(ox + 5, 10, 3, 2, '#f4ecff');
+    pc.px(ox + 5, 10, LQ3);
+    pc.px(ox + 7, 10, LQ3);
+    pc.px(ox + 5, 12, '#f4ecff');
+    pc.px(ox + 7, 12, '#f4ecff');
+    // 거품 (보글보글)
+    for (const [bx, by] of bubbles[f]) pc.px(ox + bx, by, by < 8 ? LQ2 : '#e0c8ff');
+  }
+  pc.outline('#2a1a48');
   return pc.canvas;
 }
 
-/** 안경잽이몹 돈가방 12x12 — 공격 준비 때 앞에 '짠' 나타나 현금다발을 뽑아냄 */
-export function moneyBag(): HTMLCanvasElement {
-  const pc = new PixelCanvas(12, 12);
-  pc.disc(6, 7, 4, '#b07a3a');
-  pc.disc(5, 6, 2, '#cf9a52');
-  pc.rect(4, 1, 4, 2, '#8a5a26');
-  pc.rect(3, 3, 6, 1, '#6b4218');
-  // $ (S 모양 + 세로줄)
-  const S = '#2f6a22';
-  pc.rect(6, 4, 1, 7, S);
-  pc.rect(5, 5, 3, 1, S);
-  pc.px(4, 6, S);
-  pc.rect(5, 7, 3, 1, S);
-  pc.px(8, 8, S);
-  pc.rect(4, 9, 3, 1, S);
-  pc.outline('#4a2a10');
+/** 유리병이 '팡!' 깨짐 16x12 (2프레임: 깨지는 순간 → 조각·물약이 튐) */
+export const SHATTER_FRAME = { w: 16, h: 12 };
+export function shatterSheet(): HTMLCanvasElement {
+  const pc = new PixelCanvas(32, 12);
+  const shards: [number, number, number, number][][] = [
+    [[7, 6, 2, 1], [9, 4, 1, 2], [5, 4, 1, 1], [10, 7, 1, 1], [6, 8, 2, 1]],
+    [[2, 3, 2, 1], [13, 2, 1, 2], [4, 7, 1, 1], [12, 8, 2, 1], [8, 1, 1, 1]],
+  ];
+  shards.forEach((list, f) => {
+    for (const [x, y, ww, hh] of list) pc.rect(f * 16 + x, y, ww, hh, '#e8f4ff');
+    // 보라 물방울
+    for (let k = 0; k < 5; k++) pc.px(f * 16 + 3 + ((k * 5 + f * 3) % 11), 5 + ((k * 3 + f) % 6), k % 2 ? '#9b4dff' : '#c38bff');
+  });
+  pc.outline('#2a1a48');
+  return pc.canvas;
+}
+
+/** 깨진 자리에 잠깐 퍼지는 보라 물약 18x6 (2프레임: 거품 보글) */
+export const PUDDLE_FRAME = { w: 18, h: 6 };
+export function puddleSheet(): HTMLCanvasElement {
+  const pc = new PixelCanvas(36, 6);
+  for (let f = 0; f < 2; f++) {
+    const ox = f * 18;
+    pc.rect(ox + 2, 3, 14, 3, '#7a34e0');
+    pc.rect(ox + 1, 4, 16, 2, '#7a34e0');
+    pc.rect(ox + 4, 3, 8, 1, '#a868ff');
+    pc.px(ox + (f ? 6 : 11), 2, '#c38bff');
+    pc.px(ox + (f ? 12 : 5), 1, '#e0c8ff');
+  }
+  pc.outline('#2a1a48');
   return pc.canvas;
 }
 

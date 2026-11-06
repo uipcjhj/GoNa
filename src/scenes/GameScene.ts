@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
-import { sound } from '../audio';
+import { sound, type MusicMode } from '../audio';
 import { perf } from '../perf';
 import { storage } from '../storage';
 import type { StageVisual } from './BootScene';
@@ -12,10 +12,12 @@ import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
 import { clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../game/checkpoint';
 import { MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
-import { CASH_FRAME, cashSheet, CLOUD_FRAME, dizzyStar, fartCloudSheet, moneyBag, monsterSheet, pathArrow, POP_FRAME, popSheet } from '../art/monsterArt';
+import { CLOUD_FRAME, dizzyStar, FLASK_FRAME, flaskSheet, fartCloudSheet, monsterSheet, pathArrow, POP_FRAME, popSheet, PUDDLE_FRAME, puddleSheet, SHATTER_FRAME, shatterSheet } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
-import { auraRing, leaf, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
+import { FAMILY_ORDER, familySheet, FAMILY_FRAME, petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
+import { FamilyEnding } from './ending/FamilyEnding';
+import { auraRing, leaf, moodFlower, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
@@ -24,7 +26,7 @@ import { SniffBattle } from './battle/SniffBattle';
 import { HairBoomerang } from './battle/HairBoomerang';
 import type { BattleHost } from './battle/types';
 
-type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead' | 'cleared';
+type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead' | 'cleared' | 'ending';
 
 /** 진화 연출 시간(초): 변신 반짝임 → 새 모습 공개 → 게임 재개 */
 const EVO_TRANSFORM = 1.4;
@@ -32,8 +34,11 @@ const EVO_TOTAL = 2.5;
 
 interface Entity {
   sprite: Phaser.GameObjects.Image;
-  /** rock 바위 · snack 간식 · monster 일반 몬스터 · mshot 몬스터 투사체 · cloud 방귀 구름(땅에 잠시 남음) · fx 연출(충돌 없음) */
-  type: 'rock' | 'snack' | 'monster' | 'mshot' | 'cloud' | 'fx';
+  /** rock 바위 · snack 간식 · monster 일반 몬스터 · mshot 몬스터 투사체 · cloud 방귀 구름 · puddle 깨진 물약(땅에 잠시) · fx 연출(충돌 없음) */
+  type: 'rock' | 'snack' | 'monster' | 'mshot' | 'cloud' | 'puddle' | 'fx';
+  /** 포물선으로 나는 것(플라스크): 높이 속도·중력 — 땅에 닿으면 onLand */
+  valt?: number;
+  grav?: number;
   /** fx: 따라다닐 대상과 x 간격 (대상이 사라지면 같이 사라짐) */
   follow?: Entity;
   fxOff?: number;
@@ -55,7 +60,7 @@ interface Entity {
   dmg?: number;
   /** 이미 고나를 맞힘 (구름은 한 번만) */
   hit?: boolean;
-  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number; post: number };
+  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number; post: number; burstN?: number };
   /** 투사체·구름 애니메이션 시간(초) */
   age?: number;
 }
@@ -164,6 +169,9 @@ export class GameScene extends Phaser.Scene {
   private lastPressAt = -9999;
   private invincibleUntil = 0;
   private squash = 1;
+  /** 보스전 분위기: 배경 위(캐릭터 아래)에 드리우는 보랏빛·남색 그림자 + 바람에 날리는 나뭇잎 (전투 중에만) */
+  private moodTint!: Phaser.GameObjects.Rectangle;
+  private moodLeaves: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   /** 아파! 표정: 이 시각까지 hurt-<단계> 프레임 · 맞은 시각 · 뒤로 밀림(표시만) */
   private hurtUntil = 0;
   private hurtAt = 0;
@@ -219,6 +227,7 @@ export class GameScene extends Phaser.Scene {
     this.exprUntil = 0;
     this.hurtUntil = 0;
     this.hurtKick = 0;
+    this.moodLeaves = null;
     // 게임 오버 후 규칙: 한 판 = 한 번의 성장 여정 → 다시하기는 항상 갓난아기부터 (GROWTH_ON_GAME_OVER)
     this.growth.reset();
     this.stageMgr.reset();
@@ -307,6 +316,9 @@ export class GameScene extends Phaser.Scene {
     this.nestBack = this.add.image(0, 0, TEX.nestBack).setOrigin(0.5, 1).setDepth(9.5);
     this.nestFront = this.add.image(0, 0, TEX.nestFront).setOrigin(0.5, 1).setDepth(10.5);
     this.player = this.add.sprite(0, 0, this.vis.texture, this.vis.runFrames[0]).setDepth(10);
+    // 보스전 분위기 그림자 (배경·땅 위, 캐릭터·간식·몬스터 아래 · 화면 고정)
+    this.moodTint = this.add.rectangle(-100, -100, 3000, 3000, 0x1d1640, 0).setOrigin(0, 0).setDepth(3).setScrollFactor(0);
+    this.moodLeaves = null;
     this.player.setScale(this.vis.scale);
     this.player.play(this.vis.runAnim);
 
@@ -372,6 +384,10 @@ export class GameScene extends Phaser.Scene {
       else this.startGame();
     };
     const onRestart = (opt?: RestartOptions): void => {
+      if (opt?.toTitle) {
+        this.scene.restart({});
+        return;
+      }
       const retry = opt?.checkpoint ? { checkpoint: true } : opt?.boss ? { boss: opt.boss, score: this.retryCarry.score, snacks: this.retryCarry.snacks } : {};
       this.scene.restart({ autoStart: true, ...retry });
     };
@@ -390,7 +406,12 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.special, onSpecial);
     bus.on(EV.dodge, onDodge);
     bus.on(EV.shield, onShield);
+    const onEndingReplay = (): void => this.startEnding();
+    bus.on(EV.endingReplay, onEndingReplay);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off(EV.endingReplay, onEndingReplay);
+      this.ending?.destroy();
+      this.ending = null;
       bus.off(EV.shield, onShield);
       bus.off(EV.dodge, onDodge);
       bus.off(EV.attack, onAttack);
@@ -540,7 +561,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.resumeAll();
     this.player.anims.resume();
     if (this.player.anims.currentFrame) this.player.setFrame(this.player.anims.currentFrame.frame.name);
-    sound.startMusic();
+    sound.startMusic(this.musicNow());
     bus.emit(EV.resume);
     this.emitHud();
   }
@@ -612,16 +633,29 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, deltaMs: number): void {
     if (this.state === 'paused') return;
-    const dt = Math.min(deltaMs, 50) / 1000;
+    const rawDt = Math.min(deltaMs, 50) / 1000;
+    // 필살기 슬로모션: 세상(땅·고나·투사체)만 느리게, 연출 타이머는 그대로
+    const ts = this.battle?.timeScale ?? 1;
+    const dt = rawDt * ts;
+    if (this.player.anims.timeScale !== ts) this.player.anims.timeScale = ts;
     if (this.state === 'evolving') {
       // 진화 연출 중: 세상은 멈추고 연출만 진행
       this.updateEvolution(dt, time);
       this.emitHud();
       return;
     }
+    if (this.state === 'ending') {
+      // 가족 엔딩: 배경만 흘리고 연출은 FamilyEnding 이
+      // 실제 흐른 시간 그대로 (프레임이 느려도 음악·자막과 어긋나지 않게)
+      const edt = Math.min(deltaMs, 250) / 1000;
+      this.distance += this.speed * edt;
+      this.scrollBackground(edt);
+      this.ending?.update(edt);
+      return;
+    }
     if (this.battle?.frozen) {
       // 보스전 연출(필살기·각성) 중: 세상은 멈추고 연출만
-      this.battle.update(dt);
+      this.battle.update(rawDt);
       this.placePlayer(dt, time);
       this.updateShield();
       this.emitHud();
@@ -667,7 +701,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateEntities(move, time, dt);
-    if (this.battle && this.state === 'playing') this.battle.update(dt);
+    if (this.battle && this.state === 'playing') this.battle.update(rawDt);
     this.updateBoomerang(dt);
     this.updateShield();
     this.emitHud();
@@ -710,7 +744,9 @@ export class GameScene extends Phaser.Scene {
     // 머리카락 부메랑을 던진 동안은 머리카락이 빠진 그림 (-bald)
     const bald = this.isBald();
     const wantAnim = (this.grounded ? this.vis.runAnim : this.vis.jumpAnim) + (bald ? '-bald' : '');
-    if (time < this.hurtUntil && this.textures.exists(`hurt-${this.vis.id}`)) {
+    if (this.specialLook) {
+      // 필살기 연출: 진지한 얼굴 그림 고정 (setSpecialLook 이 정함)
+    } else if (time < this.hurtUntil && this.textures.exists(`hurt-${this.vis.id}`)) {
       // 아파! 표정 (같은 단계·같은 포즈 그림에 얼굴만 찡그림) — 처음 0.26초는 머리카락이 흔들
       if (this.player.anims.isPlaying) this.player.anims.stop();
       const t = time - this.hurtAt;
@@ -967,6 +1003,14 @@ export class GameScene extends Phaser.Scene {
       e.x -= move + (e.vx ?? 0) * dt;
       if (e.done) continue;
       if (e.type === 'monster') this.updateMonster(e, dt, time);
+      if (e.grav && e.valt !== undefined) {
+        e.valt -= e.grav * dt;
+        e.alt += e.valt * dt;
+        if (e.alt <= 0) {
+          this.breakFlask(e, true);
+          continue;
+        }
+      }
       if (e.follow) {
         if (e.follow.done) {
           e.done = true;
@@ -989,14 +1033,15 @@ export class GameScene extends Phaser.Scene {
         e.age += dt;
         const spr = e.sprite as unknown as Phaser.GameObjects.Sprite;
         if (e.type === 'mshot') {
-          // 현금다발: 반듯 ↔ 기울어짐 번갈아 (흔들흔들) + 살짝 출렁
-          spr.setFrame(Math.floor(e.age / 0.12) % 2);
-          bob = Math.round(Math.sin(e.age * 14));
+          spr.setFrame(Math.floor(e.age / 0.1) % 3); // 플라스크 물약 보글보글
+        } else if (e.type === 'puddle') {
+          spr.setFrame(Math.floor(e.age / 0.2) % 2);
         } else if (e.type === 'cloud') {
           // 팡! 작게 → 부풀어 오름 → 크게 뭉게뭉게(끓듯이 두 장 번갈아)
           spr.setFrame(e.age < 0.08 ? 0 : e.age < 0.22 ? 1 : 2 + (Math.floor(e.age / 0.25) % 2));
         } else if (e.type === 'fx' && spr.texture.key === 'mon-pop') spr.setFrame(e.age < 0.09 ? 0 : 1);
-        else if (e.type === 'fx' && e.age < 0.15) bob = 2 - Math.round(e.age / 0.075); // 돈가방 '짠'
+        else if (e.type === 'fx' && spr.texture.key === 'mon-shatter') spr.setFrame(e.age < 0.1 ? 0 : 1);
+        else if (e.type === 'fx' && spr.texture.key === 'mon-flask') spr.setFrame(Math.floor(e.age / 0.12) % 3); // 손에 든 플라스크 보글보글
       }
       e.sprite.setPosition(Math.round(e.x * VIEW.renderScale) / VIEW.renderScale, Math.round(this.groundY - e.alt + bob));
 
@@ -1010,9 +1055,12 @@ export class GameScene extends Phaser.Scene {
           else if (e.type === 'rock') this.hitRock(e);
           else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
             if (e.type === 'mshot') {
-              e.done = true;
-              e.sprite.destroy();
-            } else if (e.type === 'cloud') e.hit = true;
+              if (e.grav) this.breakFlask(e, false); // 고나에게 맞음 → 그 자리에서 깨짐 (웅덩이 없이)
+              else {
+                e.done = true;
+                e.sprite.destroy();
+              }
+            } else if (e.type === 'cloud' || e.type === 'puddle') e.hit = true;
           }
         }
       }
@@ -1089,8 +1137,8 @@ export class GameScene extends Phaser.Scene {
       m.burstT -= dt;
       if (m.burstT <= 0) {
         m.burst--;
-        m.burstT = 0.8;
-        this.fireCash(e);
+        m.burstT = 0.75;
+        this.throwFlask(e);
       }
       return;
     }
@@ -1103,14 +1151,15 @@ export class GameScene extends Phaser.Scene {
     m.cd -= dt;
     if (!onScreen || dx < d.minDist) return;
     // 고나와 몬스터 사이에 바위·다른 공격이 있으면 쏘지 않음 (한 번에 못 피하는 상황 방지)
-    const blocked = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud') && o.x > this.playerX - 10 && o.x < e.x);
+    const blocked = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud' || o.type === 'puddle') && o.x > this.playerX - 10 && o.x < e.x);
     if (m.cd <= 0 && !blocked) {
       m.tele = d.telegraph;
       if (m.kind === 'glasses') {
-        // 안경 번쩍 + 앞에 돈가방 '짠'
+        // 안경 번쩍 + 앞에 보라 물약 플라스크를 꺼냄 (보글보글)
         sound.boing();
         this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x - 4, this.groundY - 14);
-        this.addFx('mon-bag', e, -12, 0, d.telegraph + 0.8 * (d.burstCount - 1) + 0.4);
+        m.burstN = Math.random() < 0.5 ? 2 : 3;
+        this.addFx('mon-flask', e, -11, 3, d.telegraph + 0.75 * (m.burstN - 1) + 0.2);
       }
     }
   }
@@ -1131,10 +1180,10 @@ export class GameScene extends Phaser.Scene {
     const near = Phaser.Math.Clamp(1 - (e.x - this.playerX - d.minDist) / span, 0, 1);
     m.cd = d.cooldownFar + (d.cooldownNear - d.cooldownFar) * near;
     if (m.kind === 'glasses') {
-      // 현금다발 3개 연속 (0.8초 간격 — 하나씩 점프로 넘을 수 있게)
-      this.fireCash(e);
-      m.burst = d.burstCount - 1;
-      m.burstT = 0.8;
+      // 플라스크 2~3개 연속 투척 (0.75초 간격 — 하나씩 점프로 넘을 수 있게)
+      this.throwFlask(e);
+      m.burst = (m.burstN ?? d.burstCount) - 1;
+      m.burstT = 0.75;
     } else {
       // 더러운 공기 팡! — 반드시 엉덩이(몸 뒤쪽 아래)에서 터짐 → 황록 구름이 부풀며 고나 쪽으로 퍼짐
       sound.fart();
@@ -1148,14 +1197,36 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 안경잽이몹 현금다발: 돈가방에서 '뽑!' 낮게 날아옴 → 점프 (부메랑으로 부술 수도 있음). 그림은 크지만 충돌은 작게 */
-  private fireCash(e: Entity): void {
+  /**
+   * 안경잽이몹 보라 물약 플라스크: 포물선으로 던져 고나 근처(조금 앞)에 떨어짐.
+   * 날아오는 플라스크에 맞으면 HP -20 · 땅에 닿으면 '팡' 깨지며 보라 물약이 잠깐 퍼짐(밟으면 -15) → 점프로 넘기 / 부메랑으로 공중에서 깨기
+   */
+  private throwFlask(e: Entity): void {
     if (e.done) return;
     const d = MONSTERS.glasses;
-    sound.cashPop();
-    const x = e.x - 14;
-    const sprite = this.add.sprite(x, 0, 'mon-cash', 0).setOrigin(0.5, 1).setDepth(6.5);
-    this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'mshot', x, alt: 3, w: 12, h: 8, phase: 0, done: false, vx: 40, dmg: d.shotDamage, age: 0 });
+    sound.flaskThrow();
+    const x = e.x - 11;
+    const alt0 = 8;
+    const T = 0.8 + Math.random() * 0.2;
+    const g = 220;
+    // 떨어질 곳: 고나 바로 앞 ~ 고나 자리 (화면 기준) → 그동안 땅이 흘러가며 고나 쪽으로 다가옴
+    const target = this.playerX + 4 + Math.random() * 22;
+    const vx = (x - target) / T - this.speed;
+    const sprite = this.add.sprite(x, 0, 'mon-flask', 0).setOrigin(0.5, 1).setDepth(6.5);
+    this.entities.push({ sprite: sprite as unknown as Phaser.GameObjects.Image, type: 'mshot', x, alt: alt0, w: 8, h: 10, phase: 0, done: false, vx, dmg: d.shotDamage, age: 0, valt: (g * T * T * 0.5 - alt0) / T, grav: g });
+  }
+
+  /** 플라스크가 깨짐: 유리 조각·보라 물방울 '팡!' (+ 땅에 닿았으면 물약 웅덩이) */
+  private breakFlask(e: Entity, puddle: boolean): void {
+    e.done = true;
+    e.sprite.destroy();
+    sound.glassBreak();
+    const y = puddle ? 0 : Math.max(0, e.alt);
+    const sh = this.add.sprite(e.x, this.groundY - y, 'mon-shatter', 0).setOrigin(0.5, 1).setDepth(6.6);
+    this.entities.push({ sprite: sh as unknown as Phaser.GameObjects.Image, type: 'fx', x: e.x, alt: y, w: 1, h: 1, phase: 0, done: false, vx: 0, life: 0.3, age: 0, hit: true });
+    if (!puddle) return;
+    const pd = this.add.sprite(e.x, this.groundY, 'mon-puddle', 0).setOrigin(0.5, 1).setDepth(5.2);
+    this.entities.push({ sprite: pd as unknown as Phaser.GameObjects.Image, type: 'puddle', x: e.x, alt: 0, w: 14, h: 4, phase: 0, done: false, vx: 0, life: 1.6, dmg: 15, age: 0 });
   }
 
   /** 부메랑에 맞음 → 체력 -1, 0 이면 처치 (점수·필살 게이지·간식) */
@@ -1276,6 +1347,7 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'playing') return false;
     if (this.shieldOn) return false;
     if (this.time.now < this.invincibleUntil) return false;
+    if (this.battle?.protectPlayer) return false; // 필살기 연출 중 무적
     this.damageLog.push(`${source}:${damage}`);
     if (this.damageLog.length > 60) this.damageLog.shift();
     this.hp = Math.max(0, this.hp - damage);
@@ -1352,6 +1424,7 @@ export class GameScene extends Phaser.Scene {
     this.battle = null;
     this.pull = 0;
     this.boomerang.reset();
+    this.resetMood();
     sound.stopMusic();
     sound.gameOver();
     this.player.anims.stop();
@@ -1572,15 +1645,30 @@ export class GameScene extends Phaser.Scene {
         addSheet(this, key, sh.canvas, sh.fw, sh.fh);
       }
     }
+    if (!tm.exists('mood-flower')) addCanvas(this, 'mood-flower', moodFlower());
     // 보스 필살기 전용 도트 (한 번 만들어 재사용)
     if (!tm.exists('sp-heart')) addCanvas(this, 'sp-heart', royalHeart());
     if (!tm.exists('sp-ring-pink')) addCanvas(this, 'sp-ring-pink', auraRing('#ff5fa2', '#ffd0e6'));
     if (!tm.exists('sp-ring-green')) addCanvas(this, 'sp-ring-green', auraRing('#a8d040', '#efffb0'));
+    // 가족 엔딩 그림 (실루엣 임시 그림 · 교체용 PNG 가 있으면 그것도 시트로)
+    for (const id of FAMILY_ORDER) {
+      if (!tm.exists(`family-ph-${id}`)) addSheet(this, `family-ph-${id}`, familySheet(id), FAMILY_FRAME.w, FAMILY_FRAME.h);
+      if (tm.exists(`family-src-${id}`) && !tm.exists(`family-${id}`)) {
+        const img = tm.get(`family-src-${id}`).getSourceImage() as HTMLImageElement;
+        addSheet(this, `family-${id}`, img, Math.floor(img.width / 3), img.height);
+      }
+    }
+    if (!tm.exists('end-petal')) addSheet(this, 'end-petal', petalSheet(), 3, 3);
+    if (!tm.exists('end-rays')) addCanvas(this, 'end-rays', sunRays());
+    if (!tm.exists('end-sunset')) addCanvas(this, 'end-sunset', sunsetSky());
+    if (!tm.exists('end-heart')) addCanvas(this, 'end-heart', endHeart());
+    if (!tm.exists('sp-ring-gold')) addCanvas(this, 'sp-ring-gold', auraRing('#ffd54a', '#c8ff8a'));
     if (!tm.exists('sp-tornado')) addSheet(this, 'sp-tornado', tornadoSheet(), TORNADO_FRAME.w, TORNADO_FRAME.h);
     if (!tm.exists('sp-leaf')) addCanvas(this, 'sp-leaf', leaf());
     if (!tm.exists('sp-safe')) addCanvas(this, 'sp-safe', safeMark());
-    if (!tm.exists('mon-cash')) addSheet(this, 'mon-cash', cashSheet(), CASH_FRAME.w, CASH_FRAME.h);
-    if (!tm.exists('mon-bag')) addCanvas(this, 'mon-bag', moneyBag());
+    if (!tm.exists('mon-flask')) addSheet(this, 'mon-flask', flaskSheet(), FLASK_FRAME.w, FLASK_FRAME.h);
+    if (!tm.exists('mon-shatter')) addSheet(this, 'mon-shatter', shatterSheet(), SHATTER_FRAME.w, SHATTER_FRAME.h);
+    if (!tm.exists('mon-puddle')) addSheet(this, 'mon-puddle', puddleSheet(), PUDDLE_FRAME.w, PUDDLE_FRAME.h);
     if (!tm.exists('mon-pop')) addSheet(this, 'mon-pop', popSheet(), POP_FRAME.w, POP_FRAME.h);
     if (!tm.exists('boss-star')) addCanvas(this, 'boss-star', dizzyStar());
     if (!tm.exists('boss-arrow')) addCanvas(this, 'boss-arrow', pathArrow('#ff6f9f'));
@@ -1596,6 +1684,14 @@ export class GameScene extends Phaser.Scene {
       const pc = new PixelCanvas(base.width * 4, base.height);
       frames.forEach((f, i) => pc.ctx.drawImage(f, i * base.width, 0));
       addSheet(this, key, pc.canvas, base.width, base.height);
+      // 필살기 '초특급 꼬불머리 팡팡!' 진지한 얼굴 (0: 머리카락 있음 · 1: 머리카락 빠짐)
+      const sk = `serious-${v.id}`;
+      if (!tm.exists(sk)) {
+        const sp = new PixelCanvas(base.width * 2, base.height);
+        sp.ctx.drawImage(hurtFace(base, 0, 'serious'), 0, 0);
+        sp.ctx.drawImage(hurtFace(bald, 0, 'serious'), base.width, 0);
+        addSheet(this, sk, sp.canvas, base.width, base.height);
+      }
     }
     const done = new Set<string>();
     for (const v of Object.values(this.visuals)) {
@@ -1702,6 +1798,8 @@ export class GameScene extends Phaser.Scene {
         this.boomerangAwake = true;
       },
       hairTexture: () => this.hairKey(),
+      seriousTexture: () => `serious-${this.vis.id}`,
+      setSpecialLook: (look) => this.setSpecialLook(look),
       onBattleEnd: (win) => this.endBattle(win),
     };
   }
@@ -1709,6 +1807,27 @@ export class GameScene extends Phaser.Scene {
   /** 머리 꼭대기 (부메랑이 나가고 돌아오는 곳) */
   private headPos(): { x: number; y: number } {
     return { x: this.player.x + 2, y: this.player.y - this.player.displayHeight / 2 + 4 };
+  }
+
+  /** 필살기 연출 중 고나 그림: 'serious' 진지한 얼굴 · 'bald' 머리카락이 빠진 진지한 얼굴 · null 원래대로 */
+  private specialLook: 'serious' | 'bald' | null = null;
+  /** 가족 엔딩 연출 (마지막 보스 뒤) */
+  private ending: FamilyEnding | null = null;
+  private endingInfo: GameOverInfo | null = null;
+  private setSpecialLook(look: 'serious' | 'bald' | null): void {
+    if (look === this.specialLook) return;
+    this.specialLook = look;
+    if (look) {
+      if (this.boomerang.isOut) this.boomerang.reset(); // 날아가던 보통 부메랑은 즉시 머리로
+      this.player.anims.stop();
+      this.hurtUntil = 0;
+      this.exprFrame = -1;
+      const bald = look === 'bald' && this.vis.id !== 'newborn';
+      this.player.setTexture(`serious-${this.vis.id}`, bald ? 1 : 0);
+      this.squash = look === 'bald' ? 1.22 : 1.1; // 두 손 번쩍! 하듯 위로 쭉 늘어났다 돌아옴
+    } else {
+      this.player.play((this.grounded ? this.vis.runAnim : this.vis.jumpAnim) + (this.isBald() ? '-bald' : ''));
+    }
   }
 
   private hairKey(): string {
@@ -1770,9 +1889,12 @@ export class GameScene extends Phaser.Scene {
           this.hitMonster(e);
           b.bounce();
         } else if (e.type === 'mshot') {
-          e.done = true;
+          if (e.grav) this.breakFlask(e, false);
+          else {
+            e.done = true;
+            e.sprite.destroy();
+          }
           this.sparkleEmitter.explode(3, e.x, y);
-          e.sprite.destroy();
           b.bounce();
         }
       }
@@ -1848,12 +1970,76 @@ export class GameScene extends Phaser.Scene {
     this.specialCarry = 0;
     // 화면의 몬스터·투사체는 퇴장
     for (const e of this.entities) {
-      if (!e.done && (e.type === 'monster' || e.type === 'mshot' || e.type === 'cloud' || e.type === 'fx')) {
+      if (!e.done && (e.type === 'monster' || e.type === 'mshot' || e.type === 'cloud' || e.type === 'puddle' || e.type === 'fx')) {
         e.done = true;
         this.tweens.add({ targets: e.sprite, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
       }
     }
+    // 분위기 전환: 평화로운 음악이 작아지고 → 바람·나뭇잎 · 보랏빛 그림자 · 짧은 흔들림·경고음(보스 등장) → 보스 전용 음악
+    sound.fadeOutMusic(700);
+    this.setBossMood(true);
+    this.cameras.main.shake(260, 0.007);
+    const battle = this.battle;
+    this.time.delayedCall(1600, () => {
+      if (this.battle === battle && this.state === 'playing') sound.startMusic(this.musicNow());
+    });
     this.battle.start();
+  }
+
+  /** 지금 상황에 맞는 배경음악 (보스전이면 보스·분노 단계별 곡) */
+  private musicNow(): MusicMode {
+    const b = this.battle;
+    if (!b) return 'game';
+    if (b.id === 'kiss') return b.rage >= 1 ? 'kiss2' : 'kiss';
+    return b.rage >= 2 ? 'sniff2' : 'sniff';
+  }
+
+  /** 보스전 분위기 켜기/끄기 (끌 때는 햇살이 돌아오며 꽃·반짝이) — 배경 색을 영구적으로 바꾸지 않음 */
+  private setBossMood(on: boolean): void {
+    this.tweens.killTweensOf(this.moodTint);
+    this.tweens.add({ targets: this.moodTint, fillAlpha: on ? 0.34 : 0, duration: on ? 1200 : 1400, ease: 'Sine.InOut' });
+    if (on) {
+      // 바람: 나뭇잎이 오른쪽에서 왼쪽으로 잠깐 흩날림 (1.4초 · 개수 제한)
+      this.moodLeaves?.destroy();
+      const leaves = this.add
+        .particles(0, 0, 'sp-leaf', {
+          x: this.W + 6,
+          y: { min: 10, max: this.groundY - 6 },
+          speedX: { min: -260, max: -150 },
+          speedY: { min: -20, max: 30 },
+          rotate: { min: 0, max: 360 },
+          lifespan: 1700,
+          frequency: perf.low ? 140 : 80,
+          scale: 1.6,
+        })
+        .setDepth(9)
+        .setScrollFactor(0);
+      this.moodLeaves = leaves;
+      this.time.delayedCall(1400, () => leaves.active && leaves.stop());
+      this.time.delayedCall(3300, () => {
+        if (leaves.active) leaves.destroy();
+        if (this.moodLeaves === leaves) this.moodLeaves = null;
+      });
+    } else {
+      // 햇살이 돌아옴: 땅 위에 꽃이 톡톡 피고 작은 반짝이 (땅과 함께 흘러가다 사라짐)
+      for (let i = 0; i < 6; i++) {
+        const x = this.playerX + 20 + i * ((this.W - this.playerX - 20) / 6) + Math.random() * 10;
+        const sprite = this.add.image(x, this.groundY, 'mood-flower').setOrigin(0.5, 1).setDepth(5.5).setScale(0);
+        this.tweens.add({ targets: sprite, scale: 1, duration: 260, delay: 200 + i * 90, ease: 'Back.Out' });
+        this.entities.push({ sprite, type: 'fx', x, alt: 0, w: 1, h: 1, phase: 0, done: false, vx: 0, life: 4.5, hit: true });
+        this.sparkleEmitter.explode(perf.low ? 1 : 2, x, this.groundY - 6);
+      }
+    }
+  }
+
+  /** 즉시 원래대로 (죽음·다시하기 — 연출 없이) */
+  private resetMood(): void {
+    if (this.moodTint?.active) {
+      this.tweens.killTweensOf(this.moodTint);
+      this.moodTint.fillAlpha = 0;
+    }
+    if (this.moodLeaves?.active) this.moodLeaves.destroy();
+    this.moodLeaves = null;
   }
 
   private endBattle(win: boolean): void {
@@ -1864,9 +2050,15 @@ export class GameScene extends Phaser.Scene {
     b.destroy();
     this.battle = null;
     this.pull = 0;
-    if (!win) return;
+    if (!win) {
+      this.resetMood();
+      return;
+    }
     this.clearedBosses.add(id);
     bus.emit(EV.bossEnd, { id, win });
+    // 어두웠던 숲에 햇살이 돌아옴 + 꽃·반짝이 → 평화로운 버섯숲 음악 (최종 보스는 가족 엔딩 음악이 따로)
+    this.setBossMood(false);
+    if (BOSSES[id].afterWin === 'evolve') sound.startMusic('game');
     if (BOSSES[id].afterWin === 'evolve') {
       // 첫 보스 클리어 → 체크포인트 (게임 오버가 나도 3단계부터)
       saveCheckpoint('walker', this.score, this.snacksEaten);
@@ -1875,35 +2067,78 @@ export class GameScene extends Phaser.Scene {
     } else this.finishGame();
   }
 
-  /** 마지막 보스 격파 → 엔딩 */
+  /** 마지막 보스 격파 → 가족 엔딩 */
   private finishGame(): void {
     this.state = 'cleared';
     clearCheckpoint(); // 이야기 끝 — 다음엔 새 게임
     this.boomerang.reset();
-    sound.stopMusic();
-    sound.evolveDone();
-    this.showExpression(this.vis.happyFrame, 2500);
+    this.showExpression(this.vis.happyFrame, 1500);
     const prevBest = Number(storage.get(STORAGE_KEYS.best) ?? 0) || 0;
     const isNewBest = this.score > prevBest;
     const best = Math.max(prevBest, this.score);
     if (isNewBest) storage.set(STORAGE_KEYS.best, String(best));
     const reached = GROWTH_STAGES.length;
     storage.set(STORAGE_KEYS.bestStage, String(reached));
-    this.time.delayedCall(2200, () => {
-      sound.newRecord();
-      const info: GameOverInfo = {
-        score: this.score,
-        best,
-        isNewBest: isNewBest && this.score > 0,
-        snacks: this.snacksEaten,
-        growthLevel: reached,
-        growthName: GROWTH_STAGES[reached - 1].name,
-        bestGrowthLevel: reached,
-        growthLevels: GROWTH_STAGES.length,
-        cleared: true,
-      };
-      bus.emit(EV.ending, info);
+    this.endingInfo = {
+      score: this.score,
+      best,
+      isNewBest: isNewBest && this.score > 0,
+      snacks: this.snacksEaten,
+      growthLevel: reached,
+      growthName: GROWTH_STAGES[reached - 1].name,
+      bestGrowthLevel: reached,
+      growthLevels: GROWTH_STAGES.length,
+      cleared: true,
+    };
+    // 승리 연출(꽃·햇살)이 잠깐 보인 뒤 엔딩으로
+    this.time.delayedCall(1200, () => {
+      if (this.state === 'cleared') this.startEnding();
     });
+  }
+
+  /** 가족 엔딩 시작 (엔딩 다시보기도 여기로) */
+  private startEnding(): void {
+    if (this.state !== 'cleared' && this.state !== 'ending') return;
+    this.ending?.destroy();
+    this.state = 'ending';
+    this.speed = 0;
+    this.resetMood();
+    // 화면의 남은 것 정리 (간식·효과)
+    for (const e of this.entities) {
+      this.tweens.killTweensOf(e.sprite);
+      e.sprite.destroy();
+    }
+    this.entities = [];
+    this.setHudVisible(false);
+    this.cameras.main.scrollY = 0;
+    this.player.setPosition(this.playerX, this.player.y);
+    this.ending = new FamilyEnding({
+      scene: this,
+      W: this.W,
+      H: this.H,
+      groundY: this.groundY,
+      player: this.player,
+      shadow: this.shadow,
+      visuals: this.visuals,
+      setScroll: (v) => {
+        this.speed = v;
+      },
+      sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
+      label: (t, c) => this.textTexture(t, c),
+    });
+    bus.emit(EV.endingStart, this.endingInfo);
+  }
+
+  /** (자동 테스트용) 엔딩 진행 상태 */
+  debugEnding(): { state: string; t: number; scene: number } | null {
+    return this.ending ? { state: this.state, t: +this.ending.t.toFixed(2), scene: this.ending.sceneNo } : null;
+  }
+
+  /** (자동 테스트용) 바로 엔딩으로 */
+  debugFinish(): void {
+    this.battle?.destroy();
+    this.battle = null;
+    this.finishGame();
   }
 
   /** 공격·방패·필살 버튼, 고나 하트+HP, 보스 체력 → 화면 UI (값이 바뀔 때만 — DOM 작업 최소화) */

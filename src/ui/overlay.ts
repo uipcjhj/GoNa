@@ -125,6 +125,13 @@ export class Overlay {
     bus.on(EV.resume, () => this.pause.classList.add('hidden'));
     bus.on(EV.gameOver, (info: GameOverInfo) => this.showGameOver(info));
     bus.on(EV.ending, (info: GameOverInfo) => this.showGameOver(info));
+    bus.on(EV.endingStart, () => {
+      // 가족 엔딩: 일시정지 버튼·조작 안내·성장 배너 숨김
+      this.pauseBtn.classList.add('hidden');
+      this.hint.classList.add('hidden');
+      this.evolveBanner.classList.add('hidden');
+      this.pause.classList.add('hidden');
+    });
     bus.on(EV.evolve, (info: EvolveInfo) => this.showEvolve(info));
     bus.on(EV.evolveEnd, () => this.evolveBanner.classList.add('hidden'));
 

@@ -2115,8 +2115,8 @@ h2 {
   animation: sp-glow 0.7s steps(2) infinite;
 }
 @keyframes sp-glow {
-  0% { box-shadow: inset 0 0 0 2px #fff6a8, 0 4px 0 #3a1f0c, 0 0 0 3px #fff6a8; }
-  100% { box-shadow: inset 0 0 0 2px #ff9a3a, 0 4px 0 #3a1f0c, 0 0 0 6px #ff9a3a; }
+  0% { box-shadow: inset 0 0 0 2px #fff6a8, 0 4px 0 #3a1f0c, 0 0 0 3px #ffd54a, 0 0 12px 2px rgba(255, 213, 74, 0.8); }
+  100% { box-shadow: inset 0 0 0 2px #9cf05a, 0 4px 0 #3a1f0c, 0 0 0 6px #9cf05a, 0 0 18px 4px rgba(156, 240, 90, 0.75); }
 }
 .bt.off:not(.ready):not(.active) .bt-face {
   opacity: 0.6;
@@ -2263,6 +2263,40 @@ body.has-pad .touch-hint {
 }
 .battle-banner.tone-power .bn-top {
   color: #aef6ff;
+}
+
+/* 고나 필살기 '초특급 꼬불머리 팡팡!' — 컷인 띠 위의 큰 이름 (투명 배경, 황금·연두) */
+.battle-banner.tone-special {
+  top: 38%;
+  left: auto;
+  right: 3vw;
+  min-width: 0;
+  max-width: 62vw;
+  transform: translate(0, -50%);
+  padding: 0;
+  text-align: right;
+  background: none;
+  border: none;
+  box-shadow: none;
+  animation: sp-name-in 0.32s steps(4) both;
+}
+.battle-banner.tone-special .bn-top {
+  color: #c8ff8a;
+  text-shadow: 0 2px 0 #1d1640;
+}
+.battle-banner.tone-special .bn-name {
+  font-size: clamp(20px, 6.6vmin, 34px);
+  line-height: 1.15;
+  color: #ffe14a;
+  text-shadow: 2px 2px 0 #b5420f, -2px -2px 0 #1d1640, 0 0 10px rgba(156, 240, 90, 0.8);
+}
+.battle-banner.tone-special .bn-desc {
+  color: #fff6c0;
+  text-shadow: 0 2px 0 #1d1640;
+}
+@keyframes sp-name-in {
+  0% { transform: translate(30%, -50%) scale(1.3); opacity: 0; }
+  100% { transform: translate(0, -50%) scale(1); opacity: 1; }
 }
 
 /* 엔딩 */
@@ -2518,4 +2552,115 @@ body.has-pad .touch-hint {
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+/* ───────── 가족 엔딩 ───────── */
+/* 엔딩 자막은 저절로 넘어감 (▼ · 쪽수 숨김) */
+.prologue-ui.auto .pr-more,
+.prologue-ui.auto .pr-page {
+  display: none;
+}
+.ending-ui {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: linear-gradient(rgba(40, 20, 60, 0.15), rgba(40, 20, 60, 0.45));
+  animation: end-fade 1.6s ease-out both;
+  z-index: 6;
+}
+.ending-ui.hidden {
+  display: none;
+}
+@keyframes end-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.end-card {
+  text-align: center;
+  padding: 14px 18px 16px;
+  max-width: 92vw;
+}
+.end-card p,
+.end-card h2 {
+  margin: 0;
+}
+.end-game {
+  font-size: clamp(16px, 5vmin, 26px);
+  color: #fff3c8;
+  text-shadow: 0 2px 0 #6a2a4a, 0 0 10px rgba(255, 200, 120, 0.7);
+}
+.end-the {
+  margin-top: 4px !important;
+  font-size: clamp(40px, 15vmin, 84px);
+  letter-spacing: 0.06em;
+  color: #ffe14a;
+  text-shadow: 3px 3px 0 #b5420f, -2px -2px 0 #3a1a4a, 0 0 18px rgba(255, 210, 120, 0.85);
+  animation: end-pop 0.9s steps(6) 0.4s both;
+}
+@keyframes end-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.end-date {
+  margin-top: 6px !important;
+  font-size: clamp(12px, 3.6vmin, 16px);
+  color: #ffe8c8;
+  text-shadow: 0 2px 0 #3a1a4a;
+}
+.end-sub {
+  font-size: clamp(13px, 3.8vmin, 18px);
+  color: #fff8e6;
+  text-shadow: 0 2px 0 #3a1a4a;
+}
+.end-score {
+  margin-top: 6px !important;
+  font-size: clamp(11px, 3.2vmin, 14px);
+  color: #d8f5a2;
+  text-shadow: 0 2px 0 #3a1a4a;
+}
+.end-btns {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+  animation: end-fade 0.8s ease-out 1.2s both;
+}
+.end-btn {
+  font-size: clamp(15px, 4.6vmin, 22px);
+  min-width: 13em;
+  margin-top: clamp(6px, 2vmin, 10px);
+}
+.end-btn.end-title,
+.end-btn.end-replay {
+  background: #c9874a;
+  box-shadow: inset 0 calc(var(--px) * -2) 0 #8a5a2a, inset 0 var(--px) 0 #f0c890, 0 calc(var(--px) * 1.5) 0 var(--ink-dark);
+  text-shadow: 0 2px 0 #8a5a2a;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .end-the {
+    font-size: clamp(34px, 13vmin, 64px);
+  }
+  .end-btns {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+  .end-btn {
+    min-width: 0;
+    font-size: clamp(13px, 4vmin, 18px);
+  }
+}
+/* 가로 화면 엔딩: 자막을 위쪽에 (아래쪽 땅 위 고나·가족을 가리지 않게) */
+@media (orientation: landscape) and (max-height: 500px) {
+  .prologue-ui.auto .pr-box {
+    bottom: auto;
+    top: max(10px, calc(env(safe-area-inset-top) + 6px));
+    min-height: 0;
+    padding: 8px 16px 10px;
+  }
 }

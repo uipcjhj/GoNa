@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, GAME_BG, SNACK_ASSETS, type SnackKind } from '../config';
+import { CHARACTER_ASSET, FAMILY_ASSETS, GAME_BG, SNACK_ASSETS, type SnackKind } from '../config';
 import { addCanvas, addSheet, buildAllTextures, buildDefaultDinoSheet, buildGround, snackCanvas, TEX } from '../art/textures';
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
@@ -82,6 +82,8 @@ export class BootScene extends Phaser.Scene {
       const a = STAGE_ASSETS[st.id];
       if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
     }
+    // 가족 엔딩: 교체용 가족 PNG (경로가 있을 때만)
+    for (const [id, url] of Object.entries(FAMILY_ASSETS)) if (url) this.load.image(`family-src-${id}`, url);
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
     // 일반 몬스터 정식 그림 (선택)

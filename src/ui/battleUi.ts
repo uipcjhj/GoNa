@@ -125,6 +125,7 @@ export class BattleUi {
     bus.on(EV.start, () => this.hideBanner());
     bus.on(EV.gameOver, () => this.reset());
     bus.on(EV.ending, () => this.reset());
+    bus.on(EV.endingStart, () => this.reset());
   }
 
   private makeBtn(cls: string, label: string, icon: string[], scale: number): Btn {

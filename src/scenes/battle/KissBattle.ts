@@ -309,6 +309,8 @@ export class KissBattle extends BossBattle {
   }
 
   protected onRage(level: 1 | 2): void {
+    // 분노: 전투 음악이 같은 박자 위치에서 더 강한 판으로
+    if (level >= 1) sound.switchMusicSync('kiss2');
     this.aura?.destroy();
     this.aura = this.host.scene.add
       .particles(0, 0, 'boss-tinyheart', {

@@ -10,6 +10,7 @@ import { CoverScreen } from './ui/cover';
 import { AudioPanel } from './ui/audioPanel';
 import { Subtitles } from './ui/subtitles';
 import { BattleUi } from './ui/battleUi';
+import { EndingUi } from './ui/endingUi';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import { perf } from './perf';
@@ -87,6 +88,35 @@ async function boot(): Promise<void> {
     game.scene.start('Opening');
   };
   const overlay = new Overlay(ui);
+  // ── 가족 엔딩: 자막은 저절로 넘어가고(터치 무시), 끝나면 THE END 화면
+  const endingUi = new EndingUi(ui);
+  let endingActive = false;
+  bus.on(EV.endingStart, () => {
+    endingActive = true;
+    subs.show();
+    subs.hideGate();
+    subs.root.classList.add('auto');
+  });
+  bus.on(EV.endingTheEnd, () => {
+    subs.hide();
+    subs.root.classList.remove('auto');
+  });
+  const leaveEnding = (): void => {
+    endingActive = false;
+    subs.hide();
+    subs.root.classList.remove('auto');
+  };
+  endingUi.onRestart = () => {
+    leaveEnding();
+    bus.emit(EV.restart, {});
+  };
+  endingUi.onTitle = () => {
+    leaveEnding();
+    bus.emit(EV.restart, { toTitle: true });
+    sound.startMusic('title');
+    cover.reveal(false);
+  };
+  endingUi.onReplay = () => bus.emit(EV.endingReplay);
   const audioPanel = new AudioPanel(ui);
   new BattleUi(ui);
   cover.onAudioTest = () => audioPanel.open();
@@ -156,6 +186,7 @@ async function boot(): Promise<void> {
       else bus.emit(EV.prologueNext);
       return;
     }
+    if (endingActive) return; // 엔딩은 저절로 진행 (THE END 버튼만)
     if (cover.isVisible) return; // 대표 타이틀은 '게임 시작' 버튼으로만 진행
     if (overlay.isGameOverVisible) return;
     // 보스전도 평소처럼 화면 빈 곳 터치 = 점프 (버튼 위 터치는 위에서 걸러져 중복 점프 없음)
@@ -172,6 +203,8 @@ async function boot(): Promise<void> {
       if (openingActive) {
         if (!prologueStarted) beginPrologue();
         else bus.emit(EV.prologueNext);
+      } else if (endingActive) {
+        /* 엔딩 중엔 무시 */
       } else if (cover.isVisible) cover.start();
       else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);

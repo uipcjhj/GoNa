@@ -41,6 +41,10 @@ export interface BattleHost {
   unlockBoomerang(): void;
   /** 머리카락 텍스처 (부메랑·필살기 그림) */
   hairTexture(): string;
+  /** 필살기 진지한 얼굴 시트 (0: 머리카락 있음 · 1: 빠짐) — 컷인에도 사용 */
+  seriousTexture(): string;
+  /** 필살기 연출 중 고나 그림 ('serious' · 'bald' · null=원래대로) */
+  setSpecialLook(look: 'serious' | 'bald' | null): void;
   /** 보스전 끝 (승리 연출까지 끝난 뒤) */
   onBattleEnd(win: boolean): void;
 }

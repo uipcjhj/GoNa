@@ -103,3 +103,14 @@ export function safeMark(): HTMLCanvasElement {
   pc.outline('#1f5a2a');
   return pc.canvas;
 }
+
+/** 보스를 물리치면 땅에 톡 피는 꽃 7x8 (햇살이 돌아옴) */
+export function moodFlower(): HTMLCanvasElement {
+  const pc = new PixelCanvas(7, 8);
+  pc.rect(3, 4, 1, 4, '#4f8a2a');
+  pc.px(2, 6, '#6cb33c');
+  for (const [x, y] of [[3, 0], [1, 2], [5, 2], [2, 4], [4, 4]]) pc.disc(x, y + 0.5, 1, '#ff9fc4');
+  pc.px(3, 2, '#ffe680');
+  pc.outline('#7a3a52');
+  return pc.canvas;
+}

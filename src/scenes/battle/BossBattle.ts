@@ -92,6 +92,10 @@ export abstract class BossBattle {
   special = 0;
   /** 연출 중: 세상(땅·고나·투사체)이 멈춤 */
   frozen = false;
+  /** 세상 시간 배율 (필살기 슬로모션 0.2 → 1) — 연출 타이머(cine)는 영향 없음 */
+  timeScale = 1;
+  /** 고나 무적 (필살기 연출 중) */
+  protectPlayer = false;
   mode: Mode = 'intro';
   /** (검증용) 지금까지 쓴 공격 이름 */
   readonly attackLog: string[] = [];
@@ -169,9 +173,15 @@ export abstract class BossBattle {
     sound.warn();
     this.banner({ top: '⚠ 보스 등장!', name: this.def.name, desc: this.def.intro, ms: 2300, tone: 'boss' });
     bus.emit(EV.bossStart, { id: this.def.id });
-    // 오른쪽에서 통통 튀며 등장
+    // 어두운 실루엣으로 오른쪽에서 통통 튀며 등장 → 도착하면 번쩍! 모습이 드러남
+    this.boss.setTint(0x1a1030).setTintMode(Phaser.TintModes.FILL);
     this.moveTo(this.homeX, 0, 1.5, 14, (t) => 1 - (1 - t) ** 2);
-    this.after(1.5, () => this.host.scene.cameras.main.shake(160, 0.006), true);
+    this.after(1.5, () => {
+      this.boss.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+      this.applyTint();
+      this.host.scene.cameras.main.shake(160, 0.006);
+      this.host.scene.cameras.main.flash(160, 255, 240, 255);
+    }, true);
     this.after(2.4, () => {
       this.mode = 'fight';
       this.cooldown = 0.6;
@@ -181,9 +191,10 @@ export abstract class BossBattle {
 
   // ───────────────────────── 매 프레임 ─────────────────────────
 
-  update(dt: number): void {
-    this.time += dt;
-    this.runTasks(this.cine, dt);
+  update(rawDt: number): void {
+    this.time += rawDt;
+    this.runTasks(this.cine, rawDt);
+    const dt = rawDt * this.timeScale;
     if (!this.frozen) {
       if (this.mode === 'fight') {
         this.runTasks(this.ai, dt);
@@ -604,63 +615,188 @@ export abstract class BossBattle {
     return this.special >= 1 && this.mode === 'fight';
   }
 
-  /** 필살기 '머리카락 회오리' — 짧은 연출 + 큰 피해 + 화면의 투사체 모두 제거 */
+  /**
+   * 고나 필살기 '초특급 꼬불머리 팡팡!' (Super Curly Boom!) — 약 3.6초, 고나 무적
+   *   ① 슬로모션 + 얼굴 컷인 + 큰 이름  ② 진지한 실눈 + 황금·연두 기운  ③ 머리카락 '뽁!' → 빛나며 거대 부메랑
+   *   ④ 보스를 3번 연속 타격 (피해는 기존 필살기 피해를 3등분 — 합계 동일)  ⑤ 큰 별 폭발 '팡!' → 보스 밀려나며 어질어질
+   *   ⑥ 머리카락이 돌아와 원래대로 붙음
+   * 그림은 모두 미리 만든 텍스처(진지한 얼굴 시트·머리카락·별·오라 고리) + 가벼운 트윈.
+   */
   useSpecial(): boolean {
     if (!this.specialReady) return false;
     this.special = 0;
     this.mode = 'cutscene';
-    this.frozen = true;
+    this.protectPlayer = true;
+    this.timeScale = 0.2; // 슬로모션
     this.ai = [];
     this.stunT = 0;
     this.clearStars();
     this.onInterrupt();
     const scene = this.host.scene;
     const cam = scene.cameras.main;
+    const { W, H } = this.host;
+    const GOLD = 0xffd54a;
+    const LIME = 0x9cf05a;
     sound.special();
-    cam.flash(200, 255, 245, 210);
-    this.banner({ top: '필살기!', name: '머리카락 회오리', ms: 1500, tone: 'power' });
-    scene.tweens.add({ targets: this.dim, fillAlpha: 0.45, duration: 200 });
+    cam.flash(160, 255, 240, 170);
+    scene.tweens.killTweensOf(this.dim);
+    scene.tweens.add({ targets: this.dim, fillAlpha: 0.42, duration: 220 });
+    this.host.setSpecialLook('serious');
+    this.banner({ top: '고나 필살기!', name: '초특급 꼬불머리 팡팡!', desc: 'Super Curly Boom!', ms: 1500, tone: 'special' });
+    // ── 얼굴 컷인 (화면 위쪽 띠가 휙 들어왔다 나감)
+    const bandH = Math.max(40, Math.round(H * 0.2));
+    const bandY = Math.round(H * 0.38);
+    const cut = this.fx(scene.add.container(-W, 0).setDepth(15));
+    cut.add(scene.add.rectangle(0, bandY - bandH / 2, W, bandH, 0x1d1640, 0.92).setOrigin(0, 0));
+    cut.add(scene.add.rectangle(0, bandY - bandH / 2, W, 2, GOLD).setOrigin(0, 0));
+    cut.add(scene.add.rectangle(0, bandY + bandH / 2 - 2, W, 2, LIME).setOrigin(0, 0));
+    const lines: Phaser.GameObjects.Rectangle[] = [];
+    for (let i = 0; i < 7; i++) {
+      const ln = scene.add.rectangle(Math.round((i / 7) * W), bandY - bandH / 2 + 4 + ((i * 5) % (bandH - 8)), 10 + (i % 3) * 6, 1, i % 2 ? GOLD : LIME, 0.8).setOrigin(0, 0);
+      lines.push(ln);
+      cut.add(ln);
+    }
+    const st = this.host.seriousTexture();
+    const fr = scene.textures.getFrame(st, 0);
+    const cropH = Math.round(fr.cutHeight * 0.62);
+    const k = Math.max(2, Math.floor((bandH - 6) / cropH));
+    const face = scene.add.image(Math.round(W * 0.06), bandY + bandH / 2 - 3, st, 0).setOrigin(0, 1).setScale(k);
+    face.setCrop(0, 0, fr.cutWidth, cropH);
+    face.y = Math.round(bandY - bandH / 2 + 3 + cropH * k);
+    cut.add(face);
+    scene.tweens.add({ targets: cut, x: 0, duration: 170, ease: 'Quad.Out' });
+    scene.tweens.add({ targets: lines, x: '-=40', duration: 900 });
+    // ── 황금·연두 기운이 고나 주위로 피어오름
     const head = this.host.playerHead();
-    this.host.sparkle(12, head.x, head.y);
-    const big = this.fx(scene.add.image(head.x, head.y, this.host.hairTexture()).setDepth(13).setScale(0));
-    scene.tweens.add({ targets: big, scale: 4, angle: -720, duration: 420, ease: 'Back.Out' });
-    // 회오리 잔상
-    const trail = this.fx(scene.add.particles(0, 0, this.host.hairTexture(), {
-      follow: big,
-      lifespan: 300,
-      scale: { start: 2.4, end: 0 },
-      alpha: { start: 0.5, end: 0 },
-      rotate: { min: 0, max: 360 },
-      frequency: 30,
-    }).setDepth(12.9));
-    const r = this.bossRect();
-    this.after(0.5, () => {
-      scene.tweens.add({ targets: big, x: (r.x0 + r.x1) / 2, y: (r.y0 + r.y1) / 2, angle: big.angle - 1080, duration: 380, ease: 'Quad.In' });
-    }, true);
-    this.after(0.9, () => {
-      cam.shake(320, 0.02);
-      cam.flash(160, 255, 255, 255);
+    const pr = this.host.playerRect();
+    const aura = this.fx(scene.add.particles(0, 0, 'boss-star', {
+      x: { min: pr.x0 - 2, max: pr.x1 + 2 },
+      y: pr.y1,
+      speedY: { min: -60, max: -30 },
+      lifespan: 520,
+      scale: { start: 0.9, end: 0 },
+      tint: [GOLD, LIME],
+      frequency: perf.low ? 70 : 35,
+    }).setDepth(9.7));
+    this.after(0.55, () => {
+      // 슬로모션 → 완전히 멈춤 (날아오던 것들은 펑)
+      this.timeScale = 1;
+      this.frozen = true;
       this.clearHostiles();
-      this.host.sparkle(24, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
-      this.damage(this.def.specialDamage);
     }, true);
     this.after(1.05, () => {
-      scene.tweens.add({ targets: big, x: head.x, y: head.y, scale: 0.6, alpha: 0, angle: big.angle + 720, duration: 380, ease: 'Quad.Out', onComplete: () => big.destroy() });
-      trail.stop();
-      scene.time.delayedCall(400, () => trail.destroy());
+      scene.tweens.add({ targets: cut, x: W, duration: 160, ease: 'Quad.In', onComplete: () => cut.destroy() });
     }, true);
-    this.after(1.5, () => {
-      scene.tweens.add({ targets: this.dim, fillAlpha: 0, duration: 200 });
+    // ── 머리카락이 '뽁!' 빠져서 빛나며 거대 부메랑으로
+    const big = this.fx(scene.add.image(head.x, head.y, this.host.hairTexture()).setDepth(13).setVisible(false));
+    const glow = this.fx(scene.add.image(head.x, head.y, 'sp-ring-gold').setDepth(12.9).setVisible(false).setAlpha(0.9));
+    const trail = this.fx(scene.add.particles(0, 0, this.host.hairTexture(), {
+      follow: big,
+      lifespan: 260,
+      scale: { start: 3, end: 0 },
+      alpha: { start: 0.45, end: 0 },
+      tint: [GOLD, LIME],
+      frequency: perf.low ? 60 : 30,
+      emitting: false,
+    }).setDepth(12.8));
+    const r = this.bossRect();
+    const bcx = (r.x0 + r.x1) / 2;
+    const bcy = (r.y0 + r.y1) / 2;
+    this.after(1.15, () => {
+      this.host.setSpecialLook('bald');
+      sound.curlyPop();
+      this.host.sparkle(8, head.x, head.y);
+      big.setVisible(true).setScale(1);
+      glow.setVisible(true).setScale(0.3);
+      scene.tweens.add({ targets: [big, glow], y: head.y - 24, duration: 260, ease: 'Back.Out' });
+      scene.tweens.add({ targets: big, scale: 4.5, angle: -900, duration: 520, ease: 'Quad.Out' });
+      scene.tweens.add({ targets: glow, scale: 1.6, alpha: 0.35, duration: 260, yoyo: true, repeat: 1 });
+      // 반짝반짝 빛남 (흰색↔원래색)
+      scene.tweens.addCounter({ from: 0, to: 6, duration: 520, onUpdate: (tw) => (Math.floor(tw.getValue() ?? 0) % 2 ? big.setTint(0xfff6c0).setTintMode(Phaser.TintModes.FILL) : big.clearTint().setTintMode(Phaser.TintModes.MULTIPLY)), onComplete: () => big.clearTint().setTintMode(Phaser.TintModes.MULTIPLY) });
+    }, true);
+    this.after(1.7, () => {
+      glow.setVisible(false);
+      trail.start();
+      scene.tweens.add({ targets: big, x: bcx - 10, y: bcy, angle: big.angle - 1080, duration: 300, ease: 'Quad.In' });
+    }, true);
+    // ── 3연타 (합계 = 기존 필살기 피해)
+    const total = this.def.specialDamage;
+    const per = Math.floor(total / 3);
+    for (let i = 0; i < 3; i++) {
+      this.after(2.0 + i * 0.3, () => {
+        const dir = i % 2 ? -1 : 1;
+        scene.tweens.add({ targets: big, x: bcx + dir * 12, angle: big.angle - 540, duration: 140, yoyo: true, ease: 'Sine.InOut' });
+        sound.curlyHit(i);
+        cam.shake(110 + i * 40, 0.008 + i * 0.004);
+        cam.flash(90, 255, i === 1 ? 255 : 240, i === 1 ? 200 : 140);
+        this.host.sparkle(8 + i * 2, bcx, bcy);
+        this.floatText(`${i + 1} HIT!`, bcx - 10 + i * 4, r.y0 - 4 - i * 6, i === 2 ? '#ffe14a' : '#b8ff7a');
+        this.damage(i === 2 ? total - per * 2 : per);
+      }, true);
+    }
+    // ── 큰 별 폭발 '팡!' → 보스 밀려나며 어질어질
+    this.after(2.95, () => {
+      sound.starBurst();
+      cam.shake(320, 0.02);
+      cam.flash(200, 255, 255, 230);
+      const boom = this.fx(scene.add.particles(bcx, bcy, 'boss-star', { speed: { min: 60, max: 170 }, lifespan: 650, scale: { start: 2.6, end: 0.6 }, alpha: { start: 1, end: 0 }, rotate: { min: 0, max: 360 }, tint: [0xffffff, GOLD, LIME], emitting: false }).setDepth(12.6));
+      boom.explode(perf.low ? 8 : 16);
+      const star = this.fx(scene.add.image(bcx, bcy, 'boss-star').setDepth(12.7).setScale(1));
+      scene.tweens.add({ targets: star, scale: 7, alpha: 0, angle: 90, duration: 420, ease: 'Quad.Out', onComplete: () => star.destroy() });
+      this.floatText('팡!', bcx - 6, r.y0 - 22, '#ffffff');
+      this.after(0.8, () => boom.destroy(), true);
+      // 세상은 다시 움직이고 (고나는 아직 무적) 보스는 뒤로 밀려남
       this.frozen = false;
+      this.setPose(2, 0.6);
+      this.moveTo(Math.min(W - this.fw / 2 - 2, this.bx + 18), 0, 0.35, 10, (t) => 1 - (1 - t) ** 2);
+    }, true);
+    // ── 머리카락이 돌아와 원래대로 붙음
+    this.after(3.05, () => {
+      aura.stop();
+      trail.stop();
+      const h2 = this.host.playerHead();
+      scene.tweens.add({ targets: big, x: h2.x, y: h2.y, scale: 1, angle: big.angle + 720, duration: 380, ease: 'Quad.InOut' });
+    }, true);
+    this.after(3.45, () => {
+      big.destroy();
+      trail.destroy();
+      aura.destroy();
+      this.host.setSpecialLook(null);
+      sound.catch();
+      const h2 = this.host.playerHead();
+      this.host.sparkle(10, h2.x, h2.y);
+    }, true);
+    this.after(3.6, () => {
+      scene.tweens.add({ targets: this.dim, fillAlpha: 0, duration: 220 });
+      this.protectPlayer = false;
+      this.frozen = false;
+      this.timeScale = 1;
       if (this.mode === 'cutscene') {
         this.mode = 'fight';
-        this.busy = false;
-        this.cooldown = 1.0;
-        this.returnHome();
-        if (this.pendingRage) this.enterRage();
+        if (this.pendingRage) {
+          this.busy = false;
+          this.cooldown = 1.0;
+          this.returnHome();
+          this.enterRage();
+        } else this.dizzy(1.3);
       }
     }, true);
     return true;
+  }
+
+  /** 필살기 뒤 어질어질 (별이 빙글빙글, 공격 안 함) — 끝나면 제자리로 */
+  private dizzy(sec: number): void {
+    this.stunT = sec;
+    this.stunMul = 1;
+    this.busy = true;
+    const scene = this.host.scene;
+    for (let i = 0; i < 3; i++) this.stars.push(scene.add.image(this.bx, this.host.groundY - this.fh, 'boss-star').setDepth(12));
+    this.after(sec, () => {
+      this.stunT = 0;
+      this.clearStars();
+      this.returnHome();
+      this.endAttack(0.8);
+    });
   }
 
   // ───────────────────────── 보스 필살기 공통 연출 ─────────────────────────
@@ -727,7 +863,10 @@ export abstract class BossBattle {
     if (this.bx < 20 || this.bx > this.host.W - 10) this.bx = this.homeX;
     const scene = this.host.scene;
     const cam = scene.cameras.main;
+    // 전투 음악이 자연스럽게 끝나고 → 쓰러지는 소리 → (날아갈 때) 짧은 승리 팡파르
+    sound.fadeOutMusic(500);
     sound.bossDown();
+    this.after(0.9, () => sound.fanfare(), true);
     cam.shake(500, 0.012);
     cam.flash(250, 255, 250, 230);
     const b = this.boss;
@@ -803,6 +942,9 @@ export abstract class BossBattle {
     this.warnT = 0;
     this.warnMark.setVisible(false);
     this.frozen = false;
+    this.timeScale = 1;
+    this.protectPlayer = false;
+    this.host.setSpecialLook(null);
     this.host.pull = 0;
   }
 

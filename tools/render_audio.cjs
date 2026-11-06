@@ -1,6 +1,7 @@
 /**
  * 배경음악·효과음을 파일로 미리 녹음 (게임 안의 합성 코드를 그대로 사용).
- *   public/assets/audio/bgm-title.mp3, bgm-game.mp3  (끊김 없이 반복되도록 2번 연주 중 두 번째 반복을 잘라 냄)
+ *   public/assets/audio/bgm-title.mp3, bgm-game.mp3, bgm-kiss(2).mp3, bgm-sniff(2).mp3  (끊김 없이 반복되도록 2번 연주 중 두 번째 반복을 잘라 냄)
+ *   public/assets/audio/bgm-ending.mp3 (가족 엔딩, 16마디 1회 · 끝에서 저절로 페이드아웃)
  *   public/assets/audio/sfx-*.mp3
  * 사용법: npm run build && npx vite preview --port 4173 (다른 터미널)
  *        node tools/render_audio.cjs
@@ -32,14 +33,19 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
     if (job.music) {
       s.mode = job.music;
       const st = 60 / job.tempo / 4;
-      for (let i = 0; i < 256; i++) s.playStep(i, i * st);
+      for (let i = 0; i < (job.steps || 256); i++) s.playStep(i, i * st);
     } else {
       s[job.sfx](...(job.args || []));
     }
     delete off.currentTime;
     const buf = await off.startRendering();
     let d = buf.getChannelData(0);
-    if (job.music) {
+    if (job.music && job.once) {
+      // 한 번만 (엔딩): 끝의 잔향까지, 뒤쪽 무음만 잘라 냄
+      let end = d.length;
+      while (end > 1000 && Math.abs(d[end - 1]) < 0.0015) end--;
+      d = d.slice(0, Math.min(d.length, end + 4000));
+    } else if (job.music) {
       // 두 번째 반복만: 첫 반복의 잔향이 앞에 섞여 있어 이어 붙여도 자연스러움
       const loop = Math.round(128 * (60 / job.tempo / 4) * SR);
       d = d.slice(loop, loop * 2);
@@ -63,6 +69,9 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
   const jobs = [
     { name: 'bgm-title', music: 'title', tempo: 68, secs: 256 * (60 / 68 / 4) + 3, kbps: 112 },
     { name: 'bgm-game', music: 'game', tempo: 96, secs: 256 * (60 / 96 / 4) + 3, kbps: 112 },
+    // 보스전 (8마디 반복) · 분노판 · 가족 엔딩 (16마디 1회)
+    ...[['kiss', 150], ['kiss2', 150], ['sniff', 124], ['sniff2', 124]].map(([m, t]) => ({ name: `bgm-${m}`, music: m, tempo: t, secs: 256 * (60 / t / 4) + 3, kbps: 112 })),
+    { name: 'bgm-ending', music: 'ending', tempo: 84, steps: 256, once: true, secs: 256 * (60 / 84 / 4) + 6, kbps: 112 },
     ...['start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart']
       .map((n) => ({ name: `sfx-${n}`, sfx: n, secs: 3, kbps: 96 })),
     ...[10, 20, 30].map((p) => ({ name: `sfx-pickup${p}`, sfx: 'pickup', args: [p], secs: 1.5, kbps: 96 })),

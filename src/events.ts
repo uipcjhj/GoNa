@@ -52,6 +52,10 @@ export const EV = {
   bossEnd: 'bossEnd',
   /** 엔딩 (마지막 보스 격파) — GameOverInfo 와 같은 모양 + cleared */
   ending: 'ending',
+  /** 가족 엔딩 연출 시작 (GameOverInfo) / THE END 화면 / 엔딩 다시보기 요청 */
+  endingStart: 'endingStart',
+  endingTheEnd: 'endingTheEnd',
+  endingReplay: 'endingReplay',
 } as const;
 
 export type BossId = 'kiss' | 'sniff';
@@ -87,7 +91,7 @@ export interface BannerInfo {
   name: string;
   desc?: string;
   ms: number;
-  tone?: 'boss' | 'good' | 'power';
+  tone?: 'boss' | 'good' | 'power' | 'special';
 }
 
 export interface GameOverInfo {
@@ -109,6 +113,8 @@ export interface GameOverInfo {
 
 /** 다시하기 요청 옵션 */
 export interface RestartOptions {
+  /** 엔딩 → 타이틀로 (게임은 대기 상태로 다시 준비) */
+  toTitle?: boolean;
   /** 저장된 체크포인트에서 이어하기 */
   checkpoint?: boolean;
   /** (개발용) 3단계에서 바로 일반 몬스터 확인 */

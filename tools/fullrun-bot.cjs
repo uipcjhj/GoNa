@@ -81,7 +81,7 @@ const MAX_MIN = Number(process.argv[4] || 30);
         state: g.state, grounded: g.grounded, jumps: g.jumpsUsed, alt: g.alt, px: g.playerX, gy: g.groundY, speed: g.speed,
         hearts: g.hearts, hp: g.hp, out: g.boomerang.isOut, canThrow: g.canThrow, pull: g.pull, stage: g.growth.stageIndex,
         gauge: g.growth.gauge, need: g.growth.stage.gaugeToNext, score: g.score, kills: g.kills, shieldReady: g.time.now >= g.shieldReadyAt,
-        over: ov && !ov.classList.contains('hidden'), cleared: !!ov?.classList.contains('cleared'),
+        over: ov && !ov.classList.contains('hidden'), cleared: !!ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
         threats, snacks, monsters,
         b: bt && { id: bt.id, mode: bt.mode, hp: bt.hp, rage: bt.rage, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(), stun: bt.stunT },
       };
@@ -97,7 +97,7 @@ const MAX_MIN = Number(process.argv[4] || 30);
       st.hpLost += last.hp;
     } else if (s.hp < last.hp && s.hearts === last.hearts) st.hpLost += last.hp - s.hp;
     last = { stage: s.stage, battle: s.b?.id ?? null, hearts: s.hearts, hp: s.hp, rage: s.b?.rage, kills: s.kills };
-    if (s.over && s.cleared) {
+    if (s.cleared) {
       result = 'ENDING';
       ev(`🎉 엔딩! 점수 ${s.score}`);
       break;
