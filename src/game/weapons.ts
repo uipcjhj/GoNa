@@ -1,38 +1,34 @@
 /**
- * 특수 무기 (향후 구현용 설계 — 이번 버전에서는 게임에 연결되지 않음).
- *
- * 머리카락 부메랑: 고나 머리 위의 물방울 모양 갈색 머리카락이
- * 앞으로 날아갔다가 다시 돌아오는 기술. 성장 단계에 따라 해금·강화.
+ * 머리카락 부메랑 — 고나의 솟은 물방울 머리카락이 앞으로 날아갔다가 돌아오는 기술.
+ *   - 2단계 뽀뽀괴물 보스전 도중 '각성'해서 처음 쓸 수 있고, 3단계부터는 평소 달릴 때도 사용 (바위 깨기·간식 줍기)
+ *   - 돌아와서 머리에 다시 붙기 전에는 재발사 불가
  */
 import type { GrowthStageId } from './growth';
 
 export interface WeaponDef {
   id: 'hairBoomerang';
   name: string;
-  /** 이 단계부터 사용 가능 */
-  unlockStage: GrowthStageId;
-  /** 날아가는 최대 거리(px)와 속도 */
+  /** 날아가는 최대 거리(px, 논리 해상도)와 속도(px/s) */
   range: number;
   speed: number;
+  /** 돌아올 때 속도(px/s) */
+  returnSpeed: number;
   damage: number;
-  /** 다시 던질 수 있을 때까지(초) */
-  cooldown: number;
-  /** 단계별 강화 (해당 단계 이상이면 덮어씀) */
-  upgrades: Partial<Record<GrowthStageId, Partial<Pick<WeaponDef, 'range' | 'speed' | 'damage' | 'cooldown'>>>>;
+  /** 단계별 강화 */
+  upgrades: Partial<Record<GrowthStageId, Partial<Pick<WeaponDef, 'range' | 'speed' | 'returnSpeed' | 'damage'>>>>;
 }
 
 export const HAIR_BOOMERANG: WeaponDef = {
   id: 'hairBoomerang',
   name: '머리카락 부메랑',
-  unlockStage: 'walker',
-  range: 110,
-  speed: 260,
+  range: 130,
+  speed: 230,
+  returnSpeed: 260,
   damage: 1,
-  cooldown: 0.9,
-  upgrades: { bigbaby: { range: 150, damage: 2 } },
+  upgrades: { bigbaby: { range: 150, damage: 2, speed: 250 } },
 };
 
-/**
- * 향후 조작 계획: 지금의 '화면 터치 = 점프'는 그대로 두고,
- * 화면 오른쪽 아래 공격 버튼(또는 두 손가락 터치)으로 부메랑을 던지는 방식을 예정.
- */
+export function boomerangStats(stage: GrowthStageId): Omit<WeaponDef, 'upgrades' | 'id' | 'name'> {
+  const { range, speed, returnSpeed, damage } = HAIR_BOOMERANG;
+  return { range, speed, returnSpeed, damage, ...(HAIR_BOOMERANG.upgrades[stage] ?? {}) };
+}

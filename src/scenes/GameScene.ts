@@ -1,15 +1,24 @@
 import Phaser from 'phaser';
 import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
-import { FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
-import { bus, EV, type GameOverInfo } from '../events';
+import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
+import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
 import { sound } from '../audio';
 import { storage } from '../storage';
 import type { StageVisual } from './BootScene';
 import { GROWTH_STAGES, GrowthState, SNACK_GROWTH, type GrowthStageId } from '../game/growth';
 import { StageManager } from '../game/stages';
 import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
+import { BOSSES } from '../game/boss';
+import { boomerangStats } from '../game/weapons';
+import { bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
+import { PixelCanvas } from '../art/PixelCanvas';
+import type { BossBattle } from './battle/BossBattle';
+import { KissBattle } from './battle/KissBattle';
+import { SniffBattle } from './battle/SniffBattle';
+import { HairBoomerang } from './battle/HairBoomerang';
+import type { BattleHost } from './battle/types';
 
-type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead';
+type State = 'ready' | 'playing' | 'paused' | 'evolving' | 'dead' | 'cleared';
 
 /** 진화 연출 시간(초): 변신 반짝임 → 새 모습 공개 → 게임 재개 */
 const EVO_TRANSFORM = 1.4;
@@ -64,6 +73,22 @@ export class GameScene extends Phaser.Scene {
   private nestShake = 0;
   /** 진화로 둥지를 내려놓음 */
   private nestLeft = false;
+
+  // 보스전 · 머리카락 부메랑
+  private battle: BossBattle | null = null;
+  private boomerang!: HairBoomerang;
+  /** 뽀뽀괴물전에서 각성 (3단계 전에도 사용 가능) */
+  private boomerangAwake = false;
+  private clearedBosses = new Set<BossId>();
+  /** 흡입으로 끌려간 거리 (고나 x = basePlayerX + pull) */
+  private pull = 0;
+  private basePlayerX = VIEW.playerX;
+  /** 다시 도전: 시작하자마자 이 보스전 */
+  private pendingBoss: BossId | null = null;
+  /** 보스전 시작 때의 점수 (보스전 다시 도전용) */
+  private retryCarry = { score: 0, snacks: 0 };
+  private hudKey = '';
+  private host!: BattleHost;
 
   // 화면 배치
   private W = 0;
@@ -120,7 +145,7 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
-  init(data: { autoStart?: boolean }): void {
+  init(data: { autoStart?: boolean } & RestartOptions): void {
     this.state = 'ready';
     this.entities = [];
     this.clouds = [];
@@ -148,12 +173,38 @@ export class GameScene extends Phaser.Scene {
     this.babyVel = 0;
     this.nestShake = 0;
     this.nestLeft = false;
+    this.battle = null;
+    this.boomerangAwake = false;
+    this.clearedBosses = new Set();
+    this.pull = 0;
+    this.hudKey = '';
+    this.pendingBoss = null;
+    // 보스전 다시 도전 (또는 테스트용 주소 ?boss=kiss / ?boss=sniff — 처음 한 번만)
+    let boss = data?.boss ?? null;
+    if (!boss && !this.registry.get('debugBossUsed')) {
+      const q = new URLSearchParams(window.location.search).get('boss');
+      if (q === 'kiss' || q === 'sniff') boss = q;
+      this.registry.set('debugBossUsed', true);
+    }
+    if (boss) {
+      const def = BOSSES[boss];
+      this.growth.stageIndex = GROWTH_STAGES.findIndex((g) => g.id === def.atStage);
+      this.growth.gauge = this.growth.stage.gaugeToNext ?? 0;
+      this.growth.maxStageIndex = this.growth.stageIndex;
+      this.nestLeft = true;
+      if (boss === 'sniff') this.clearedBosses.add('kiss');
+      this.pendingBoss = boss;
+      this.score = data?.score ?? 0;
+      this.snacksEaten = data?.snacks ?? 0;
+    }
     this.registry.set('autoStart', !!data?.autoStart);
   }
 
   create(): void {
     this.visuals = this.registry.get('stageVisuals') as Record<GrowthStageId, StageVisual>;
     this.vis = this.visuals[this.growth.stage.id];
+    this.buildBattleTextures();
+    this.host = this.makeHost();
 
     this.sky = this.add.graphics();
     this.sun = this.add.image(0, 0, TEX.sun);
@@ -198,6 +249,14 @@ export class GameScene extends Phaser.Scene {
       emitting: false,
     }).setDepth(12);
 
+    this.boomerang = new HairBoomerang(this);
+    this.boomerang.onCaught = () => {
+      // 머리카락이 다시 뽁! 붙음
+      this.squash = 0.86;
+      const h = this.headPos();
+      this.sparkleEmitter.explode(4, h.x, h.y);
+    };
+
     // HUD
     for (let i = 0; i < PLAYER.maxHearts; i++) {
       this.heartIcons.push(this.add.image(0, 0, TEX.heartFull).setOrigin(0, 0).setDepth(20).setScrollFactor(0));
@@ -220,15 +279,26 @@ export class GameScene extends Phaser.Scene {
     const onRequestStart = (): void => {
       if (this.state === 'ready') this.startGame();
     };
-    const onRestart = (): void => {
-      this.scene.restart({ autoStart: true });
+    const onRestart = (opt?: RestartOptions): void => {
+      const retry = opt?.boss ? { boss: opt.boss, score: this.retryCarry.score, snacks: this.retryCarry.snacks } : {};
+      this.scene.restart({ autoStart: true, ...retry });
+    };
+    const onAttack = (): void => this.throwHair();
+    const onSpecial = (): void => {
+      if (this.state === 'playing') this.battle?.useSpecial();
     };
     bus.on(EV.tap, onTap);
     bus.on(EV.requestPause, onPause);
     bus.on(EV.requestResume, onResume);
     bus.on(EV.restart, onRestart);
     bus.on(EV.requestStart, onRequestStart);
+    bus.on(EV.attack, onAttack);
+    bus.on(EV.special, onSpecial);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off(EV.attack, onAttack);
+      bus.off(EV.special, onSpecial);
+      this.battle?.destroy();
+      this.battle = null;
       bus.off(EV.tap, onTap);
       bus.off(EV.requestPause, onPause);
       bus.off(EV.requestResume, onResume);
@@ -256,11 +326,12 @@ export class GameScene extends Phaser.Scene {
       // 점수·하트 아래에서 잘리지 않고, 아래 흙은 최소 groundHeight 는 남도록
       const peakRoom = VIEW.portraitTopMargin + 92 + 44;
       this.groundY = Phaser.Math.Clamp(Math.round(this.H * VIEW.portraitGroundRatio), peakRoom, this.H - VIEW.groundHeight);
-      this.playerX = VIEW.portraitPlayerX;
+      this.basePlayerX = VIEW.portraitPlayerX;
     } else {
       this.groundY = this.H - VIEW.groundHeight;
-      this.playerX = VIEW.playerX;
+      this.basePlayerX = VIEW.playerX;
     }
+    this.playerX = this.basePlayerX + this.pull;
 
     this.drawSky();
     this.sun.setPosition(this.W - 46, Math.max(28, Math.round(this.groundY * 0.22)));
@@ -335,6 +406,13 @@ export class GameScene extends Phaser.Scene {
     sound.unlock();
     sound.startMusic();
     bus.emit(EV.start);
+    if (this.pendingBoss) {
+      const b = this.pendingBoss;
+      this.pendingBoss = null;
+      this.time.delayedCall(900, () => {
+        if (this.state === 'playing' && !this.battle) this.startBoss(b);
+      });
+    }
   }
 
   private pauseGame(): void {
@@ -429,12 +507,25 @@ export class GameScene extends Phaser.Scene {
     if (this.state === 'evolving') {
       // 진화 연출 중: 세상은 멈추고 연출만 진행
       this.updateEvolution(dt, time);
+      this.emitHud();
+      return;
+    }
+    if (this.battle?.frozen) {
+      // 보스전 연출(필살기·각성) 중: 세상은 멈추고 연출만
+      this.battle.update(dt);
+      this.placePlayer(dt, time);
+      this.emitHud();
       return;
     }
 
-    if (this.state === 'playing') {
+    if (this.state === 'playing' && this.battle) {
+      // 보스전: 속도 고정, 장애물 없음
+      this.speed += (SPEED.start - this.speed) * Math.min(1, dt * 2);
+    } else if (this.state === 'playing') {
       this.elapsed += dt;
       this.speed = Math.min(SPEED.max, SPEED.start + SPEED.accel * this.elapsed);
+    } else if (this.state === 'cleared') {
+      this.speed = SPEED.start * 0.8;
     } else if (this.state === 'dead') {
       this.speed = Math.max(0, this.speed - 260 * dt);
     } else {
@@ -445,14 +536,18 @@ export class GameScene extends Phaser.Scene {
     this.distance += move;
     this.scrollBackground(dt);
 
+    this.playerX = this.basePlayerX + this.pull;
     if (this.state !== 'dead') this.updatePlayer(dt, time);
 
-    if (this.state === 'playing') {
+    if (this.state === 'playing' && !this.battle) {
       this.distToNext -= move;
       if (this.distToNext <= 0) this.distToNext = this.spawnPattern() + this.randomGap();
     }
 
     this.updateEntities(move, time);
+    if (this.battle && this.state === 'playing') this.battle.update(dt);
+    this.updateBoomerang(dt);
+    this.emitHud();
   }
 
   private scrollBackground(dt: number): void {
@@ -487,12 +582,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const wantAnim = this.grounded ? this.vis.runAnim : this.vis.jumpAnim;
+    // 머리카락 부메랑을 던진 동안은 머리카락이 빠진 그림 (-bald)
+    const bald = this.isBald();
+    const wantAnim = (this.grounded ? this.vis.runAnim : this.vis.jumpAnim) + (bald ? '-bald' : '');
     if (this.exprFrame >= 0) {
       if (time < this.exprUntil) {
         // 표정 연출 중: 그림만 바꾸고 위치·물리·충돌 박스는 그대로
         if (this.player.anims.isPlaying) this.player.anims.stop();
-        this.player.setFrame(this.exprFrame);
+        this.player.setTexture(bald ? `${this.vis.texture}-bald` : this.vis.texture, this.exprFrame);
       } else {
         // 끝나면 지금 상태(달리기/점프)로 자연스럽게 복귀
         this.exprFrame = -1;
@@ -742,10 +839,15 @@ export class GameScene extends Phaser.Scene {
     else if (this.inNest) this.babyVel = -150; // 둥지에서 퐁! 솟았다 쏙
     else this.squash = 0.8; // 표정 프레임이 없는 단계는 통통 반응
 
-    // 성장 게이지 (점수와 별개로 증가)
-    const full = this.growth.add(SNACK_GROWTH[e.snack ?? 'strawberry']);
-    this.updateHud();
-    if (full) this.startEvolution();
+    if (this.battle) {
+      // 보스전 중: 성장 대신 필살 게이지
+      this.battle.onSnack();
+    } else {
+      // 성장 게이지 (점수와 별개로 증가)
+      const full = this.growth.add(SNACK_GROWTH[e.snack ?? 'strawberry']);
+      this.updateHud();
+      if (full) this.onGaugeFull();
+    }
     this.sparkleEmitter.explode(5, e.sprite.x, e.sprite.y - 6);
 
     this.tweens.add({
@@ -780,6 +882,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hitRock(e: Entity): void {
+    if (this.hurt()) this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
+  }
+
+  /** 고나가 맞음 (바위·보스 공격 공통). 무적 중이면 false */
+  private hurt(): boolean {
+    if (this.state !== 'playing' || this.time.now < this.invincibleUntil) return false;
     this.hearts = Math.max(0, this.hearts - 1);
     this.updateHud();
     sound.hit();
@@ -790,14 +898,13 @@ export class GameScene extends Phaser.Scene {
     }
     this.cameras.main.shake(180, 0.012);
     this.cameras.main.flash(140, 255, 120, 110);
-    this.tweens.add({ targets: e.sprite, angle: { from: -8, to: 8 }, duration: 60, yoyo: true, repeat: 2 });
 
     const icon = this.heartIcons[this.hearts];
     if (icon) this.tweens.add({ targets: icon, scale: 1.5, duration: 120, yoyo: true });
 
     if (this.hearts <= 0) {
       this.die();
-      return;
+      return true;
     }
     this.invincibleUntil = this.time.now + PLAYER.invincibleMs;
     // 살짝 튕겨 오르기
@@ -806,11 +913,17 @@ export class GameScene extends Phaser.Scene {
       this.grounded = false;
       this.jumpsUsed = 1;
     }
+    return true;
   }
 
   private die(): void {
     this.cameras.main.scrollY = 0;
     this.state = 'dead';
+    const bossRetry = this.battle?.id;
+    this.battle?.destroy();
+    this.battle = null;
+    this.pull = 0;
+    this.boomerang.reset();
     sound.stopMusic();
     sound.gameOver();
     this.player.anims.stop();
@@ -849,6 +962,7 @@ export class GameScene extends Phaser.Scene {
         growthName: GROWTH_STAGES[reached - 1].name,
         bestGrowthLevel: bestStage,
         growthLevels: GROWTH_STAGES.length,
+        bossRetry,
       };
       bus.emit(EV.gameOver, info);
     });
@@ -904,6 +1018,7 @@ export class GameScene extends Phaser.Scene {
     this.evoFrom = this.vis;
     this.evoTo = this.visuals[next.id];
     this.exprFrame = -1;
+    this.boomerang.reset();
     this.tweens.killTweensOf(this.player);
     this.player.anims.stop();
     this.player.setAngle(0).setAlpha(1);
@@ -985,7 +1100,335 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('update', follow));
   }
 
+  // ───────────────────────── 보스전 · 머리카락 부메랑 ─────────────────────────
+
+  /** 보스·투사체 그림, 단계별 '머리카락 빠진' 시트·애니메이션, 머리카락 그림 */
+  private buildBattleTextures(): void {
+    const tm = this.textures;
+    for (const id of ['kiss', 'sniff'] as const) {
+      const key = `boss-${id}`;
+      if (tm.exists(key)) continue;
+      const src = `boss-src-${id}`;
+      if (tm.exists(src)) {
+        // 정식 PNG (프레임 3장 가로)
+        const img = tm.get(src).getSourceImage() as HTMLImageElement;
+        addSheet(this, key, img, Math.floor(img.width / 3), img.height);
+      } else {
+        const sh = bossSheet(id);
+        addSheet(this, key, sh.canvas, sh.fw, sh.fh);
+      }
+    }
+    const small: [string, () => HTMLCanvasElement][] = [
+      ['boss-heart', heartShot],
+      ['boss-wave', waveHeart],
+      ['boss-cloud', smellCloud],
+      ['boss-bigcloud', bigCloud],
+      ['boss-puddle', stinkPuddle],
+      ['boss-dot', stinkDot],
+      ['boss-warn', warnMark],
+      ['boss-tinyheart', tinyHeart],
+    ];
+    for (const [k, f] of small) if (!tm.exists(k)) addCanvas(this, k, f());
+
+    const done = new Set<string>();
+    for (const v of Object.values(this.visuals)) {
+      if (v.id === 'newborn' || done.has(v.texture)) continue;
+      done.add(v.texture);
+      const bald = `${v.texture}-bald`;
+      if (!tm.exists(bald)) {
+        const tex = tm.get(v.texture);
+        const srcImg = tex.getSourceImage() as CanvasImageSource & { width: number; height: number };
+        const pc = new PixelCanvas(srcImg.width, srcImg.height);
+        const names = tex.getFrameNames();
+        for (const n of names) {
+          const f = tex.get(n);
+          pc.ctx.drawImage(removeHair(this.frameCanvas(v.texture, n)), f.cutX, f.cutY);
+        }
+        addCanvas(this, bald, pc.canvas);
+        const bt = tm.get(bald);
+        for (const n of names) {
+          const f = tex.get(n);
+          bt.add(n, 0, f.cutX, f.cutY, f.cutWidth, f.cutHeight);
+        }
+      }
+      const hair = `${v.texture}-hair`;
+      if (!tm.exists(hair)) {
+        let c = hairTuft(this.frameCanvas(v.texture, v.idleFrame));
+        if (!c) {
+          // 머리카락을 못 찾으면 갈색 물방울
+          const pc = new PixelCanvas(7, 9);
+          pc.disc(3, 5, 3, '#8a5a34');
+          pc.rect(3, 0, 1, 3, '#8a5a34');
+          pc.outline('#4a2a14');
+          c = pc.canvas;
+        }
+        addCanvas(this, hair, c);
+      }
+    }
+    for (const v of Object.values(this.visuals)) {
+      if (v.id === 'newborn') continue;
+      const bald = `${v.texture}-bald`;
+      for (const [k, frames, repeat] of [
+        [v.runAnim, v.runFrames, -1],
+        [v.jumpAnim, [v.jumpFrame], 0],
+      ] as const) {
+        const key = `${k}-bald`;
+        if (this.anims.exists(key)) continue;
+        const base = this.anims.get(k);
+        this.anims.create({ key, frames: frames.map((f) => ({ key: bald, frame: f })), frameRate: base?.frameRate ?? 8, repeat });
+      }
+    }
+  }
+
+  private frameCanvas(key: string, frame: string | number): HTMLCanvasElement {
+    const f = this.textures.getFrame(key, frame);
+    const c = document.createElement('canvas');
+    c.width = f.cutWidth;
+    c.height = f.cutHeight;
+    c.getContext('2d')?.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
+    return c;
+  }
+
+  private makeHost(): BattleHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    return {
+      scene: this,
+      get W() {
+        return self.W;
+      },
+      get H() {
+        return self.H;
+      },
+      get groundY() {
+        return self.groundY;
+      },
+      get basePlayerX() {
+        return self.basePlayerX;
+      },
+      get scrollSpeed() {
+        return self.speed;
+      },
+      get pull() {
+        return self.pull;
+      },
+      set pull(v: number) {
+        self.pull = Math.max(0, v);
+      },
+      playerRect: () => {
+        const b = this.playerBox();
+        return { x0: b.left, x1: b.right, y0: this.groundY - b.top, y1: this.groundY - b.bottom };
+      },
+      playerHead: () => this.headPos(),
+      playerGrounded: () => this.grounded,
+      hurtPlayer: () => this.hurt(),
+      spawnSnack: (k, alt) => this.addSnack(k, this.W + 14, alt),
+      addScore: (p, x, y) => this.addPoints(p, x, y),
+      sparkle: (n, x, y) => this.sparkleEmitter.explode(n, x, y),
+      unlockBoomerang: () => {
+        this.boomerangAwake = true;
+      },
+      hairTexture: () => this.hairKey(),
+      onBattleEnd: (win) => this.endBattle(win),
+    };
+  }
+
+  /** 머리 꼭대기 (부메랑이 나가고 돌아오는 곳) */
+  private headPos(): { x: number; y: number } {
+    return { x: this.player.x + 2, y: this.player.y - this.player.displayHeight / 2 + 4 };
+  }
+
+  private hairKey(): string {
+    const v = this.vis.id === 'newborn' ? this.visuals.crawler : this.vis;
+    return `${v.texture}-hair`;
+  }
+
+  private isBald(): boolean {
+    return !!this.boomerang?.isOut && this.vis.id !== 'newborn' && this.anims.exists(`${this.vis.runAnim}-bald`);
+  }
+
+  /** 머리카락 부메랑을 쓸 수 있는지 (뽀뽀괴물전 각성 또는 3단계 이상) */
+  private get canThrow(): boolean {
+    return this.boomerangAwake || this.growth.stage.abilities.hairBoomerang;
+  }
+
+  private throwHair(): void {
+    if (this.state !== 'playing' || !this.canThrow || this.boomerang.isOut || this.battle?.frozen || this.battle?.mode === 'victory') return;
+    const h = this.headPos();
+    const stats = boomerangStats(this.growth.stage.id);
+    // 보스전: 보스까지는 꼭 닿게
+    if (this.battle) stats.range = Math.max(stats.range, this.battle.bossRect().x1 - h.x);
+    if (this.boomerang.throw(this.hairKey(), this.vis.scale, h.x + 4, h.y, stats)) {
+      this.squash = 1.12;
+      this.sparkleEmitter.explode(2, h.x, h.y);
+    }
+  }
+
+  private updateBoomerang(dt: number): void {
+    const b = this.boomerang;
+    if (!b.isOut) return;
+    const h = this.headPos();
+    let aimY = this.groundY - 7; // 평소: 바위 높이로
+    if (this.battle) {
+      const r = this.battle.bossRect();
+      aimY = Math.max(h.y, (r.y0 + r.y1) / 2 - 2);
+    }
+    b.update(dt, h.x, h.y, aimY);
+    if (!b.isOut || this.state !== 'playing') return;
+    if (this.battle) {
+      this.battle.checkBoomerang(b);
+    }
+    // 평소: 바위를 깨고, 간식은 주워 옴 (보스전 중 나오는 간식도)
+    for (const e of this.entities) {
+      if (e.done) continue;
+      const y = this.groundY - e.alt - e.h / 2;
+      if (Math.abs(e.x - b.x) < e.w / 2 + b.r && Math.abs(y - b.y) < e.h / 2 + b.r) {
+        if (e.type === 'snack') this.collect(e);
+        else if (!this.battle) {
+          this.breakRock(e);
+          b.bounce();
+        }
+      }
+    }
+  }
+
+  private breakRock(e: Entity): void {
+    e.done = true;
+    sound.bossHit();
+    this.dustEmitter.explode(8, e.x, this.groundY - 4);
+    this.tweens.add({ targets: e.sprite, scaleX: 1.6, scaleY: 0.3, alpha: 0, duration: 200, onComplete: () => e.sprite.destroy() });
+    this.addPoints(5, e.x, this.groundY - 14);
+  }
+
+  private addPoints(points: number, x: number, y: number): void {
+    this.score += points;
+    this.updateHud();
+    const pop = this.add
+      .text(Math.round(x), Math.round(y), `+${points}`, { fontFamily: FONT, fontSize: '12px', color: '#fff4c2', stroke: '#7a3f1f', strokeThickness: 3 })
+      .setOrigin(0.5)
+      .setDepth(15);
+    this.tweens.add({ targets: pop, y: pop.y - 16, alpha: 0, duration: 800, ease: 'Quad.Out', onComplete: () => pop.destroy() });
+  }
+
+  /** 성장 게이지 가득: 이 단계의 보스가 남아 있으면 보스전, 아니면 진화 */
+  private onGaugeFull(): void {
+    const boss = Object.values(BOSSES).find((b) => b.atStage === this.growth.stage.id);
+    if (boss && !this.clearedBosses.has(boss.id)) {
+      this.startBoss(boss.id);
+      return;
+    }
+    if (!this.growth.isFinal) this.startEvolution();
+  }
+
+  private startBoss(id: BossId): void {
+    if (this.battle) return;
+    // 화면의 바위는 치움 (간식은 그대로)
+    for (const e of this.entities) {
+      if (e.type === 'rock' && !e.done) {
+        e.done = true;
+        this.tweens.add({ targets: e.sprite, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
+      }
+    }
+    this.retryCarry = { score: this.score, snacks: this.snacksEaten };
+    const tex = `boss-${id}`;
+    this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : new SniffBattle(this.host, tex);
+    this.battle.start();
+  }
+
+  private endBattle(win: boolean): void {
+    const b = this.battle;
+    if (!b) return;
+    const id = b.id;
+    b.destroy();
+    this.battle = null;
+    this.pull = 0;
+    if (!win) return;
+    this.clearedBosses.add(id);
+    bus.emit(EV.bossEnd, { id, win });
+    if (BOSSES[id].afterWin === 'evolve') this.startEvolution();
+    else this.finishGame();
+  }
+
+  /** 마지막 보스 격파 → 엔딩 */
+  private finishGame(): void {
+    this.state = 'cleared';
+    this.boomerang.reset();
+    sound.stopMusic();
+    sound.evolveDone();
+    this.showExpression(this.vis.happyFrame, 2500);
+    const prevBest = Number(storage.get(STORAGE_KEYS.best) ?? 0) || 0;
+    const isNewBest = this.score > prevBest;
+    const best = Math.max(prevBest, this.score);
+    if (isNewBest) storage.set(STORAGE_KEYS.best, String(best));
+    const reached = GROWTH_STAGES.length;
+    storage.set(STORAGE_KEYS.bestStage, String(reached));
+    this.time.delayedCall(2200, () => {
+      sound.newRecord();
+      const info: GameOverInfo = {
+        score: this.score,
+        best,
+        isNewBest: isNewBest && this.score > 0,
+        snacks: this.snacksEaten,
+        growthLevel: reached,
+        growthName: GROWTH_STAGES[reached - 1].name,
+        bestGrowthLevel: reached,
+        growthLevels: GROWTH_STAGES.length,
+        cleared: true,
+      };
+      bus.emit(EV.ending, info);
+    });
+  }
+
+  /** 공격 버튼·필살 게이지·보스 체력 → 화면 UI (바뀔 때만) */
+  private emitHud(): void {
+    const live = this.state === 'playing' || this.state === 'evolving' || this.state === 'paused';
+    const attack: AttackState = live && this.canThrow ? (this.boomerang.isOut ? 'out' : 'ready') : 'hidden';
+    const b = this.battle && live ? this.battle : null;
+    const hud: CombatHud = {
+      attack,
+      special: b ? Math.round(b.special * 100) / 100 : null,
+      specialReady: !!b?.specialReady,
+      boss: b && b.mode !== 'done' ? b.hud() : null,
+    };
+    const key = JSON.stringify(hud);
+    if (key === this.hudKey) return;
+    this.hudKey = key;
+    bus.emit(EV.combatHud, hud);
+  }
+
   // ───────────────────────── 테스트·디버그용 ─────────────────────────
+
+  /** (자동 테스트용) 무적 */
+  debugGod(on = true): void {
+    this.invincibleUntil = on ? Number.MAX_SAFE_INTEGER : 0;
+  }
+
+  /** (자동 테스트용) 부메랑·흡입 상태 */
+  debugCombat(): { out: boolean; pull: number; canThrow: boolean; stage: number; state: string; bald: boolean; tex: string } {
+    return { out: this.boomerang.isOut, pull: this.pull, canThrow: this.canThrow, stage: this.growth.stageIndex, state: this.state, bald: this.isBald(), tex: this.player.texture.key };
+  }
+
+  /** (자동 테스트용) 보스전 바로 시작 */
+  debugStartBoss(id: BossId): void {
+    const def = BOSSES[id];
+    this.debugSetStage(GROWTH_STAGES.findIndex((g) => g.id === def.atStage));
+    this.growth.gauge = this.growth.stage.gaugeToNext ?? 0;
+    if (id === 'sniff') this.clearedBosses.add('kiss');
+    this.startBoss(id);
+  }
+
+  /** (자동 테스트용) 지금 보스전 정보 */
+  debugBattle(): { id: BossId; hp: number; mode: string; special: number; phase2: boolean; frozen: boolean } | null {
+    const b = this.battle;
+    return b ? { id: b.id, hp: b.hp, mode: b.mode, special: b.special, phase2: b.phase2, frozen: b.frozen } : null;
+  }
+
+  /** (자동 테스트용) 보스 체력·필살 게이지 조절 */
+  debugBoss(hp?: number, special?: number): void {
+    if (!this.battle) return;
+    if (hp !== undefined) this.battle.hp = hp;
+    if (special !== undefined) this.battle.special = special;
+  }
 
   /** (자동 테스트용) 성장 단계를 바로 지정 */
   debugSetStage(index: number): void {

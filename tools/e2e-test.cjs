@@ -119,7 +119,7 @@ async function run(label, device, { noImages = false, stage = null } = {}) {
   const scoreTxt = await page.locator('.score-big').textContent();
   check(`${label}: game over screen`, over, scoreTxt);
   await page.screenshot({ path: `${S}/t5-${label}-over.png` });
-  await page.locator('.over-screen .pixel-btn').click(); await page.waitForTimeout(800);
+  await page.locator('.over-screen .retry-btn').click(); await page.waitForTimeout(800);
   const rs = await ev((sc) => ({ state: sc.state, hearts: sc.hearts, score: sc.score }));
   check(`${label}: retry`, rs.state === 'playing' && rs.hearts === 3 && rs.score === 0, JSON.stringify(rs));
   await page.waitForTimeout(1200);
@@ -175,6 +175,8 @@ async function growthTests(label, device) {
   const after = await g();
   check(`${label}: score & gauge after evolution`, after.score - before.score === 20 && after.gauge - before.gauge === 2, `score +${after.score - before.score} gauge +${after.gauge - before.gauge}`);
   // 3·4단계까지 진화
+  // (보스전은 bossTests 에서 따로 — 여기서는 이미 이긴 것으로 두고 성장만 확인)
+  await ev((sc) => sc.clearedBosses.add('kiss'));
   for (const [target, name] of [[2, '직립보행 고나'], [3, '빅베이비 곤룡']]) {
     await ev((sc) => { sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
     let st; await page.waitForTimeout(300);
@@ -197,7 +199,7 @@ async function growthTests(label, device) {
   await page.waitForTimeout(2000);
   const overText = await page.locator('.growth-line').textContent();
   check(`${label}: game over shows growth`, overText.includes('4/4') && overText.includes('빅베이비'), overText);
-  await page.locator('.over-screen .pixel-btn').click(); await page.waitForTimeout(800);
+  await page.locator('.over-screen .retry-btn').click(); await page.waitForTimeout(800);
   const rs = await g();
   check(`${label}: retry restarts as newborn (rule)`, rs.stage === 0 && rs.gauge === 0 && rs.vis === 'newborn', JSON.stringify(rs));
   const bestStage = await page.evaluate(() => localStorage.getItem('dino-snack-adventure.bestStage'));
@@ -300,7 +302,130 @@ async function introTests(label, device) {
   await b.close();
 }
 
+async function bossTests(label, device) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  const G = (fn, arg) => page.evaluate(fn, arg);
+  const battle = () => G(() => window.__gona.scene.getScene('Game').debugBattle());
+  const combat = () => G(() => window.__gona.scene.getScene('Game').debugCombat());
+  const tapEl = async (sel) => { const bb = await page.locator(sel).boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); };
+  const begin = async (boss) => {
+    await page.goto(URL + '?test&boss=' + boss);
+    await startFromTitle(page).catch(() => {});
+    await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle(), null, { timeout: 6000 });
+  };
+
+  // ── 뽀뽀괴물 (자연 진행: 성장 게이지 가득 → 보스전)
+  await page.goto(URL + '?test');
+  await startFromTitle(page);
+  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.debugSetStage(1); sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle(), null, { timeout: 4000 }).catch(() => {});
+  const k0 = await battle();
+  const c0 = await combat();
+  check(`${label}: crawler gauge full → 뽀뽀괴물 battle (no evolution yet)`, k0?.id === 'kiss' && c0.stage === 1 && c0.state === 'playing', JSON.stringify({ k0, c0 }));
+  const bar = await page.locator('.boss-bar').isVisible();
+  check(`${label}: boss HP bar visible`, bar);
+  check(`${label}: no boomerang before awakening`, !c0.canThrow && !(await page.locator('.bt-attack').isVisible()));
+  await G(() => window.__gona.scene.getScene('Game').debugGod());
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 16000 });
+  await page.waitForSelector('.bt-attack', { state: 'visible', timeout: 6000 });
+  check(`${label}: hair boomerang awakens mid-battle`, (await combat()).canThrow);
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
+  const hp0 = (await battle()).hp;
+  // 날아오는 하트탄에 막히지 않게 (부메랑은 투사체를 먼저 부숨 — 정상 동작)
+  await G(() => { const bt = window.__gona.scene.getScene('Game').battle; bt.hostiles.forEach((h) => { h.dead = true; h.sprite.destroy(); }); bt.hostiles = []; bt.cooldown = 3; });
+  await tapEl('.bt-attack');
+  await page.waitForTimeout(120);
+  const t1 = await combat();
+  const cls = await page.locator('.bt-attack').getAttribute('class');
+  check(`${label}: attack button throws hair (bald sprite, button waiting)`, t1.out && t1.bald && cls.includes('out'), JSON.stringify(t1));
+  await tapEl('.bt-attack'); // 돌아오기 전엔 재발사 불가
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 });
+  await page.waitForTimeout(100);
+  const t2 = await combat(); const k1 = await battle();
+  check(`${label}: boomerang hits boss and returns (hair back)`, k1.hp < hp0 && !t2.bald && t2.tex.indexOf('-bald') < 0, `hp ${hp0}→${k1.hp}`);
+  // 필살기
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(undefined, 1));
+  await page.waitForTimeout(150);
+  check(`${label}: special button ready when gauge full`, (await page.locator('.bt-special').getAttribute('class')).includes('ready'));
+  const hp1 = (await battle()).hp;
+  await tapEl('.bt-special');
+  await page.waitForTimeout(300);
+  const sp = await battle();
+  await page.waitForTimeout(1700);
+  const sp2 = await battle();
+  check(`${label}: special = cutscene + big damage`, sp.frozen && sp2.hp === hp1 - 4 && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
+  // 승리 → 3단계 직립보행
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
+  for (let i = 0; i < 6 && (await battle())?.mode === 'fight'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
+  check(`${label}: 뽀뽀괴물 defeated`, (await battle())?.mode === 'victory');
+  await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 9000 }).catch(() => {});
+  const w = await combat();
+  check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
+  check(`${label}: boss UI hidden after battle`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-special').isVisible()));
+  // 평소 달리기: 부메랑으로 바위 깨기
+  const sc0 = await G(() => window.__gona.scene.getScene('Game').score);
+  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); sc.entities = []; sc.addRock(sc.playerX + 60); sc.distToNext = 9999; });
+  await page.keyboard.press('KeyX');
+  await page.waitForTimeout(700);
+  const rocks = await G(() => window.__gona.scene.getScene('Game').entities.filter((e) => e.type === 'rock' && !e.done).length);
+  const sc1 = await G(() => window.__gona.scene.getScene('Game').score);
+  check(`${label}: boomerang breaks rocks in normal run`, rocks === 0 && sc1 - sc0 === 5, `rocks ${rocks} score +${sc1 - sc0}`);
+  await page.screenshot({ path: `${S}/boss-${label}-walker.png` });
+
+  // ── 킁카괴물 (4단계 게이지 가득 → 최종 보스전 → 엔딩)
+  await page.goto(URL + '?test');
+  await startFromTitle(page);
+  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.clearedBosses.add('kiss'); sc.debugSetStage(3); sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle(), null, { timeout: 4000 }).catch(() => {});
+  check(`${label}: bigbaby gauge full → 킁카괴물 battle`, (await battle())?.id === 'sniff');
+  await G(() => window.__gona.scene.getScene('Game').debugGod());
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 8000 });
+  let pull = 0, puddle = false; const t0 = Date.now();
+  while (Date.now() - t0 < 16000 && !(pull > 5 && puddle)) {
+    const st = await G(() => { const g = window.__gona.scene.getScene('Game'); return { pull: g.pull, pud: g.battle.hostiles.some((h) => h.onGround) }; });
+    pull = Math.max(pull, st.pull); puddle = puddle || st.pud;
+    await page.waitForTimeout(150);
+  }
+  check(`${label}: sniff inhale pulls GONA, stink puddles on ground`, pull > 5 && puddle, `pull ${pull.toFixed(1)} puddle ${puddle}`);
+  await page.screenshot({ path: `${S}/boss-${label}-sniff.png` });
+  const shp = (await battle()).hp;
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 }).catch(() => {});
+  await page.keyboard.press('KeyX');
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 }).catch(() => {});
+  check(`${label}: boomerang reaches small boss from tall bigbaby`, (await battle()).hp < shp, `${shp} → ${(await battle()).hp}`);
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(15));
+  for (let i = 0; i < 5 && !(await battle())?.phase2; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(1000); }
+  check(`${label}: sniff phase 2 at half HP`, (await battle())?.phase2 && (await page.locator('.bb-phase').isVisible()));
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
+  for (let i = 0; i < 8 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
+  await page.waitForSelector('.over-screen.cleared:not(.hidden)', { timeout: 9000 }).catch(() => {});
+  const end = await page.locator('.over-screen h2').textContent();
+  check(`${label}: final boss win → ending screen`, end.includes('모험 완료'), end);
+  await page.screenshot({ path: `${S}/boss-${label}-ending.png` });
+  await page.locator('.over-screen .retry-btn').click(); await page.waitForTimeout(800);
+  const rs = await combat();
+  check(`${label}: ending → restart from newborn`, rs.stage === 0 && rs.state === 'playing', JSON.stringify(rs));
+
+  // ── 보스전에서 짐 → '보스전 다시' 버튼
+  await begin('kiss');
+  await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.hearts = 1; });
+  await page.waitForSelector('.over-screen:not(.hidden)', { timeout: 25000 });
+  check(`${label}: losing in boss battle offers boss retry`, await page.locator('.boss-retry').isVisible());
+  await page.waitForTimeout(600);
+  await page.locator('.boss-retry').click();
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.id === 'kiss', null, { timeout: 6000 }).catch(() => {});
+  const rb = await combat();
+  check(`${label}: boss retry restarts at 뽀뽀괴물 as crawler`, (await battle())?.id === 'kiss' && rb.stage === 1, JSON.stringify(rb));
+  check(`${label}: no page errors (boss)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
+  await bossTests('boss-port', devices['iPhone 13']);
+  await bossTests('boss-land', devices['iPhone 13 landscape']);
   await introTests('intro-land', devices['iPhone 13 landscape']);
   await introTests('intro-port', devices['iPhone 13']);
   await run('land', devices['iPhone 13 landscape']);

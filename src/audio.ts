@@ -74,6 +74,7 @@ export const narrationUrl = (i: number): string => `assets/voice/prologue-${Stri
 export const SFX_NAMES = [
   'start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump',
   'pickup10', 'pickup20', 'pickup30', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord',
+  'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff',
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 
@@ -679,6 +680,64 @@ class Sound {
   newRecord(): void {
     if (this.sfxFile('newRecord')) return;
     ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.26, i * 0.1));
+  }
+
+  // ── 보스전
+  /** 머리카락 부메랑 슝 */
+  throw(): void {
+    if (this.sfxFile('throw')) return;
+    this.noise(0.18, 0.35, 0, 'bandpass', 2600);
+    this.tone(500, 0.16, 'triangle', 0.16, 0, 900);
+  }
+  /** 머리카락이 다시 붙음 (뽁) */
+  catch(): void {
+    if (this.sfxFile('catch')) return;
+    this.tone(700, 0.07, 'sine', 0.26, 0, 1100);
+    this.bell(hz('A5'), 0.2, 0.12, 0.03);
+  }
+  /** 보스가 맞음 */
+  bossHit(): void {
+    if (this.sfxFile('bossHit')) return;
+    this.noise(0.12, 0.55, 0, 'bandpass', 1500);
+    this.tone(300, 0.12, 'square', 0.22, 0, 160);
+  }
+  /** 뽀뽀 (쪽!) */
+  smooch(): void {
+    if (this.sfxFile('smooch')) return;
+    this.tone(900, 0.05, 'sine', 0.3, 0, 1500);
+    this.noise(0.05, 0.3, 0.02, 'highpass', 3500);
+    this.tone(1200, 0.12, 'sine', 0.14, 0.05, 700);
+  }
+  /** 코로 흡입 (스으읍) */
+  inhale(): void {
+    if (this.sfxFile('inhale')) return;
+    this.noise(0.9, 0.4, 0, 'bandpass', 900);
+    this.noise(0.9, 0.25, 0.1, 'bandpass', 1800);
+  }
+  /** 냄새 구름 퐁 */
+  puff(): void {
+    if (this.sfxFile('puff')) return;
+    this.noise(0.22, 0.45, 0, 'lowpass', 700);
+    this.tone(140, 0.2, 'sine', 0.25, 0, 80);
+  }
+  /** 필살기 */
+  special(): void {
+    if (this.sfxFile('special')) return;
+    ['C5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.25, i * 0.06));
+    this.noise(0.6, 0.5, 0.25, 'bandpass', 2000);
+    this.tone(110, 0.6, 'square', 0.25, 0.3, 55);
+  }
+  /** 보스 쓰러짐 */
+  bossDown(): void {
+    if (this.sfxFile('bossDown')) return;
+    this.noise(0.5, 0.7, 0, 'lowpass', 800);
+    ['G4', 'E4', 'C4'].forEach((n, i) => this.tone(hz(n), 0.18, 'square', 0.2, i * 0.12));
+    ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => this.bell(hz(n), 0.5, 0.24, 0.5 + i * 0.1));
+  }
+  /** 보스 등장 경고 */
+  warn(): void {
+    if (this.sfxFile('warn')) return;
+    for (let i = 0; i < 3; i++) this.tone(440, 0.14, 'square', 0.18, i * 0.22, 330);
   }
 
   // ───────────────────────── 배경음악 ─────────────────────────

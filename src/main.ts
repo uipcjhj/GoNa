@@ -9,6 +9,7 @@ import { Overlay } from './ui/overlay';
 import { CoverScreen } from './ui/cover';
 import { AudioPanel } from './ui/audioPanel';
 import { Subtitles } from './ui/subtitles';
+import { BattleUi } from './ui/battleUi';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -86,6 +87,7 @@ async function boot(): Promise<void> {
   };
   const overlay = new Overlay(ui);
   const audioPanel = new AudioPanel(ui);
+  new BattleUi(ui);
   cover.onAudioTest = () => audioPanel.open();
   overlay.onAudioTest = () => audioPanel.open();
 
@@ -158,6 +160,10 @@ async function boot(): Promise<void> {
       } else if (cover.isVisible) cover.start();
       else if (overlay.isGameOverVisible) overlay.tryRetry();
       else bus.emit(EV.tap);
+    } else if (ev.code === 'KeyX' || ev.code === 'KeyJ') {
+      bus.emit(EV.attack); // 머리카락 부메랑
+    } else if (ev.code === 'KeyC' || ev.code === 'KeyK') {
+      bus.emit(EV.special); // 필살기
     } else if (ev.code === 'KeyP' || ev.code === 'Escape') {
       bus.emit(overlay.isPaused ? EV.requestResume : EV.requestPause);
     }

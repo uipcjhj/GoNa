@@ -36,7 +36,40 @@ export const EV = {
   prologueEnd: 'prologueEnd',
   /** 화면 터치 */
   tap: 'tap',
+  /** UI → 게임: 머리카락 부메랑 / 필살기 */
+  attack: 'attack',
+  special: 'special',
+  /** 게임 → UI: 공격 버튼·필살 게이지·보스 체력 표시 (CombatHud) */
+  combatHud: 'combatHud',
+  /** 게임 → UI: 화면 가운데 큰 안내 ({ top, name, desc, ms, tone }) */
+  banner: 'banner',
+  /** 보스전 시작 / 끝({ id, win }) */
+  bossStart: 'bossStart',
+  bossEnd: 'bossEnd',
+  /** 엔딩 (마지막 보스 격파) — GameOverInfo 와 같은 모양 + cleared */
+  ending: 'ending',
 } as const;
+
+export type BossId = 'kiss' | 'sniff';
+
+/** 공격 버튼 상태: 숨김 / 던질 수 있음 / 날아가는 중(돌아오기 전) */
+export type AttackState = 'hidden' | 'ready' | 'out';
+
+export interface CombatHud {
+  attack: AttackState;
+  /** 필살 게이지 0~1 (null = 숨김: 보스전에서만 보임) */
+  special: number | null;
+  specialReady: boolean;
+  boss: { name: string; hp: number; maxHp: number; phase: number } | null;
+}
+
+export interface BannerInfo {
+  top: string;
+  name: string;
+  desc?: string;
+  ms: number;
+  tone?: 'boss' | 'good' | 'power';
+}
 
 export interface GameOverInfo {
   score: number;
@@ -49,6 +82,18 @@ export interface GameOverInfo {
   /** 지금까지 최고 성장 단계 */
   bestGrowthLevel: number;
   growthLevels: number;
+  /** 보스전에서 졌으면 그 보스 (게임 오버 화면에 '보스전 다시 도전' 버튼) */
+  bossRetry?: BossId;
+  /** 엔딩 (모든 보스 격파) */
+  cleared?: boolean;
+}
+
+/** 다시하기 요청 옵션 */
+export interface RestartOptions {
+  /** 이 보스전부터 바로 다시 (점수·간식 수는 이어서) */
+  boss?: BossId;
+  score?: number;
+  snacks?: number;
 }
 
 export interface EvolveInfo {

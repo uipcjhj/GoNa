@@ -1,9 +1,10 @@
 /**
  * 스테이지 관리 구조 (향후 확장용).
  *
- * 지금은 '버섯숲' 스테이지 하나만 있고, 보스 없이 끝없이 달리는 기존 방식 그대로입니다.
- * 앞으로는 스테이지마다 배경·간식/장애물 비율·보스를 정하고,
- * 목표(거리 또는 성장 단계)를 채우면 보스전 → 다음 스테이지 → 엔딩 순서로 진행할 예정입니다.
+ * 지금은 배경이 '버섯숲' 하나뿐이라 보스전도 같은 숲에서 벌어집니다.
+ * 보스전 시점은 성장 단계로 정합니다 (src/game/boss.ts 의 atStage):
+ *   2단계 게이지 가득 → 뽀뽀괴물 → 3단계 / 4단계 게이지 가득 → 킁카괴물 → 엔딩
+ * 보스별 배경 그림이 생기면 아래 backgroundUrl 을 채워 스테이지 전환에 쓸 예정입니다.
  */
 import type { BossId } from './boss';
 import type { GrowthStageId } from './growth';
@@ -25,8 +26,8 @@ export interface StageDef {
 
 export const STAGES: StageDef[] = [
   { id: 'mushroomForest', name: '버섯숲', backgroundUrl: 'assets/game/game-bg-loop.png', boss: null, bossWhenStage: null, playable: true },
-  { id: 'kissValley', name: '뽀뽀 골짜기', backgroundUrl: null, boss: 'kissMonster', bossWhenStage: 'walker', playable: false },
-  { id: 'smellSwamp', name: '냄새 늪', backgroundUrl: null, boss: 'smellMonster', bossWhenStage: 'bigbaby', playable: false },
+  { id: 'kissValley', name: '뽀뽀 골짜기', backgroundUrl: null, boss: 'kiss', bossWhenStage: 'walker', playable: false },
+  { id: 'smellSwamp', name: '킁카 늪', backgroundUrl: null, boss: 'sniff', bossWhenStage: 'bigbaby', playable: false },
   // 엔딩: 엄마·아빠·이모·할머니·할아버지에게 달려가 안기기
   { id: 'homecoming', name: '가족 품으로', backgroundUrl: null, boss: null, bossWhenStage: null, playable: false },
 ];

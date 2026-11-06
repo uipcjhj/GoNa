@@ -6,6 +6,7 @@ import { mapToCanvas } from '../art/PixelCanvas';
 import { cropHairTuft } from '../art/nest';
 import { bus, EV } from '../events';
 import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
+import { BOSSES } from '../game/boss';
 
 const CUSTOM_KEY = 'dino-custom-src';
 const SNACK_KINDS: SnackKind[] = ['strawberry', 'banana', 'cookie'];
@@ -80,6 +81,8 @@ export class BootScene extends Phaser.Scene {
       const a = STAGE_ASSETS[st.id];
       if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
     }
+    // 보스 정식 그림 (선택 — 없으면 코드 도트)
+    for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
   }
 
   create(): void {

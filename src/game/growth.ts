@@ -45,7 +45,10 @@ export interface GrowthStageDef {
   name: string;
   /** 진화 연출에 표시할 한 줄 설명 */
   description: string;
-  /** 다음 단계까지 필요한 성장 게이지 (최종 단계는 null) */
+  /**
+   * 다음 단계까지 필요한 성장 게이지 (null = 더 채울 게이지 없음).
+   * 마지막 단계에도 값이 있으면, 가득 찼을 때 그 단계의 보스전(src/game/boss.ts atStage)이 열림.
+   */
   gaugeToNext: number | null;
   /** 임시 애니메이션 (기본 dino.png 시트의 포즈 조합) */
   anim: StageAnimation;
@@ -102,7 +105,7 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     id: 'walker',
     level: 3,
     name: '직립보행 고나',
-    description: '두 발로 씩씩하게 달려요!',
+    description: '두 발로 씩씩하게! 머리카락 부메랑으로 바위도 깨요',
     gaugeToNext: 30,
     anim: { run: [1, 2, 3, 4], runFps: 10, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.2, wiggleDeg: 0, wiggleSpeed: 0, bob: 0 },
     hitbox: SAME_HITBOX,
@@ -114,7 +117,8 @@ export const GROWTH_STAGES: GrowthStageDef[] = [
     level: 4,
     name: '빅베이비 곤룡',
     description: '쿵쿵! 최종 진화 완료!',
-    gaugeToNext: null,
+    // 마지막 단계: 게이지가 가득 차면 최종 보스 킁카괴물 → 엔딩
+    gaugeToNext: 30,
     // (bigbaby.png 가 없을 때의 임시: 직립보행 포즈를 1.6배) / 있으면 전용 체형 그림, 묵직하게 통통
     anim: { run: [1, 2, 3, 4], runFps: 7, jump: 5, idle: 0, happy: 7, surprised: 8, scale: 1.6, wiggleDeg: 0, wiggleSpeed: 0, bob: 2 },
     hitbox: SAME_HITBOX,
@@ -166,8 +170,15 @@ export class GrowthState {
     return GROWTH_STAGES[this.stageIndex];
   }
 
+  /** 마지막 성장 단계 (더 진화하지 않음) */
   get isFinal(): boolean {
-    return this.stage.gaugeToNext === null;
+    return this.stageIndex >= GROWTH_STAGES.length - 1;
+  }
+
+  /** 게이지가 가득 참 (보스전·진화 대기) */
+  get isFull(): boolean {
+    const need = this.stage.gaugeToNext;
+    return need !== null && this.gauge >= need;
   }
 
   /** 0~1 게이지 비율 (최종 단계는 1) */
@@ -178,9 +189,10 @@ export class GrowthState {
 
   /** 게이지를 올리고, 가득 찼으면 true (진화는 evolve() 를 따로 호출 — 연출이 끝난 뒤 적용) */
   add(amount: number): boolean {
-    if (this.isFinal) return false;
-    this.gauge += amount;
-    return this.gauge >= (this.stage.gaugeToNext ?? Infinity);
+    const need = this.stage.gaugeToNext;
+    if (need === null || this.gauge >= need) return false;
+    this.gauge = Math.min(need, this.gauge + amount);
+    return this.gauge >= need;
   }
 
   /** 다음 단계로. 남는 게이지는 버림 (단계마다 새로 채우는 규칙) */
