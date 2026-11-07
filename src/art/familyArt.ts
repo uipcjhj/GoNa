@@ -1,6 +1,6 @@
 /**
  * 가족 엔딩: 가족 이름·순서와 작은 효과 그림 (꽃잎·하트 등 — 앱 시작 때 한 번 만들어 재사용).
- * 가족 캐릭터 그림은 public/assets/ending/fam-*.png (tools/build_family_sb.py — B스타일 스토리보드 원본 기반).
+ * 가족 캐릭터 그림은 public/assets/ending/fam-*.png (tools/build_family_v3.py — art-src/ending/family-v3 원본 그림 기반).
  */
 import { PixelCanvas } from './PixelCanvas';
 

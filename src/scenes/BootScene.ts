@@ -86,8 +86,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('end-bgB-land', 'assets/ending/bgB-land.png');
     this.load.image('end-bgB-port', 'assets/ending/bgB-port.png');
     for (const id of ['stripe', 'glasses', 'ponytail', 'blacktee', 'curly', 'grey']) {
-      this.load.spritesheet(`fam-${id}`, `assets/ending/fam-${id}.png`, { frameWidth: 40, frameHeight: 36 });
-      this.load.spritesheet(`fam-${id}-arms`, `assets/ending/fam-${id}-arms.png`, { frameWidth: 40, frameHeight: 36 });
+      this.load.spritesheet(`fam-${id}`, `assets/ending/fam-${id}.png`, { frameWidth: 64, frameHeight: 60 });
+      this.load.spritesheet(`fam-${id}-arms`, `assets/ending/fam-${id}-arms.png`, { frameWidth: 64, frameHeight: 60 });
     }
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);

@@ -1,16 +1,18 @@
 /**
  * 가족 엔딩 컷신 (B스타일 — 해 질 녘 버섯마을) — 게임 화면과 별개인 시네마틱 · 약 50초 → THE END
  *   배경: 엔딩 전용 저녁 버섯마을 (가로 320x180 · 세로 180x320, 창문·가로등 불빛) + 가로등 불빛 일렁임 · 꽃잎
- *   인물: 가족 6명 도트 — B스타일 스토리보드의 캐릭터를 그대로 뽑은 기준 그림에서 동작만 추가 (40x36 x 20프레임, 몸·팔 분리, 2배로 표시)
+ *   인물: 가족 6명 — 사람마다 따로 만든 도트 그림(PNG) 동작 시트 (tools/build_family_v3.py, 64x60 x 10동작, 몸·앞팔 분리)
  *         고나는 게임의 3단계 고나 그림(달리기 4프레임·깜짝·깜빡) + 같은 그림에서 눈·입만 바꾼 웃는 얼굴
- *   카메라: 정수 배율만 (도트가 고르게) — 와이드 / 미디엄 / 클로즈업, 부드러운 팬, 마지막 줌아웃
- *   세로: 인물 중심 세로 구도(자막은 아래) / 가로: 넓은 마을 구도(자막은 위 하늘)
+ *         가족·고나 모두 1배 (도트 크기·외곽선 굵기 같음)
+ *   카메라: 정수 배율만 (도트가 고르게) — 전체(Z0) / 한 단계 가까이(Z0+1)까지만. 얼굴만 잡는 과한 확대 없음
+ *   세로: 위 노을·마을 / 가운데 가족과 고나 / 아래 자막 — 발이 자막 위에 오도록 카메라 높이를 계산
+ *   가로: 자막은 위(하늘) — 머리가 자막 아래에 오도록
  *
- *   SCENE 01 노을의 버섯마을 (와이드 · 돌길을 따라 천천히)
- *   SCENE 02 가족을 발견한 고나 (원경 → 중경 · 깜짝! → 활짝)  — 가족은 서로 다른 자리·자세로 손 흔듦
- *   SCENE 03 고나의 달리기 (달리기 4프레임 · 통통 · 발밑 먼지 · 카메라가 따라감)
- *   SCENE 04 가족의 품 (클로즈업 · 무릎 굽혀 감싸 안음 · 고나 눈 감고 웃음 · 하트 1~2개)
- *   SCENE 05 뽀뽀와 킁카 (얼굴 클로즈업 · 볼에 쪽! · 머리 킁킁 · 고나 간지러워 움찔 · 쓰다듬기)
+ *   SCENE 01 노을의 버섯마을 (하늘·마을 → 돌길로 천천히)
+ *   SCENE 02 가족을 발견한 고나 (고나 걸어와 멈춤 → 깜짝! → 활짝) — 가족은 세 줄로 모여 손 흔듦 (한 줄로 서지 않음)
+ *   SCENE 03 고나의 달리기 (달리기 4프레임 · 통통 · 발밑 먼지) — 가족도 다가와 두 팔 벌림
+ *   SCENE 04 가족의 품 (양옆에서 감싸 안음 — 팔은 고나보다 앞에 그림 · 고나 눈 감고 웃음 · 하트)
+ *   SCENE 05 뽀뽀와 킁카 (볼에 쪽! · 머리에 코 대고 킁킁 → 고나 간지러워 꼼지락 · 뒷줄 두 사람이 머리 쓰다듬기)
  *   SCENE 06 단체 컷 → 천천히 멀어짐 → THE END (버튼: ui/endingUi.ts)
  * 그림은 모두 앱 시작 때 로드한 텍스처 + 가벼운 트윈. 씬이 끝나면 오브젝트·트윈·타이머 자동 정리.
  */
@@ -28,16 +30,12 @@ export const ENDING_LINES: { at: number; text: string }[] = [
 ];
 export const ENDING_THE_END_AT = 48;
 
-/** 가족 (스토리보드 속 외형으로 구분, 호칭 추정 안 함 — tools/build_family_sb.py) */
+/** 가족 (사진·스토리보드 속 외형으로 구분, 호칭 추정 안 함) */
 export type FamId = 'stripe' | 'glasses' | 'ponytail' | 'blacktee' | 'curly' | 'grey';
 export const FAM_IDS: FamId[] = ['stripe', 'glasses', 'ponytail', 'blacktee', 'curly', 'grey'];
-const F = { idle: 0, blink: 1, laugh: 2, waveA: 3, waveB: 4, open: 5, walkA: 6, walkB: 7, hug: 8, kiss: 9, sniffA: 10, sniffB: 11, patA: 12, patB: 13 };
-/** 8~13 은 고나가 왼쪽에 있을 때(왼쪽으로 기울임), +6 = 같은 동작을 오른쪽으로 (좌우 반전을 쓰지 않아 묶은 머리 방향 등 원본 디자인 유지) */
-const LEAN_RIGHT = 6;
-/** 가족·고나 표시 배율 (둘 다 같은 배율 — 도트 크기·외곽선 굵기 통일) */
-const CHAR_SCALE = 2;
-/** 처음 기다릴 때는 조금 모여 서 있음 */
-const WAIT_SPREAD = 0.7;
+/** 시트 칸 (tools/build_family_v3.py 의 POSES 순서) — 4~9 는 옆모습(오른쪽 보기), 왼쪽을 볼 땐 좌우 반전 */
+const F = { idle: 0, laugh: 1, wave: 2, open: 3, walkA: 4, walkB: 5, hug: 6, kiss: 7, sniff: 8, pat: 9 };
+const SIDE_FROM = F.walkA;
 type Mode = 'idle' | 'laugh' | 'wave' | 'open' | 'walk' | 'hug' | 'kiss' | 'sniff' | 'pat';
 
 interface Member {
@@ -61,10 +59,13 @@ interface Layout {
   c: number;
   /** 줄별 발 높이 [앞줄, 가운데 줄, 뒷줄] */
   rows: [number, number, number];
-  /** 고나 옆에 모였을 때 자리 (가운데 기준 x, 줄) */
+  /** 고나 둘레에 모였을 때 자리 (가운데 기준 x, 줄) */
   pos: Record<FamId, [number, 0 | 1 | 2]>;
-  /** 처음(고나가 오기 전) 가족이 모여 있는 곳 — 가운데에서 오른쪽으로 */
+  /** 쓰다듬을 때 다가가는 자리 */
+  patPos: Partial<Record<FamId, number>>;
+  /** 처음(고나가 오기 전) 가족이 모여 있는 곳 — 가운데에서 오른쪽으로 · 모인 간격 비율 */
   wait: number;
+  waitSpread: number;
   gonaStart: number;
   gonaStop: number;
   /** 가로등 불빛 자리 */
@@ -77,11 +78,13 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     W: 320,
     H: 180,
     c: 160,
-    rows: [173, 165, 158],
-    pos: { ponytail: [-22, 0], curly: [22, 0], stripe: [-54, 1], grey: [54, 1], glasses: [-36, 2], blacktee: [36, 2] },
-    wait: 60,
-    gonaStart: -40,
-    gonaStop: 100,
+    rows: [172, 164, 156],
+    pos: { ponytail: [-22, 0], curly: [22, 0], stripe: [-44, 1], grey: [44, 1], glasses: [-24, 2], blacktee: [24, 2] },
+    patPos: { glasses: -14, blacktee: 14 },
+    wait: 72,
+    waitSpread: 0.9,
+    gonaStart: -24,
+    gonaStop: 84,
     lamps: [[94, 41], [237, 41]],
   },
   port: {
@@ -89,11 +92,13 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     W: 180,
     H: 320,
     c: 92,
-    rows: [262, 252, 243],
-    pos: { ponytail: [-20, 0], curly: [20, 0], stripe: [-50, 1], grey: [50, 1], glasses: [-33, 2], blacktee: [33, 2] },
-    wait: 30,
-    gonaStart: -40,
-    gonaStop: 32,
+    rows: [236, 226, 216],
+    pos: { ponytail: [-22, 0], curly: [22, 0], stripe: [-40, 1], grey: [40, 1], glasses: [-22, 2], blacktee: [22, 2] },
+    patPos: { glasses: -14, blacktee: 14 },
+    wait: 26,
+    waitSpread: 0.75,
+    gonaStart: -24,
+    gonaStop: 44,
     lamps: [[15, 116], [163, 116]],
   },
 };
@@ -141,18 +146,18 @@ export class EndingScene extends Phaser.Scene {
     this.add
       .particles(0, 0, 'end-petal', { frame: [0, 1], x: { min: 0, max: L.W + 20 }, y: -4, lifespan: 9000, speedX: { min: -10, max: -3 }, speedY: { min: 7, max: 14 }, rotate: { min: 0, max: 360 }, frequency: perf.low ? 700 : 380 })
       .setDepth(400);
-    // 가족 — 처음엔 길 오른쪽에 서로 다른 자리·자세로 모여 기다림
+    // 가족 — 처음엔 길 오른쪽에 세 줄로 모여 기다림 (한 줄로 서지 않음)
     FAM_IDS.forEach((id, i) => {
       const [dx, row] = L.pos[id];
-      const x = Math.round(L.c + dx * WAIT_SPREAD + L.wait);
+      const x = Math.round(L.c + L.wait + dx * L.waitSpread);
       const y = L.rows[row];
-      const s = this.add.sprite(x, y, `fam-${id}`, 0).setOrigin(0.5, 1).setScale(CHAR_SCALE);
-      const arms = this.add.sprite(x, y, `fam-${id}-arms`, 0).setOrigin(0.5, 1).setScale(CHAR_SCALE);
+      const s = this.add.sprite(x, y, `fam-${id}`, 0).setOrigin(0.5, 1);
+      const arms = this.add.sprite(x, y, `fam-${id}-arms`, 0).setOrigin(0.5, 1);
       this.family.push({ id, s, arms, x, y, tx: x, mode: i % 2 ? 'laugh' : 'idle', then: 'idle', phase: (i * 0.37) % 1.2, since: 0, row });
     });
     this.gx = L.gonaStart;
     this.gona = this.add.sprite(this.gx, L.rows[0] + 1, 'dino', 0).setOrigin(0.5, 1);
-    this.shot(L.c, this.portrait ? L.H * 0.35 : L.H * 0.4, this.Z0, 0);
+    this.shot(L.c, L.H * (this.portrait ? 0.3 : 0.35), this.Z0, 0);
     cam.fadeIn(1200, 40, 20, 50);
     this.buildCues();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -167,6 +172,20 @@ export class EndingScene extends Phaser.Scene {
 
   private at(at: number, fn: () => void): void {
     this.cues.push({ at, fn });
+  }
+
+  /** 한 단계 가까운 배율 — 화면에 인물 전신이 들어갈 만큼만 */
+  private get ZM(): number {
+    const z = this.Z0 + 1;
+    return this.scale.height / z >= 92 ? z : this.Z0;
+  }
+
+  /** 배율 z 에서 발(ground)이 자막 위에, 머리가 화면 안에 오도록 카메라 가운데 y */
+  private frameY(z: number): number {
+    const vh = this.scale.height / z;
+    const ground = this.L.rows[0];
+    const top = this.portrait ? ground + 8 - vh * 0.7 : ground + 6 - vh;
+    return top + vh / 2;
   }
 
   /** 카메라: (x, y) 가운데 · 정수 배율 z · dur 초 (0 = 컷) */
@@ -186,11 +205,6 @@ export class EndingScene extends Phaser.Scene {
     cam.pan(cx, cy, dur * 1000, 'Sine.easeInOut');
   }
 
-  private cut(x: number, y: number, z: number): void {
-    this.cameras.main.flash(220, 70, 40, 90);
-    this.shot(x, y, z, 0);
-  }
-
   private act(id: FamId, mode: Mode): void {
     const f = this.m(id);
     f.mode = mode;
@@ -199,7 +213,7 @@ export class EndingScene extends Phaser.Scene {
 
   private walkTo(id: FamId, x: number, then: Mode): void {
     const f = this.m(id);
-    f.tx = x;
+    f.tx = Math.round(x);
     f.then = then;
     f.mode = 'walk';
     f.since = this.t;
@@ -214,26 +228,23 @@ export class EndingScene extends Phaser.Scene {
   private buildCues(): void {
     const L = this.L;
     const Z0 = this.Z0;
-    const ZM = Z0 + 2;
-    const ZC = Z0 + (this.portrait ? 4 : 5);
+    const ZM = this.ZM;
     const ground = L.rows[0];
-    const faceY = ground - 46;
     ENDING_LINES.forEach((l, i) => this.at(l.at, () => this.line(i)));
     // ── SCENE 01 노을의 버섯마을: 하늘·마을에서 돌길로 천천히
     this.at(0, () => sound.startMusic('ending'));
-    this.at(0.3, () => this.shot(L.c, L.H, Z0, 4.8));
+    this.at(0.3, () => this.shot(L.c, this.frameY(Z0), Z0, 4.8));
     // ── SCENE 02 가족을 발견한 고나: 고나가 걸어 들어와 멈춤 → 깜짝 → 활짝 / 가족이 손 흔듦
     this.at(5.2, () => {
       this.sceneNo = 2;
       this.gMode = 'walk';
       this.tweens.add({ targets: this, gx: L.gonaStop, duration: 2600, ease: 'Sine.Out', onComplete: () => (this.gMode = 'stand') });
     });
-    this.at(8.2, () => this.cut(L.gonaStop + 30, faceY - 4, ZM));
     this.at(8.6, () => {
       this.gMode = 'wow';
       this.hop(2);
       sound.warn();
-      this.float('!', this.gx + 6, ground - 76, '#fff3a0');
+      this.float('!', this.gx + 4, ground - 42, '#fff3a0');
     });
     this.at(10.0, () => {
       this.gMode = 'happy';
@@ -241,19 +252,19 @@ export class EndingScene extends Phaser.Scene {
       sound.catch();
     });
     (['blacktee', 'ponytail', 'grey', 'stripe', 'curly', 'glasses'] as FamId[]).forEach((id, i) => this.at(9.0 + i * 0.3, () => this.act(id, i % 3 === 2 ? 'laugh' : 'wave')));
-    this.at(11.0, () => this.cut(L.c + L.wait, faceY - 8, ZM));
-    // ── SCENE 03 고나의 달리기: 달리기 4프레임 · 통통 · 먼지 · 카메라가 따라감 / 가족도 다가와 두 팔 벌림
+    this.at(11.0, () => this.shot(L.c + L.wait * 0.5, this.frameY(ZM), ZM, 1.6));
+    // ── SCENE 03 고나의 달리기: 달리기 4프레임 · 통통 · 먼지 / 가족도 걸어와 두 팔 벌림
     this.at(13.2, () => {
       this.sceneNo = 3;
-      this.cut(L.gonaStop + 10, faceY, ZM);
       this.gMode = 'run';
+      this.shot(L.c, this.frameY(Z0), Z0, 2.4);
       this.tweens.add({ targets: this, gx: L.c, duration: 5200, ease: 'Sine.InOut', onComplete: () => (this.gMode = 'laugh') });
     });
-    for (const id of FAM_IDS) this.at(15.0 + Math.random() * 0.6, () => this.walkTo(id, L.c + L.pos[id][0], id === 'ponytail' || id === 'curly' ? 'open' : 'laugh'));
-    // ── SCENE 04 가족의 품: 클로즈업 · 무릎 굽혀 감싸 안음
+    for (const id of FAM_IDS) this.at(14.6 + Math.random() * 0.6, () => this.walkTo(id, L.c + L.pos[id][0], id === 'ponytail' || id === 'curly' ? 'open' : 'open'));
+    // ── SCENE 04 가족의 품: 양옆에서 감싸 안음 (팔은 고나 앞) · 다른 가족도 둘러섬
     this.at(18.6, () => {
       this.sceneNo = 4;
-      this.shot(L.c, faceY + 2, ZM, 1.4);
+      this.shot(L.c, this.frameY(ZM), ZM, 1.6);
     });
     this.at(19.6, () => {
       this.act('ponytail', 'hug');
@@ -262,30 +273,37 @@ export class EndingScene extends Phaser.Scene {
       this.gsq = 0.88;
       this.gMode = 'laugh';
     });
-    this.at(20.6, () => this.heart(L.c, faceY - 14));
-    this.at(22.4, () => this.heart(L.c + 8, faceY - 18));
-    this.at(21.2, () => this.cut(L.c, faceY + 2, ZC));
-    (['stripe', 'grey'] as FamId[]).forEach((id, i) => this.at(23.0 + i * 0.6, () => this.act(id, 'open')));
-    // ── SCENE 05 뽀뽀와 킁카: 볼에 쪽! · 머리 킁킁 · 쓰다듬기
+    this.at(20.6, () => this.heart(L.c - 4, ground - 46));
+    this.at(22.4, () => this.heart(L.c + 6, ground - 50));
+    (['stripe', 'grey', 'glasses', 'blacktee'] as FamId[]).forEach((id, i) => this.at(22.0 + i * 0.5, () => this.act(id, 'laugh')));
+    // ── SCENE 05 뽀뽀와 킁카: 볼에 쪽! · 머리에 코 대고 킁킁 · 뒷줄 두 사람이 머리 쓰다듬기
     this.at(28.6, () => {
       this.sceneNo = 5;
-      this.cut(L.c - 4, faceY + 2, ZC);
     });
-    this.at(29.4, () => this.kiss('ponytail'));
-    this.at(32.4, () => this.cut(L.c + 6, faceY, ZC));
-    this.at(32.8, () => this.sniff('curly'));
-    this.at(35.4, () => this.act('grey', 'pat'));
-    this.at(35.8, () => this.act('stripe', 'pat'));
-    this.at(36.0, () => this.cut(L.c, faceY - 6, ZM));
-    (['glasses', 'blacktee'] as FamId[]).forEach((id, i) => this.at(36.2 + i * 0.4, () => this.act(id, 'laugh')));
-    this.at(37.6, () => this.kiss('curly'));
+    this.at(29.4, () => this.kiss('curly'));
+    this.at(32.8, () => this.sniff('ponytail'));
+    // 오른쪽 사람이 잠깐 비켜서고, 뒷줄 사람이 한 걸음 앞으로 나와(손이 고나 머리 높이) 머리를 토닥토닥
+    this.at(34.4, () => this.walkTo('curly', L.c + L.pos.curly[0] + 14, 'laugh'));
+    this.at(34.8, () => {
+      const f = this.m('blacktee');
+      this.walkTo('blacktee', L.c + (L.patPos.blacktee ?? 14), 'pat');
+      this.tweens.add({ targets: f, y: ground - 7, duration: 600, ease: 'Sine.Out' });
+    });
+    this.at(35.2, () => this.act('glasses', 'laugh'));
+    this.at(37.4, () => {
+      const f = this.m('blacktee');
+      this.walkTo('blacktee', L.c + L.pos.blacktee[0], 'laugh');
+      this.tweens.add({ targets: f, y: L.rows[2], duration: 600, ease: 'Sine.Out' });
+      this.walkTo('curly', L.c + L.pos.curly[0], 'hug');
+    });
+    this.at(38.4, () => this.kiss('curly'));
     // ── SCENE 06 단체 컷 → 천천히 멀어짐 → THE END
     this.at(40.0, () => {
       this.sceneNo = 6;
       for (const [i, id] of FAM_IDS.entries()) this.at(this.t + i * 0.15, () => this.act(id, id === 'ponytail' || id === 'curly' ? 'hug' : 'laugh'));
       this.gMode = 'laugh';
     });
-    this.at(41.0, () => this.shot(L.c, L.H, Z0, 5.0));
+    this.at(41.0, () => this.shot(L.c, this.frameY(Z0), Z0, 5.0));
     for (const t of [42.0, 44.0, 46.0]) this.at(t, () => this.hop(2));
     this.at(ENDING_THE_END_AT, () => bus.emit(EV.endingTheEnd));
   }
@@ -294,12 +312,14 @@ export class EndingScene extends Phaser.Scene {
     this.act(id, 'kiss');
     sound.smooch();
     const f = this.m(id);
-    const hx = this.gx + (f.x < this.gx ? -14 : 16);
-    const hy = this.L.rows[0] - 50;
-    this.float('쪽!', hx, hy - 8, '#ff9fc4');
+    const side = f.x < this.gx ? -1 : 1;
+    const hx = this.gx + side * 10;
+    const hy = this.L.rows[0] - 30;
+    this.float('쪽!', hx + side * 4, hy - 8, '#ff9fc4');
     this.heart(hx, hy - 2);
     this.gMode = 'laugh';
-    this.gsq = 0.9;
+    // 고나가 볼을 내밀며 살짝 발돋움 (볼이 입술 높이에 닿게)
+    this.tweens.add({ targets: this, galt: 6, duration: 180, yoyo: true, hold: 900, ease: 'Sine.Out' });
     this.at(this.t + 1.6, () => this.act(id, 'hug'));
   }
 
@@ -307,11 +327,18 @@ export class EndingScene extends Phaser.Scene {
     this.act(id, 'sniff');
     sound.inhale();
     const f = this.m(id);
-    this.float('킁킁♡', this.gx + (f.x < this.gx ? -10 : 12), this.L.rows[0] - 80, '#ffd0e2');
-    this.at(this.t + 0.8, () => this.heart(this.gx + 6, this.L.rows[0] - 72));
+    const side = f.x < this.gx ? -1 : 1;
+    this.float('킁킁♡', this.gx + side * 12, this.L.rows[0] - 44, '#ffd0e2');
+    this.at(this.t + 0.8, () => this.heart(this.gx + side * 4, this.L.rows[0] - 40));
+    // 고나: 간지러워 꼼지락 + 웃음
     this.wiggle = 1.8;
     this.gMode = 'laugh';
     this.at(this.t + 2.0, () => this.act(id, 'hug'));
+  }
+
+  private dust(x: number, y: number): void {
+    const d = this.add.image(x, y, 'fx-sparkle').setDepth(170).setTint(0xd8c8b0).setAlpha(0.8);
+    this.tweens.add({ targets: d, x: x - 6, y: y - 4, alpha: 0, duration: 380, onComplete: () => d.destroy() });
   }
 
   private hop(px: number): void {
@@ -365,7 +392,7 @@ export class EndingScene extends Phaser.Scene {
       key = 'happy-walker';
       frame = 1 + (Math.floor(this.t * 12) % 4);
       bounce = Math.abs(Math.sin(this.t * 14)) * 1.5;
-      if (Math.random() < dt * 9) this.dust(this.gx - 22, this.L.rows[0]);
+      if (Math.random() < dt * 9) this.dust(this.gx - 10, this.L.rows[0]);
     } else if (this.gMode === 'wow') frame = 8;
     else if (this.gMode === 'stand') frame = Math.floor(this.t / 2.4) % 6 === 0 ? 6 : 0;
     else {
@@ -375,40 +402,40 @@ export class EndingScene extends Phaser.Scene {
     if (!this.textures.exists(key)) key = 'dino';
     if (this.gona.texture.key !== key || this.gona.frame.name !== String(frame)) this.gona.setTexture(key, frame);
     const sy = this.gsq;
-    this.gona.setScale(CHAR_SCALE * (2 - sy), CHAR_SCALE * sy).setAngle(this.wiggle > 0 ? Math.sin(this.t * 32) * 4 : 0);
-    this.gona.setPosition(Math.round(this.gx), Math.round(this.L.rows[0] + CHAR_SCALE - (this.galt + bounce) * CHAR_SCALE)).setDepth(180);
+    this.gona.setScale(2 - sy, sy).setAngle(this.wiggle > 0 ? Math.sin(this.t * 32) * 4 : 0);
+    this.gona.setPosition(Math.round(this.gx), Math.round(this.L.rows[0] + 1 - this.galt - bounce)).setDepth(180);
     for (const f of this.family) this.updateMember(f, dt);
-  }
-
-  private dust(x: number, y: number): void {
-    const d = this.add.image(x, y, 'fx-sparkle').setDepth(170).setTint(0xd8c8b0).setAlpha(0.8);
-    this.tweens.add({ targets: d, x: x - 6, y: y - 4, alpha: 0, duration: 380, onComplete: () => d.destroy() });
   }
 
   private updateMember(f: Member, dt: number): void {
     const t = this.t + f.phase;
     let frame: number = F.idle;
     let bob = 0;
+    let armDy = 0;
+    let faceLeft = f.x > this.gx; // 옆모습 동작은 고나 쪽을 봄
     if (f.mode === 'walk') {
-      const step = 22 * dt;
+      const step = 26 * dt;
       if (Math.abs(f.tx - f.x) <= step) {
         f.x = f.tx;
         f.mode = f.then;
         f.since = this.t;
-      } else f.x += Math.sign(f.tx - f.x) * step;
-      frame = Math.floor(t / 0.2) % 2 ? F.walkB : F.walkA;
+      } else {
+        faceLeft = f.tx < f.x;
+        f.x += Math.sign(f.tx - f.x) * step;
+      }
+      frame = Math.floor(t / 0.18) % 2 ? F.walkB : F.walkA;
     }
     switch (f.mode) {
       case 'idle':
-        frame = t % 3.1 < 0.15 ? F.blink : F.idle;
-        bob = Math.floor(t / 0.7) % 2;
+        frame = F.idle;
+        bob = Math.floor(t / 0.8) % 2;
         break;
       case 'laugh':
         frame = F.laugh;
-        bob = Math.floor(t / 0.35) % 2;
+        bob = Math.floor(t / 0.32) % 2;
         break;
       case 'wave':
-        frame = Math.floor(t / 0.3) % 2 ? F.waveB : F.waveA;
+        frame = Math.floor(t / 0.32) % 2 ? F.wave : F.idle;
         break;
       case 'open':
         frame = F.open;
@@ -416,30 +443,33 @@ export class EndingScene extends Phaser.Scene {
         break;
       case 'hug':
         frame = F.hug;
+        bob = Math.floor(t / 0.9) % 2;
         break;
       case 'kiss':
         frame = F.kiss;
         break;
       case 'sniff':
-        frame = Math.floor((this.t - f.since) / 0.22) % 2 ? F.sniffB : F.sniffA;
+        frame = F.sniff;
+        bob = Math.floor((this.t - f.since) / 0.2) % 2; // 킁킁 — 고개가 들썩
         break;
       case 'pat':
-        frame = Math.floor((this.t - f.since) / 0.3) % 2 ? F.patB : F.patA;
+        frame = F.pat;
+        armDy = Math.floor((this.t - f.since) / 0.25) % 2 ? 2 : 0; // 토닥토닥
         break;
       default:
         break;
     }
     const s = f.s;
-    // 기울이는 동작은 고나 쪽으로 — 고나보다 왼쪽에 있으면 오른쪽으로 기울인 프레임
-    if (frame >= F.hug && f.x < this.gx) frame += LEAN_RIGHT;
     if (s.frame.name !== String(frame)) s.setFrame(frame);
+    s.setFlipX(frame >= SIDE_FROM && faceLeft);
     const touching = f.mode === 'hug' || f.mode === 'kiss' || f.mode === 'sniff' || f.mode === 'pat';
     const base = [160, 130, 100][f.row];
     s.setDepth(base);
     const a = f.arms;
     if (a.frame.name !== String(frame)) a.setFrame(frame);
-    a.setDepth(touching ? 220 - f.row : base + 0.5);
-    s.setPosition(Math.round(f.x), f.y - bob * CHAR_SCALE);
-    a.setPosition(s.x, s.y);
+    // 감싸는 팔은 고나(180)보다 앞
+    a.setFlipX(s.flipX).setDepth(touching ? 220 - f.row : base + 0.5);
+    s.setPosition(Math.round(f.x), Math.round(f.y) - bob);
+    a.setPosition(s.x, s.y + armDy);
   }
 }
