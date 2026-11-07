@@ -16,6 +16,8 @@ import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import { perf } from './perf';
+import { runScenario, showTestMenu, testParam } from './devtest';
+import { storage } from './storage';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
 
 /** 화면 비율에 맞춰 논리 해상도를 계산 (가로: 높이 고정, 세로: 너비 고정) */
@@ -43,6 +45,9 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
+  // 개발용 기능 테스트 (?test=menu · ?test=<id>) — 저장하지 않음
+  const scenario = testParam();
+  if (scenario) storage.readOnly = true;
   // 흐름: 스토리 프롤로그(알 부화 포함, Phaser + 자막) → 카메라가 물러나며 대표 타이틀 → 게임 시작 → 1단계
   const cover = new CoverScreen(ui, (opt) => bus.emit(EV.requestStart, opt));
   const subs = new Subtitles(ui);
@@ -152,6 +157,18 @@ async function boot(): Promise<void> {
     else game.loop.wake(true);
   };
 
+  if (scenario === 'menu') showTestMenu(ui);
+  else if (scenario) {
+    // 프롤로그 외에는 오프닝을 건너뛰고 타이틀 → 곧바로 게임 시작 → 시나리오
+    bus.once(EV.openingStart, () => {
+      if (scenario !== 'prologue') window.setTimeout(() => bus.emit(EV.skipOpening), 50);
+    });
+    if (scenario !== 'prologue') {
+      bus.once(EV.openingDone, () => window.setTimeout(() => cover.start(), 120));
+      bus.once(EV.start, () => window.setTimeout(() => runScenario(scenario, game, ui), 300));
+    } else runScenario('prologue', game, ui);
+  }
+
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
   if (new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
@@ -178,7 +195,7 @@ async function boot(): Promise<void> {
   // ── 터치 입력: 화면 어디를 눌러도 점프 (버튼 제외)
   const onPointer = (ev: PointerEvent): void => {
     const target = ev.target as HTMLElement | null;
-    if (target?.closest('button') || target?.closest('.audio-panel')) return;
+    if (target?.closest('button') || target?.closest('a') || target?.closest('.audio-panel') || target?.closest('.test-menu')) return;
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     ev.preventDefault();
     perf.time('input:screen', () => handlePointer());
@@ -224,7 +241,13 @@ async function boot(): Promise<void> {
 
   // 길게 누르기 메뉴, 더블탭 확대, 스크롤 방지
   document.addEventListener('contextmenu', (e) => e.preventDefault());
-  document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('.test-menu')) e.preventDefault();
+    },
+    { passive: false },
+  );
   document.addEventListener('gesturestart', (e) => e.preventDefault());
 
   // 앱 전환 시 자동 일시정지

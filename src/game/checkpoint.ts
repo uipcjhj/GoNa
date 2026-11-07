@@ -44,6 +44,7 @@ export function saveCheckpoint(id: CheckpointId, score: number, snacks: number):
 
 export function clearCheckpoint(): void {
   memory = null;
+  if (storage.readOnly) return;
   try {
     window.localStorage.removeItem(KEY);
   } catch {

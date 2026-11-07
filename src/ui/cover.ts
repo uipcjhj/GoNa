@@ -74,6 +74,7 @@ export class CoverScreen {
         b.addEventListener('click', fn);
         list.append(b);
       };
+      mk('🧪 기능 테스트 메뉴', () => (window.location.search = '?test=menu'));
       mk('🧪 뽀뽀괴물 테스트', () => this.start({ boss: 'kiss' }));
       mk('🧪 킁카괴물 테스트', () => this.start({ boss: 'sniff' }));
       // 몬스터 즉시 테스트: 개발 모드(npm run dev) 또는 주소에 ?dev / ?test 가 있을 때만 (정식 플레이에선 숨김)

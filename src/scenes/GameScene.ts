@@ -1219,7 +1219,7 @@ export class GameScene extends Phaser.Scene {
     if (m.cd <= 0 && !blocked) {
       m.attacks++;
       // 가끔 돌진 (처음 공격은 절대 아님 · 너무 가깝거나 멀면 안 함) — 반드시 0.7초 예고 ('!' + 안경 번쩍/배 출렁)
-      if (m.attacks > 1 && dx > MONSTER_DASH.minDist && dx < MONSTER_DASH.maxDist && Math.random() < MONSTER_DASH.chance) {
+      if (m.attacks > 1 && dx > MONSTER_DASH.minDist && dx < MONSTER_DASH.maxDist && (this.debugForceDash || Math.random() < MONSTER_DASH.chance)) {
         m.dashTele = MONSTER_DASH.telegraph;
         m.cd = d.cooldownFar;
         sound.warn();
@@ -1764,7 +1764,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     // 엔딩용 웃는 얼굴(모든 프레임) · 반가워 눈이 커진 얼굴 — 아기(newborn)·자이언트(bigbaby)만, 같은 그림에서 눈·입만 바꿈
-    for (const id of ['newborn', 'bigbaby'] as const) {
+    for (const id of ['newborn', 'walker', 'bigbaby'] as const) {
       const v = this.visuals[id];
       const tex = tm.get(v.texture);
       const n = tex.frameTotal - 1;
@@ -2208,6 +2208,15 @@ export class GameScene extends Phaser.Scene {
   /** (자동 테스트용) 엔딩 진행 상태 */
   debugEnding(): { state: string; t: number; scene: number } | null {
     return this.ending ? { state: this.state, t: +this.ending.t.toFixed(2), scene: this.ending.sceneNo } : null;
+  }
+
+  /** (개발용 테스트) 몬스터가 돌진 조건이면 항상 돌진 */
+  debugForceDash = false;
+  private groundGuide: Phaser.GameObjects.Rectangle | null = null;
+  /** (개발용 테스트) 땅 기준선 표시 — 발이 닿는지 확인 */
+  showGroundGuide(on: boolean): void {
+    this.groundGuide?.destroy();
+    this.groundGuide = on ? this.add.rectangle(0, this.groundY, 4000, 0.4, 0xffe14a, 0.9).setOrigin(0, 0).setDepth(30) : null;
   }
 
   /** (자동 테스트용) 바로 엔딩으로 */

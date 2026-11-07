@@ -56,6 +56,8 @@ export const EV = {
   bossTalk: 'bossTalk',
   /** 보스 패배 확정 (대사·퇴장 연출 동안 전투 HUD·버튼 숨김) */
   bossDefeat: 'bossDefeat',
+  /** (개발용 테스트 메뉴) 시나리오 시작 */
+  testScenario: 'testScenario',
   bossTalkDone: 'bossTalkDone',
   bossTalkCancel: 'bossTalkCancel',
   /** 가족 엔딩 연출 시작 (GameOverInfo) / THE END 화면 / 엔딩 다시보기 요청 */

@@ -82,15 +82,13 @@ export class BootScene extends Phaser.Scene {
       const a = STAGE_ASSETS[st.id];
       if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
     }
-    // 엔딩 컷신 전용: 노을 마을 배경(가로·세로) · 대형 가족 시트 · 고나 타이틀 그림
-    this.load.image('end-bg-land', 'assets/ending/bg-land.png');
-    this.load.image('end-bg-port', 'assets/ending/bg-port.png');
-    for (const id of ['mom', 'dad', 'aunt', 'uncle', 'grandma', 'grandpa']) {
-      this.load.spritesheet(`endfam-${id}`, `assets/ending/family-${id}.png`, { frameWidth: 112, frameHeight: 144 });
-      this.load.spritesheet(`endfam-${id}-arms`, `assets/ending/family-${id}-arms.png`, { frameWidth: 112, frameHeight: 144 });
+    // 엔딩 컷신 전용 (B스타일): 해 질 녘 버섯마을 배경(가로·세로) · 가족 6명 시트(몸·앞팔)
+    this.load.image('end-bgB-land', 'assets/ending/bgB-land.png');
+    this.load.image('end-bgB-port', 'assets/ending/bgB-port.png');
+    for (const id of ['stripe', 'glasses', 'ponytail', 'blacktee', 'curly', 'grey']) {
+      this.load.spritesheet(`fam-${id}`, `assets/ending/fam-${id}.png`, { frameWidth: 40, frameHeight: 66 });
+      this.load.spritesheet(`fam-${id}-arms`, `assets/ending/fam-${id}-arms.png`, { frameWidth: 40, frameHeight: 66 });
     }
-    for (const n of ['walk1', 'walk2', 'trot', 'surprise']) this.load.image(`end-gona-${n}`, `assets/title4/gona-${n}.png`);
-    this.load.image('end-gona-laugh', 'assets/ending/gona-laugh.png');
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
     // 일반 몬스터 정식 그림 (선택)

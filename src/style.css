@@ -1902,6 +1902,7 @@ h2 {
 }
 .pr-text {
   margin: 0;
+  white-space: pre-line; /* 엔딩 자막의 두 줄 나눔 */
   font-size: 17px;
   line-height: 1.6;
   word-break: keep-all;
@@ -2739,4 +2740,103 @@ body.boss-defeat .battle-pad {
   .bt-text {
     font-size: 15px;
   }
+}
+
+/* ───────── 개발용 기능 테스트 메뉴 (?test=menu) ───────── */
+.test-menu {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: max(14px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+  background: #2b2140;
+  color: #fff8e6;
+  pointer-events: auto;
+  touch-action: pan-y;
+}
+.test-menu h2 {
+  margin: 4px 0 2px;
+  font-size: 20px;
+}
+.tm-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #d8c8f0;
+}
+.tm-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.tm-item {
+  display: block;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 12px 12px;
+  font-size: 15px;
+  color: #3a2410;
+  text-decoration: none;
+  background: #f6e7c4;
+  border: 2px solid #5a3418;
+  border-radius: 8px;
+}
+.tm-home {
+  margin-top: 12px;
+  background: #cfe8b0;
+}
+.tm-back {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 40;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #fff8e6;
+  background: rgba(43, 33, 64, 0.85);
+  border: 2px solid #f6e7c4;
+  border-radius: 8px;
+  text-decoration: none;
+  pointer-events: auto;
+}
+.tm-info {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 4px);
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: 92vw;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #fff8e6;
+  background: rgba(43, 33, 64, 0.85);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.tm-info.hidden {
+  display: none;
+}
+.tm-vib {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, 90vw);
+  padding: 12px;
+  color: #fff8e6;
+  background: rgba(43, 33, 64, 0.92);
+  border-radius: 10px;
+  pointer-events: auto;
+}
+.tm-vib p {
+  margin: 0;
+  font-size: 13px;
+}
+.tm-vib button {
+  min-height: 44px;
 }

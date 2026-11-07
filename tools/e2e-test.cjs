@@ -456,16 +456,16 @@ async function bossTests(label, device) {
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
-  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); return { e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: sc.children.list.filter((o) => /^endfam-[a-z]+$/.test(o.texture?.key || '')).length, gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bg-/.test(o.texture?.key || '')), hud: document.querySelector('.battle-top')?.classList.contains('hidden') ?? true }; });
+  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); return { e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: sc.children.list.filter((o) => /^fam-[a-z]+$/.test(o.texture?.key || '')).length, gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bg-/.test(o.texture?.key || '')), hud: document.querySelector('.battle-top')?.classList.contains('hidden') ?? true }; });
   check(`${label}: final boss win → cinematic family ending (own bg, 6 family, game hidden, ending BGM)`, en.e?.state === 'ending' && en.fam === 6 && en.bg && en.gameHidden && en.music === 'ending', JSON.stringify(en));
   await page.waitForTimeout(2500);
   const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
   check(`${label}: ending subtitle types by itself`, sub1.startsWith('길고 길었던'), sub1);
   // 포옹·뽀뽀·킁카 장면 (가족 6명이 각자 동작)
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 28.8; });
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 29.2; });
   await page.waitForTimeout(800);
   const fam = await G(() => window.__gona.scene.getScene('Game').ending.family.map((f) => f.mode));
-  check(`${label}: ending kiss + sniff poses in contact`, (fam.includes('kiss') || fam.includes('hug')) && fam.includes('sniff'), JSON.stringify(fam));
+  check(`${label}: ending hug + cheek kiss poses in contact`, fam.includes('kiss') && fam.includes('hug'), JSON.stringify(fam));
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 44.7; });
   await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
   const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
