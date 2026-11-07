@@ -4,5 +4,5 @@
   빨간 버섯 지붕 오두막·둥근 나무·먼 언덕, 가운데가 비어 있는 따뜻한 돌바닥 광장, 아래쪽 꽃, 두꺼운 갈색 외곽선, 인물·글자 없음.
   가로 16:9 / 세로 9:16 두 장.
 - 게임용 변환: python3 tools/build_ending_bg.py → public/assets/ending/bg-land.png (480x268), bg-port.png (268x480) — 64색 정리
-- 가족 캐릭터: python3 tools/build_family_cine.py (코드로 그린 도트) → public/assets/ending/family-{id}.png + family-{id}-arms.png
-- 고나 웃는 얼굴: python3 tools/build_ending_gona.py (gona-trot 의 눈만 ^ ^ 로) → public/assets/ending/gona-laugh.png
+- 가족 캐릭터: family/storyboard-B.jpg (사용자 제공 B스타일 스토리보드) 의 "주요 등장 캐릭터" 줄을 3px=1도트 격자로 되돌려 뽑고 JPEG 번짐만 정리한 기준 그림 family/base-{id}.txt (+png).
+  동작 프레임: python3 tools/build_family_sb.py → public/assets/ending/fam-{id}.png + fam-{id}-arms.png (기준 그림의 얼굴·머리·옷은 바꾸지 않고 팔·다리·기울기·눈/입 표정만)

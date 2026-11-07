@@ -1,7 +1,7 @@
 /**
  * 가족 엔딩 컷신 (B스타일 — 해 질 녘 버섯마을) — 게임 화면과 별개인 시네마틱 · 약 50초 → THE END
  *   배경: 엔딩 전용 저녁 버섯마을 (가로 320x180 · 세로 180x320, 창문·가로등 불빛) + 가로등 불빛 일렁임 · 꽃잎
- *   인물: 가족 6명 도트(40x66 x 14동작, 몸·앞팔 분리 — 사진 속 외형으로 구분, 호칭 추정 안 함)
+ *   인물: 가족 6명 도트 — B스타일 스토리보드의 캐릭터를 그대로 뽑은 기준 그림에서 동작만 추가 (40x36 x 20프레임, 몸·팔 분리, 2배로 표시)
  *         고나는 게임의 3단계 고나 그림(달리기 4프레임·깜짝·깜빡) + 같은 그림에서 눈·입만 바꾼 웃는 얼굴
  *   카메라: 정수 배율만 (도트가 고르게) — 와이드 / 미디엄 / 클로즈업, 부드러운 팬, 마지막 줌아웃
  *   세로: 인물 중심 세로 구도(자막은 아래) / 가로: 넓은 마을 구도(자막은 위 하늘)
@@ -28,10 +28,16 @@ export const ENDING_LINES: { at: number; text: string }[] = [
 ];
 export const ENDING_THE_END_AT = 48;
 
-/** 가족 (사진 속 외형으로 구분 — tools/build_family_b.py) */
+/** 가족 (스토리보드 속 외형으로 구분, 호칭 추정 안 함 — tools/build_family_sb.py) */
 export type FamId = 'stripe' | 'glasses' | 'ponytail' | 'blacktee' | 'curly' | 'grey';
 export const FAM_IDS: FamId[] = ['stripe', 'glasses', 'ponytail', 'blacktee', 'curly', 'grey'];
 const F = { idle: 0, blink: 1, laugh: 2, waveA: 3, waveB: 4, open: 5, walkA: 6, walkB: 7, hug: 8, kiss: 9, sniffA: 10, sniffB: 11, patA: 12, patB: 13 };
+/** 8~13 은 고나가 왼쪽에 있을 때(왼쪽으로 기울임), +6 = 같은 동작을 오른쪽으로 (좌우 반전을 쓰지 않아 묶은 머리 방향 등 원본 디자인 유지) */
+const LEAN_RIGHT = 6;
+/** 가족·고나 표시 배율 (둘 다 같은 배율 — 도트 크기·외곽선 굵기 통일) */
+const CHAR_SCALE = 2;
+/** 처음 기다릴 때는 조금 모여 서 있음 */
+const WAIT_SPREAD = 0.7;
 type Mode = 'idle' | 'laugh' | 'wave' | 'open' | 'walk' | 'hug' | 'kiss' | 'sniff' | 'pat';
 
 interface Member {
@@ -72,10 +78,10 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 180,
     c: 160,
     rows: [173, 165, 158],
-    pos: { ponytail: [-19, 0], curly: [20, 0], stripe: [-38, 1], grey: [40, 1], glasses: [-15, 2], blacktee: [15, 2] },
-    wait: 52,
-    gonaStart: -30,
-    gonaStop: 92,
+    pos: { ponytail: [-22, 0], curly: [22, 0], stripe: [-54, 1], grey: [54, 1], glasses: [-36, 2], blacktee: [36, 2] },
+    wait: 60,
+    gonaStart: -40,
+    gonaStop: 100,
     lamps: [[94, 41], [237, 41]],
   },
   port: {
@@ -84,10 +90,10 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 320,
     c: 92,
     rows: [262, 252, 243],
-    pos: { ponytail: [-19, 0], curly: [20, 0], stripe: [-36, 1], grey: [38, 1], glasses: [-14, 2], blacktee: [14, 2] },
-    wait: 26,
-    gonaStart: -30,
-    gonaStop: 44,
+    pos: { ponytail: [-20, 0], curly: [20, 0], stripe: [-50, 1], grey: [50, 1], glasses: [-33, 2], blacktee: [33, 2] },
+    wait: 30,
+    gonaStart: -40,
+    gonaStop: 32,
     lamps: [[15, 116], [163, 116]],
   },
 };
@@ -138,10 +144,10 @@ export class EndingScene extends Phaser.Scene {
     // 가족 — 처음엔 길 오른쪽에 서로 다른 자리·자세로 모여 기다림
     FAM_IDS.forEach((id, i) => {
       const [dx, row] = L.pos[id];
-      const x = L.c + dx + L.wait;
+      const x = Math.round(L.c + dx * WAIT_SPREAD + L.wait);
       const y = L.rows[row];
-      const s = this.add.sprite(x, y, `fam-${id}`, 0).setOrigin(0.5, 1);
-      const arms = this.add.sprite(x, y, `fam-${id}-arms`, 0).setOrigin(0.5, 1);
+      const s = this.add.sprite(x, y, `fam-${id}`, 0).setOrigin(0.5, 1).setScale(CHAR_SCALE);
+      const arms = this.add.sprite(x, y, `fam-${id}-arms`, 0).setOrigin(0.5, 1).setScale(CHAR_SCALE);
       this.family.push({ id, s, arms, x, y, tx: x, mode: i % 2 ? 'laugh' : 'idle', then: 'idle', phase: (i * 0.37) % 1.2, since: 0, row });
     });
     this.gx = L.gonaStart;
@@ -211,7 +217,7 @@ export class EndingScene extends Phaser.Scene {
     const ZM = Z0 + 2;
     const ZC = Z0 + (this.portrait ? 4 : 5);
     const ground = L.rows[0];
-    const faceY = ground - 30;
+    const faceY = ground - 46;
     ENDING_LINES.forEach((l, i) => this.at(l.at, () => this.line(i)));
     // ── SCENE 01 노을의 버섯마을: 하늘·마을에서 돌길로 천천히
     this.at(0, () => sound.startMusic('ending'));
@@ -227,7 +233,7 @@ export class EndingScene extends Phaser.Scene {
       this.gMode = 'wow';
       this.hop(2);
       sound.warn();
-      this.float('!', this.gx + 3, ground - 40, '#fff3a0');
+      this.float('!', this.gx + 6, ground - 76, '#fff3a0');
     });
     this.at(10.0, () => {
       this.gMode = 'happy';
@@ -288,8 +294,8 @@ export class EndingScene extends Phaser.Scene {
     this.act(id, 'kiss');
     sound.smooch();
     const f = this.m(id);
-    const hx = this.gx + (f.x < this.gx ? -6 : 8);
-    const hy = this.L.rows[0] - 26;
+    const hx = this.gx + (f.x < this.gx ? -14 : 16);
+    const hy = this.L.rows[0] - 50;
     this.float('쪽!', hx, hy - 8, '#ff9fc4');
     this.heart(hx, hy - 2);
     this.gMode = 'laugh';
@@ -301,8 +307,8 @@ export class EndingScene extends Phaser.Scene {
     this.act(id, 'sniff');
     sound.inhale();
     const f = this.m(id);
-    this.float('킁킁♡', this.gx + (f.x < this.gx ? -4 : 6), this.L.rows[0] - 44, '#ffd0e2');
-    this.at(this.t + 0.8, () => this.heart(this.gx + 4, this.L.rows[0] - 38));
+    this.float('킁킁♡', this.gx + (f.x < this.gx ? -10 : 12), this.L.rows[0] - 80, '#ffd0e2');
+    this.at(this.t + 0.8, () => this.heart(this.gx + 6, this.L.rows[0] - 72));
     this.wiggle = 1.8;
     this.gMode = 'laugh';
     this.at(this.t + 2.0, () => this.act(id, 'hug'));
@@ -359,7 +365,7 @@ export class EndingScene extends Phaser.Scene {
       key = 'happy-walker';
       frame = 1 + (Math.floor(this.t * 12) % 4);
       bounce = Math.abs(Math.sin(this.t * 14)) * 1.5;
-      if (Math.random() < dt * 9) this.dust(this.gx - 10, this.L.rows[0]);
+      if (Math.random() < dt * 9) this.dust(this.gx - 22, this.L.rows[0]);
     } else if (this.gMode === 'wow') frame = 8;
     else if (this.gMode === 'stand') frame = Math.floor(this.t / 2.4) % 6 === 0 ? 6 : 0;
     else {
@@ -369,8 +375,8 @@ export class EndingScene extends Phaser.Scene {
     if (!this.textures.exists(key)) key = 'dino';
     if (this.gona.texture.key !== key || this.gona.frame.name !== String(frame)) this.gona.setTexture(key, frame);
     const sy = this.gsq;
-    this.gona.setScale(2 - sy, sy).setAngle(this.wiggle > 0 ? Math.sin(this.t * 32) * 4 : 0);
-    this.gona.setPosition(Math.round(this.gx), Math.round(this.L.rows[0] + 1 - this.galt - bounce)).setDepth(180);
+    this.gona.setScale(CHAR_SCALE * (2 - sy), CHAR_SCALE * sy).setAngle(this.wiggle > 0 ? Math.sin(this.t * 32) * 4 : 0);
+    this.gona.setPosition(Math.round(this.gx), Math.round(this.L.rows[0] + CHAR_SCALE - (this.galt + bounce) * CHAR_SCALE)).setDepth(180);
     for (const f of this.family) this.updateMember(f, dt);
   }
 
@@ -424,16 +430,16 @@ export class EndingScene extends Phaser.Scene {
         break;
     }
     const s = f.s;
+    // 기울이는 동작은 고나 쪽으로 — 고나보다 왼쪽에 있으면 오른쪽으로 기울인 프레임
+    if (frame >= F.hug && f.x < this.gx) frame += LEAN_RIGHT;
     if (s.frame.name !== String(frame)) s.setFrame(frame);
-    // 기울이는 동작은 고나 쪽으로 (시트는 왼쪽으로 기울임 → 고나보다 왼쪽에 있으면 반전)
-    s.setFlipX(f.x < this.gx);
     const touching = f.mode === 'hug' || f.mode === 'kiss' || f.mode === 'sniff' || f.mode === 'pat';
     const base = [160, 130, 100][f.row];
     s.setDepth(base);
     const a = f.arms;
     if (a.frame.name !== String(frame)) a.setFrame(frame);
-    a.setFlipX(s.flipX).setDepth(touching ? 220 - f.row : base + 0.5);
-    s.setPosition(Math.round(f.x), f.y - bob);
+    a.setDepth(touching ? 220 - f.row : base + 0.5);
+    s.setPosition(Math.round(f.x), f.y - bob * CHAR_SCALE);
     a.setPosition(s.x, s.y);
   }
 }
