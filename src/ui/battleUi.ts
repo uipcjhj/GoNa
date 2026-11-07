@@ -126,6 +126,9 @@ export class BattleUi {
     bus.on(EV.gameOver, () => this.reset());
     bus.on(EV.ending, () => this.reset());
     bus.on(EV.endingStart, () => this.reset());
+    // 보스 패배 확정 → 마지막 대사·퇴장 동안 점수·하트·보스 체력바·버튼 숨김 (대화창과 겹치지 않게)
+    bus.on(EV.bossDefeat, () => document.body.classList.add('boss-defeat'));
+    for (const ev of [EV.bossEnd, EV.start, EV.gameOver, EV.endingStart, EV.bossTalkCancel]) bus.on(ev, () => document.body.classList.remove('boss-defeat'));
   }
 
   private makeBtn(cls: string, label: string, icon: string[], scale: number): Btn {

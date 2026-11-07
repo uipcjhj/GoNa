@@ -54,6 +54,8 @@ export const EV = {
   ending: 'ending',
   /** 보스 패배 대사: 시작({ name, lines }) / 끝(타이핑 완료·건너뛰기) / 취소(다시하기 등) */
   bossTalk: 'bossTalk',
+  /** 보스 패배 확정 (대사·퇴장 연출 동안 전투 HUD·버튼 숨김) */
+  bossDefeat: 'bossDefeat',
   bossTalkDone: 'bossTalkDone',
   bossTalkCancel: 'bossTalkCancel',
   /** 가족 엔딩 연출 시작 (GameOverInfo) / THE END 화면 / 엔딩 다시보기 요청 */

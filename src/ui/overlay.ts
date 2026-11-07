@@ -7,6 +7,7 @@ import { bus, EV, type BossId, type EvolveInfo, type GameOverInfo, type RestartO
 import { heartCanvas } from '../art/textures';
 import { mapToCanvas } from '../art/PixelCanvas';
 import { sound } from '../audio';
+import { haptics } from '../haptics';
 import { el, pixelImg } from './dom';
 import { CHECKPOINT_LABEL, loadCheckpoint } from '../game/checkpoint';
 
@@ -65,7 +66,20 @@ export class Overlay {
     const testBtn = el('button', 'ap-open', '🔊 소리 테스트');
     testBtn.type = 'button';
     testBtn.addEventListener('click', () => this.onAudioTest?.());
-    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), testBtn);
+    // 진동 켜기/끄기 (진동을 지원하는 기기에서만 실제로 울림 — iPhone Safari 는 웹 진동 미지원)
+    const vibBtn = el('button', 'ap-open vib-toggle');
+    vibBtn.type = 'button';
+    const vibLabel = (): void => {
+      vibBtn.textContent = haptics.supported ? `📳 진동 ${haptics.enabled ? '켜짐' : '꺼짐'}` : '📳 진동 (이 기기는 지원 안 함)';
+    };
+    vibLabel();
+    vibBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      haptics.setEnabled(!haptics.enabled);
+      vibLabel();
+      haptics.play('bossHit');
+    });
+    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), testBtn, vibBtn);
     this.pause.append(pp);
 
     // ── 게임 오버

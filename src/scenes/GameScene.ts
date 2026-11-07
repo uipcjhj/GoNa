@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
+import { haptics } from '../haptics';
 import { sound, type MusicMode } from '../audio';
 import { perf } from '../perf';
 import { storage } from '../storage';
@@ -66,6 +67,8 @@ interface Entity {
 }
 
 const FONT = 'Galmuri11, monospace';
+/** 고나 발이 땅 그림 맨 윗줄(밝은 풀 가장자리)에 걸치도록 그림만 내리는 양 (논리 px) */
+const FOOT_SINK = 1;
 const SNACK_TEX: Record<SnackKind, string> = {
   strawberry: TEX.strawberry,
   banana: TEX.banana,
@@ -786,12 +789,15 @@ export class GameScene extends Phaser.Scene {
     this.player.setScale(sx, sy);
 
     // 프레임이 한 장뿐인 커스텀 이미지는 통통 튀는 효과로 달리기 표현
-    const bobAmp = this.vis.bob > 0 ? this.vis.bob : this.vis.runFrames.length < 2 ? 2 : 0;
+    // (발을 번갈아 딛는 달리기 프레임이 있으면 몸 전체를 띄우지 않음 — 걷는 동안에도 발이 땅에 닿게)
+    const bobAmp = this.vis.runFrames.length < 2 ? Math.max(2, this.vis.bob) : 0;
     const bob = this.grounded && this.state === 'playing' && bobAmp > 0 ? Math.abs(Math.sin(time * 0.018)) * bobAmp : 0;
 
     const halfH = (this.vis.frameHeight * sy) / 2;
     // 발 = (땅 - 높이). 렌더 픽셀 격자에 맞춰 반올림해서 서 있을 때 발이 정확히 지면에 닿게
-    let feetY = Math.round((this.groundY - this.alt - bob) * k) / k;
+    // 발 = (땅 - 높이) + FOOT_SINK: 땅 그림 맨 윗줄은 밝은 풀 가장자리라, 발바닥이 그 줄에 걸쳐야 '서 있는' 것처럼 보임
+    // (그림만 내림 — 충돌 판정·점프 높이는 alt 기준이라 그대로)
+    let feetY = Math.round((this.groundY - this.alt - bob + FOOT_SINK) * k) / k;
     const snap = (v: number): number => Math.round(v * k) / k;
     const nest = this.inNest;
     this.nestBack.setVisible(nest);
@@ -806,7 +812,7 @@ export class GameScene extends Phaser.Scene {
       // 스프링 (둥지 움직임에 아기가 늦게 따라옴)
       this.babyVel += (-320 * this.babyOff - 16 * this.babyVel) * dt;
       this.babyOff = Phaser.Math.Clamp(this.babyOff + this.babyVel * dt, -12, 3);
-      const nestBottom = snap(this.groundY - this.alt - bump);
+      const nestBottom = snap(this.groundY - this.alt - bump + FOOT_SINK);
       const nsx = snap(this.vis.scale * (2 - this.squash));
       const nsy = snap(this.vis.scale * this.squash);
       for (const n of [this.nestBack, this.nestFront]) n.setPosition(snap(this.playerX + shakeX), nestBottom).setScale(nsx, nsy).setAngle(tilt);
@@ -826,7 +832,7 @@ export class GameScene extends Phaser.Scene {
 
     const shadowScale = Math.max(0.35, 1 - this.alt / 110);
     const shadowW = nest ? (NEST_W * this.vis.scale) / 14 : Math.max(1, this.vis.scale);
-    this.shadow.setPosition(this.playerX, this.groundY + 1).setScale(shadowScale * shadowW, 1);
+    this.shadow.setPosition(this.playerX, this.groundY + FOOT_SINK).setScale(shadowScale * shadowW, 1);
 
     // 무적 깜빡임
     if (time < this.invincibleUntil) this.player.setAlpha(Math.floor(time / 110) % 2 ? 0.55 : 1); // 은은하게
@@ -1306,6 +1312,7 @@ export class GameScene extends Phaser.Scene {
     m.tele = 0;
     e.x += 6; // 뒤로 밀림
     sound.bossHit();
+    haptics.play('monsterHit');
     this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x, this.groundY - e.h / 2);
     this.cameras.main.shake(60, 0.003);
     if (m.hp > 0) return;
@@ -1420,6 +1427,7 @@ export class GameScene extends Phaser.Scene {
     if (this.damageLog.length > 60) this.damageLog.shift();
     this.hp = Math.max(0, this.hp - damage);
     sound.hit();
+    haptics.play('hurt');
     // 아파! — 단계별 찡그린 표정 0.5초 + 움찔(찌그러짐) + 살짝 뒤로 밀림 + 머리카락 흔들
     this.hurtUntil = this.time.now + 500;
     this.hurtAt = this.time.now;

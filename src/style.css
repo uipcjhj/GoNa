@@ -2665,11 +2665,17 @@ body.has-pad .touch-hint {
   }
 }
 
-/* 보스 패배 대사 (픽셀 대화창) */
+/* 보스 패배 확정: 전투 HUD·버튼을 숨겨 대화창과 겹치지 않게 */
+body.boss-defeat .battle-top,
+body.boss-defeat .hud-score,
+body.boss-defeat .battle-pad {
+  visibility: hidden;
+}
+/* 보스 패배 대사 (픽셀 대화창) — 위쪽 안전영역(일시정지·소리 버튼 아래) */
 .boss-talk {
   position: absolute;
   left: 50%;
-  top: calc(max(6px, env(safe-area-inset-top)) + 118px);
+  top: calc(max(6px, env(safe-area-inset-top)) + 64px);
   transform: translateX(-50%);
   width: min(560px, calc(100% - 24px));
   box-sizing: border-box;
@@ -2726,7 +2732,7 @@ body.has-pad .touch-hint {
 }
 @media (orientation: landscape) and (max-height: 500px) {
   .boss-talk {
-    top: calc(max(4px, env(safe-area-inset-top)) + 92px);
+    top: calc(max(4px, env(safe-area-inset-top)) + 54px);
     width: min(520px, calc(100% - 160px));
     padding: 14px 14px 10px;
   }

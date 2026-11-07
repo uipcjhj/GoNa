@@ -12,6 +12,7 @@
 import Phaser from 'phaser';
 import { bus, EV, type BannerInfo, type BossId } from '../../events';
 import { sound } from '../../audio';
+import { haptics } from '../../haptics';
 import { perf } from '../../perf';
 import { BOSSES, SPECIAL_GAIN, type BossDef } from '../../game/boss';
 import type { SnackKind } from '../../config';
@@ -480,6 +481,7 @@ export abstract class BossBattle {
     this.hp = Math.max(0, Math.min(this.hp, this.hpFloor()), this.hp - n);
     this.hurtT = 0.12;
     sound.bossHit();
+    haptics.play('bossHit');
     const r = this.bossRect();
     this.host.sparkle(5, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
     this.floatText(`-${n}`, this.bx, r.y0 - 2, '#ffe680');
@@ -746,6 +748,7 @@ export abstract class BossBattle {
         const dir = i % 2 ? -1 : 1;
         scene.tweens.add({ targets: big, x: bcx + dir * 12, angle: big.angle - 540, duration: 140, yoyo: true, ease: 'Sine.InOut' });
         sound.curlyHit(i);
+        haptics.play('specialHit');
         cam.shake(110 + i * 40, 0.008 + i * 0.004);
         cam.flash(90, 255, i === 1 ? 255 : 240, i === 1 ? 200 : 140);
         this.host.sparkle(8 + i * 2, bcx, bcy);
@@ -756,6 +759,7 @@ export abstract class BossBattle {
     // ── 큰 별 폭발 '팡!' → 보스 밀려나며 어질어질
     this.after(2.95, () => {
       sound.starBurst();
+      haptics.play('specialFinal');
       cam.shake(320, 0.02);
       cam.flash(200, 255, 255, 230);
       const boom = this.fx(scene.add.particles(bcx, bcy, 'boss-star', { speed: { min: 60, max: 170 }, lifespan: 650, scale: { start: 2.6, end: 0.6 }, alpha: { start: 1, end: 0 }, rotate: { min: 0, max: 360 }, tint: [0xffffff, GOLD, LIME], emitting: false }).setDepth(12.6));
@@ -845,6 +849,7 @@ export abstract class BossBattle {
     scene.cameras.main.flash(220, rgb[0], rgb[1], rgb[2]);
     scene.cameras.main.shake(150, 0.012);
     sound.specialBlast();
+    haptics.play('bossSpecial');
   }
 
   /** 필살기 타격 (고나에게 맞음/방패에 막힘): 강한 충격 + 파편 한 번 (개수 제한) */
@@ -887,6 +892,7 @@ export abstract class BossBattle {
    */
   private victory(): void {
     this.mode = 'victory';
+    bus.emit(EV.bossDefeat);
     // 보스 체력 0: 모든 공격 즉시 중단 + 날아오던 것·예고·효과 제거 (예약된 공격이 뒤늦게 나오지 않게)
     this.cleanupCombat();
     this.host.scene.tweens.killTweensOf(this.boss);
@@ -898,6 +904,7 @@ export abstract class BossBattle {
     const cam = scene.cameras.main;
     sound.fadeOutMusic(500);
     sound.bossDown();
+    haptics.play('bossDown');
     cam.shake(500, 0.012);
     cam.flash(250, 255, 250, 230);
     const b = this.boss;
