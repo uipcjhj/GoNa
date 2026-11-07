@@ -68,24 +68,25 @@ export class CoverScreen {
       const list = el('div', 'cover-dev-list hidden');
       toggle.addEventListener('click', () => list.classList.toggle('hidden'));
       dev.append(toggle, list);
-      const mk = (label: string, fn: () => void): void => {
+      const mk = (label: string, fn: () => void): HTMLButtonElement => {
         const b = el('button', 'ap-open cover-dev-btn', label);
         b.type = 'button';
         b.addEventListener('click', fn);
         list.append(b);
+        return b;
       };
-      mk('🧪 기능 테스트 메뉴', () => (window.location.search = '?test=menu'));
       mk('🧪 뽀뽀괴물 테스트', () => this.start({ boss: 'kiss' }));
       mk('🧪 킁카괴물 테스트', () => this.start({ boss: 'sniff' }));
       // 몬스터 즉시 테스트: 개발 모드(npm run dev) 또는 주소에 ?dev / ?test 가 있을 때만 (정식 플레이에선 숨김)
       const q = new URLSearchParams(window.location.search);
       if (import.meta.env.DEV || q.has('dev') || q.has('test')) mk('🧪 몬스터 테스트 (3단계)', () => this.start({ devMonsters: true }));
+      // (자동 테스트가 버튼 순서를 쓰므로 새 버튼은 맨 뒤에)
       const label = (): string => (perf.enabled ? '📈 성능 표시 끄기' : '📈 성능 표시 켜기');
-      mk(label(), () => {
+      const perfBtn = mk(label(), () => {
         setPerfOverlay(!perf.enabled);
-        const last = list.lastElementChild;
-        if (last) last.textContent = label();
+        perfBtn.textContent = label();
       });
+      mk('🧪 기능 테스트 메뉴', () => (window.location.search = '?test=menu'));
     }
 
     this.root.append(this.title.root, this.ui, test, replay, dev);

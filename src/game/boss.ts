@@ -60,8 +60,8 @@ export const BOSSES: Record<BossId, BossDef> = {
     id: 'sniff',
     name: '킁카괴물',
     intro: '킁킁! 냄새로 숲을 뒤덮는 마지막 괴물',
-    // 최종 보스: 돼지코 필살기 ①②③ + 최종 분노 (playtest-bot 반응 120ms 기준 전투 94~115초 — 사람은 더 김)
-    maxHp: 200,
+    // 최종 보스: 돼지코 필살기 ①②③ + 최종 분노 (playtest-bot 반응 120ms 기준 코 약점 ×2 포함 전투 약 95~105초 — 사람은 더 김)
+    maxHp: 230,
     phase2At: 0.5,
     specialDamage: 8,
     scoreBonus: 600,
