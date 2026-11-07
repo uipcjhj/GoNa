@@ -258,6 +258,7 @@ export class KissBattle extends BossBattle {
     const y = this.host.groundY - 12;
     const names = ['', '초대형 왕뽀뽀!', '왕뽀뽀 + 하트 연발!', '왕뽀뽀 하트 폭풍!'];
     const descs = ['', '분홍 화살표 길로 거대한 하트가 와요 — 점프하거나 방패!', '큰 하트를 넘고, 작은 하트도 하나씩 점프!', '거대한 하트가 두 번! 한 번씩 점프!'];
+    this.bossSpecialOn = true;
     this.warn(1.6);
     this.setPose(2, 1.7); // 입술 쭉 (오므림)
     this.banner({ top: `💗 필살기 ${variant}/3`, name: names[variant], desc: descs[variant], ms: 1700, tone: 'boss' });

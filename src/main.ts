@@ -4,6 +4,7 @@ import { VIEW } from './config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { OpeningScene } from './scenes/OpeningScene';
+import { EndingScene } from './scenes/EndingScene';
 import { el } from './ui/dom';
 import { Overlay } from './ui/overlay';
 import { CoverScreen } from './ui/cover';
@@ -94,6 +95,7 @@ async function boot(): Promise<void> {
   let endingActive = false;
   bus.on(EV.endingStart, () => {
     endingActive = true;
+    document.body.classList.add('in-ending');
     subs.show();
     subs.hideGate();
     subs.root.classList.add('auto');
@@ -104,6 +106,7 @@ async function boot(): Promise<void> {
   });
   const leaveEnding = (): void => {
     endingActive = false;
+    document.body.classList.remove('in-ending');
     subs.hide();
     subs.root.classList.remove('auto');
   };
@@ -139,7 +142,7 @@ async function boot(): Promise<void> {
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
     input: { keyboard: false, mouse: false, touch: false },
-    scene: [BootScene, GameScene, OpeningScene],
+    scene: [BootScene, GameScene, OpeningScene, EndingScene],
   });
 
   perf.attach(game.events);

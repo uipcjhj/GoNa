@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, FAMILY_ASSETS, GAME_BG, SNACK_ASSETS, type SnackKind } from '../config';
+import { CHARACTER_ASSET, GAME_BG, SNACK_ASSETS, type SnackKind } from '../config';
 import { addCanvas, addSheet, buildAllTextures, buildDefaultDinoSheet, buildGround, snackCanvas, TEX } from '../art/textures';
 import { DINO_BLINK, DINO_BLINK_PALETTE, DINO_FRAMES } from '../art/sprites';
 import { mapToCanvas } from '../art/PixelCanvas';
@@ -82,8 +82,15 @@ export class BootScene extends Phaser.Scene {
       const a = STAGE_ASSETS[st.id];
       if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
     }
-    // 가족 엔딩: 교체용 가족 PNG (경로가 있을 때만)
-    for (const [id, url] of Object.entries(FAMILY_ASSETS)) if (url) this.load.image(`family-src-${id}`, url);
+    // 엔딩 컷신 전용: 노을 마을 배경(가로·세로) · 대형 가족 시트 · 고나 타이틀 그림
+    this.load.image('end-bg-land', 'assets/ending/bg-land.png');
+    this.load.image('end-bg-port', 'assets/ending/bg-port.png');
+    for (const id of ['mom', 'dad', 'aunt', 'uncle', 'grandma', 'grandpa']) {
+      this.load.spritesheet(`endfam-${id}`, `assets/ending/family-${id}.png`, { frameWidth: 112, frameHeight: 144 });
+      this.load.spritesheet(`endfam-${id}-arms`, `assets/ending/family-${id}-arms.png`, { frameWidth: 112, frameHeight: 144 });
+    }
+    for (const n of ['walk1', 'walk2', 'trot', 'surprise']) this.load.image(`end-gona-${n}`, `assets/title4/gona-${n}.png`);
+    this.load.image('end-gona-laugh', 'assets/ending/gona-laugh.png');
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
     // 일반 몬스터 정식 그림 (선택)
@@ -111,6 +118,19 @@ export class BootScene extends Phaser.Scene {
       frameRate: 1,
     });
 
+    // 엔딩 컷신: 해 주변의 둥근 빛 (한 번만 생성)
+    if (!this.textures.exists('end-glow')) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      const g = c.getContext('2d')!;
+      const gr = g.createRadialGradient(48, 48, 6, 48, 48, 48);
+      gr.addColorStop(0, 'rgba(255,240,180,0.9)');
+      gr.addColorStop(0.4, 'rgba(255,214,140,0.45)');
+      gr.addColorStop(1, 'rgba(255,190,120,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 96, 96);
+      this.textures.addCanvas('end-glow', c);
+    }
     const preview: CharacterPreview = {
       idle: this.frameCanvas(info, Math.min(Math.max(0, CHARACTER_ASSET.titleFrame), info.frameCount - 1)),
       blink: info.custom

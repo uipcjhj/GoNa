@@ -457,6 +457,7 @@ export abstract class BossBattle {
 
   /** 필살기 하나를 끝까지 보여 줌 (지침 시작 때) — 그 뒤부터 다음 분노 단계로 내려갈 수 있음 */
   protected specialShown(): void {
+    this.bossSpecialOn = false;
     this.specialsDone = Math.max(this.specialsDone, Math.min(this.rage, this.specialsDone + 1));
   }
 
@@ -626,8 +627,11 @@ export abstract class BossBattle {
   // ───────────────────────── 필살기 ─────────────────────────
 
   get specialReady(): boolean {
-    return this.special >= 1 && this.mode === 'fight';
+    return this.special >= 1 && this.mode === 'fight' && !this.bossSpecialOn;
   }
+
+  /** 보스 필살기 진행 중 (그동안 고나 필살기는 잠시 못 씀 — 보스 필살기가 끊겨 처음부터 되풀이되지 않게) */
+  protected bossSpecialOn = false;
 
   /**
    * 고나 필살기 '초특급 꼬불머리 팡팡!' (Super Curly Boom!) — 약 3.6초, 고나 무적
@@ -976,6 +980,7 @@ export abstract class BossBattle {
     this.cine = [];
     this.busy = true;
     this.pendingRage = false;
+    this.bossSpecialOn = false;
     this.stunT = 0;
     this.clearStars();
     this.onInterrupt();

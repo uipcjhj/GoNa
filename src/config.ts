@@ -201,22 +201,3 @@ export const TITLE_LAYOUT = {
   /** 캐릭터 키 (배경 높이 대비) */
   characterHeight: 0.3,
 };
-
-/**
- * ───────────── 가족 엔딩: 가족 캐릭터 그림 ─────────────
- * public/assets/family/{id}.png — tools/build_family.py 가 만든 도트 시트 (가족 캐릭터 시안 참고).
- * 직접 그린 그림으로 바꾸려면 같은 규격의 투명 PNG 로 덮어쓰기만 하면 됩니다 (경로를 비우면 실루엣 임시 그림).
- * 시트 규격: 프레임 32x48, 가로 14프레임(448x48), 발 = 맨 아래 줄, 몸 가운데 x=16, 왼쪽(고나 쪽)을 바라봄, 1:1 도트
- *   0 서서 웃기 · 1 웃기(눈 깜빡) · 2·3 손 흔들기 · 4 두 팔 벌리기 · 5·6 걷기 · 7 안아 주기 · 8 볼 뽀뽀
- *   9·10 킁카 · 11·12 쓰다듬기 · 13 품에 안기(두 팔을 가슴 앞에)
- * 화면에서는 고나와 같은 1.2배(도트 1칸 = 6px)로 그림.
- */
-export const FAMILY_SHEET = { w: 32, h: 48, frames: 14, scale: 1.2 };
-export const FAMILY_ASSETS: Record<'mom' | 'dad' | 'aunt' | 'uncle' | 'grandma' | 'grandpa', string> = {
-  mom: 'assets/family/mom.png', // 엄마 — 옆으로 묶은 머리 · 크림색 상의
-  dad: 'assets/family/dad.png', // 아빠 — 짧은 곱슬머리 · 검은 티셔츠
-  aunt: 'assets/family/aunt.png', // 이모 — 묶은 긴 머리 · 베이지 줄무늬 셔츠
-  uncle: 'assets/family/uncle.png', // 삼촌 — 동그란 안경 · 어두운 무늬 셔츠
-  grandma: 'assets/family/grandma.png', // 할머니 — 짧은 곱슬 파마 · 분홍 상의
-  grandpa: 'assets/family/grandpa.png', // 할아버지 — 짧은 회색 머리 · 흰 셔츠
-};

@@ -295,7 +295,7 @@ export class SniffBattle extends BossBattle {
       const d = this.fx(scene.add.image(n.s.x, n.s.y, 'boss-dot').setDepth(10.7).setScale(1.6));
       scene.tweens.add({ targets: d, x: n.s.x - 6 - k * 3, y: gy - 6, alpha: 0.2, duration: 160 + k * 40, onComplete: () => d.destroy() });
     }
-    const h = this.spawn('boss-bigcloud', n.s.x - 4, gy - 9, { vx: -speed, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3.5, dmg: DAMAGE.sniffStorm });
+    const h = this.spawn('boss-bigcloud', n.s.x - 4, gy - 9, { vx: -speed, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3.5, dmg: big ? DAMAGE.sniffStorm : DAMAGE.sniffNose });
     h.sprite.setScale(big ? 2.4 : 1.5).setOrigin(0.5, big ? 0.65 : 0.6);
     h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-dot', [200, 255, 120], blocked);
   }
@@ -375,6 +375,7 @@ export class SniffBattle extends BossBattle {
     const gy = this.host.groundY;
     const names = ['', '킁킁 탐지!', '돼지코 대소동!', '초특급 킁카 폭풍!'];
     const descs = ['', '돼지코가 고나를 찾아요 — 냄새 파동을 점프!', '돼지코 4개가 번갈아 킁킁! 하나씩 점프!', '빨려 들어가지 않게 계속 점프! 파동 3개도 점프!'];
+    this.bossSpecialOn = true;
     const prep = variant === 3 ? 1.4 : 1.0;
     /** 돼지코 배율 (렌더 배율 5 와 곱해 정수 → 도트가 고르게) */
     const S = 1.6;

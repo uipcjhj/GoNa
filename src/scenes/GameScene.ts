@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, FAMILY_SHEET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
+import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
 import { sound, type MusicMode } from '../audio';
@@ -15,8 +15,8 @@ import { MONSTER_DASH, MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type M
 import { CLOUD_FRAME, dizzyStar, FLASK_FRAME, flaskSheet, fartCloudSheet, monsterSheet, pathArrow, POP_FRAME, popSheet, PUDDLE_FRAME, puddleSheet, SHATTER_FRAME, shatterSheet } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
-import { FAMILY_ORDER, familySheet, FAMILY_FRAME, petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
-import { FamilyEnding } from './ending/FamilyEnding';
+import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
+import type { EndingScene } from './EndingScene';
 import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
@@ -287,6 +287,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.scene.setVisible(true); // (엔딩 컷신에서 돌아올 때)
     this.visuals = this.registry.get('stageVisuals') as Record<GrowthStageId, StageVisual>;
     this.vis = this.visuals[this.growth.stage.id];
     this.buildBattleTextures();
@@ -410,8 +411,7 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.endingReplay, onEndingReplay);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off(EV.endingReplay, onEndingReplay);
-      this.ending?.destroy();
-      this.ending = null;
+      this.scene.stop('EndingCine');
       bus.off(EV.shield, onShield);
       bus.off(EV.dodge, onDodge);
       bus.off(EV.attack, onAttack);
@@ -645,15 +645,7 @@ export class GameScene extends Phaser.Scene {
       this.emitHud();
       return;
     }
-    if (this.state === 'ending') {
-      // 가족 엔딩: 배경만 흘리고 연출은 FamilyEnding 이
-      // 실제 흐른 시간 그대로 (프레임이 느려도 음악·자막과 어긋나지 않게)
-      const edt = Math.min(deltaMs, 250) / 1000;
-      this.distance += this.speed * edt;
-      this.scrollBackground(edt);
-      this.ending?.update(edt);
-      return;
-    }
+    if (this.state === 'ending') return; // 가족 엔딩은 별도 컷신 씬(EndingCine)이 그림
     if (this.battle?.frozen) {
       // 보스전 연출(필살기·각성) 중: 세상은 멈추고 연출만
       this.battle.update(rawDt);
@@ -1726,14 +1718,6 @@ export class GameScene extends Phaser.Scene {
     if (!tm.exists('sp-heart')) addCanvas(this, 'sp-heart', royalHeart());
     if (!tm.exists('sp-ring-pink')) addCanvas(this, 'sp-ring-pink', auraRing('#ff5fa2', '#ffd0e6'));
     if (!tm.exists('sp-ring-green')) addCanvas(this, 'sp-ring-green', auraRing('#a8d040', '#efffb0'));
-    // 가족 엔딩 그림 (실루엣 임시 그림 · 교체용 PNG 가 있으면 그것도 시트로)
-    for (const id of FAMILY_ORDER) {
-      if (!tm.exists(`family-ph-${id}`)) addSheet(this, `family-ph-${id}`, familySheet(id), FAMILY_FRAME.w, FAMILY_FRAME.h);
-      if (tm.exists(`family-src-${id}`) && !tm.exists(`family-${id}`)) {
-        const img = tm.get(`family-src-${id}`).getSourceImage() as HTMLImageElement;
-        addSheet(this, `family-${id}`, img, FAMILY_SHEET.w, FAMILY_SHEET.h);
-      }
-    }
     if (!tm.exists('end-petal')) addSheet(this, 'end-petal', petalSheet(), 3, 3);
     if (!tm.exists('end-rays')) addCanvas(this, 'end-rays', sunRays());
     if (!tm.exists('end-sunset')) addCanvas(this, 'end-sunset', sunsetSky());
@@ -1903,7 +1887,11 @@ export class GameScene extends Phaser.Scene {
   /** 필살기 연출 중 고나 그림: 'serious' 진지한 얼굴 · 'bald' 머리카락이 빠진 진지한 얼굴 · null 원래대로 */
   private specialLook: 'serious' | 'bald' | null = null;
   /** 가족 엔딩 연출 (마지막 보스 뒤) */
-  private ending: FamilyEnding | null = null;
+  /** (검증용) 엔딩 컷신 */
+  get ending(): EndingScene | null {
+    const sc = this.scene.get('EndingCine') as EndingScene;
+    return sc && this.scene.isActive('EndingCine') ? sc : null;
+  }
   private endingInfo: GameOverInfo | null = null;
   private setSpecialLook(look: 'serious' | 'bald' | null): void {
     if (look === this.specialLook) return;
@@ -2187,38 +2175,21 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** 가족 엔딩 시작 (엔딩 다시보기도 여기로) */
+  /** 가족 엔딩 시작 (엔딩 다시보기도 여기로) — 게임 화면은 숨기고 별도 컷신 씬을 처음부터 */
   private startEnding(): void {
     if (this.state !== 'cleared' && this.state !== 'ending') return;
-    this.ending?.destroy();
     this.state = 'ending';
     this.speed = 0;
     this.resetMood();
-    // 화면의 남은 것 정리 (간식·효과)
     for (const e of this.entities) {
       this.tweens.killTweensOf(e.sprite);
       e.sprite.destroy();
     }
     this.entities = [];
     this.setHudVisible(false);
-    this.cameras.main.scrollY = 0;
-    this.player.setPosition(this.playerX, this.player.y);
-    this.ending = new FamilyEnding({
-      scene: this,
-      W: this.W,
-      H: this.H,
-      groundY: this.groundY,
-      player: this.player,
-      shadow: this.shadow,
-      visuals: this.visuals,
-      setScroll: (v) => {
-        this.speed = v;
-      },
-      sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
-      dust: (n, x, y) => this.dustEmitter.explode(n, x, y),
-      label: (t, c) => this.textTexture(t, c),
-      floatText: (t, x, y, c) => this.floatText(t, x, y, c),
-    });
+    this.scene.setVisible(false);
+    this.scene.stop('EndingCine');
+    this.scene.launch('EndingCine');
     bus.emit(EV.endingStart, this.endingInfo);
   }
 

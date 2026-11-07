@@ -100,6 +100,8 @@ export const DAMAGE = {
   kissRoyal: 35,
   /** 2차 분노 필살기 킁카 폭풍의 냄새 파동 */
   sniffStorm: 35,
+  /** 돼지코 냄새 파동 (작은 코) */
+  sniffNose: 25,
   sniffCloud: 25,
   sniffBlast: 35,
   sniffPuddle: 20,

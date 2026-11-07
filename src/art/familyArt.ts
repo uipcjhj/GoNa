@@ -1,8 +1,6 @@
 /**
- * 가족 엔딩용 임시 그림 (앱 시작 때 한 번 만들어 재사용).
- *   가족 6명은 '실루엣 플레이스홀더' — 생김새를 정하지 않으려고 단색 실루엣 + 머리 모양·키만 다르게.
- *   나중에 진짜 그림(투명 PNG)으로 바꾸려면 config.ts 의 FAMILY_ASSETS 에 경로를 넣으면 됨 (README 참고).
- *   시트 규격: 가로 3프레임 [0 서 있기 · 1 손 흔들기 · 2 두 팔 벌리기], 프레임 24x32(권장), 발이 맨 아래 줄, 왼쪽(고나 쪽)을 봄.
+ * 가족 엔딩: 가족 이름·순서와 작은 효과 그림 (꽃잎·하트 등 — 앱 시작 때 한 번 만들어 재사용).
+ * 가족 캐릭터 그림은 public/assets/ending/family-*.png (tools/build_family_cine.py).
  */
 import { PixelCanvas } from './PixelCanvas';
 
@@ -18,83 +16,6 @@ export const FAMILY_NAME: Record<FamilyId, string> = {
   grandma: '할머니',
   grandpa: '할아버지',
 };
-export const FAMILY_FRAME = { w: 24, h: 32 };
-
-interface Shape {
-  /** 발에서 머리 꼭대기까지 */
-  tall: number;
-  /** 어깨 폭(반) */
-  sh: number;
-  hair: 'short' | 'long' | 'pony' | 'spiky' | 'bun' | 'cap';
-  skirt?: boolean;
-  cane?: boolean;
-  hunch?: number;
-  color: string;
-}
-
-const SHAPES: Record<FamilyId, Shape> = {
-  mom: { tall: 28, sh: 4, hair: 'long', skirt: true, color: '#6e5a86' },
-  dad: { tall: 31, sh: 5, hair: 'short', color: '#5a5078' },
-  aunt: { tall: 27, sh: 4, hair: 'pony', skirt: true, color: '#7a5f8a' },
-  uncle: { tall: 30, sh: 5, hair: 'spiky', color: '#5e5a80' },
-  grandma: { tall: 24, sh: 4, hair: 'bun', skirt: true, hunch: 1, color: '#7a6888' },
-  grandpa: { tall: 25, sh: 4, hair: 'cap', cane: true, hunch: 1, color: '#665c7e' },
-};
-
-export function familySheet(id: FamilyId): HTMLCanvasElement {
-  const { w, h } = FAMILY_FRAME;
-  const s = SHAPES[id];
-  const pc = new PixelCanvas(w * 3, h);
-  const C = s.color;
-  const RIM = '#f6d7a0'; // 노을빛 테두리 한 줄 (실루엣이 배경에 묻히지 않게)
-  for (let f = 0; f < 3; f++) {
-    const cx = f * w + 12 - (s.hunch ?? 0);
-    const foot = h - 1;
-    const top = foot - s.tall + 1;
-    const headR = 3;
-    const headY = top + headR;
-    const neck = headY + headR;
-    const hip = neck + Math.round((foot - neck) * 0.48);
-    // 다리
-    pc.rect(cx - 3, hip, 2, foot - hip + 1, C);
-    pc.rect(cx + 1, hip, 2, foot - hip + 1, C);
-    // 몸통 (치마면 아래로 넓게)
-    pc.rect(cx - s.sh + 1, neck + 1, (s.sh - 1) * 2, hip - neck, C);
-    if (s.skirt) for (let y = hip - 2; y < hip + 4; y++) pc.rect(cx - s.sh + 1 - Math.floor((y - hip + 2) / 2), y, (s.sh - 1) * 2 + Math.floor((y - hip + 2) / 2) * 2, 1, C);
-    // 머리
-    pc.disc(cx, headY, headR, C);
-    // 머리 모양
-    if (s.hair === 'long') pc.rect(cx + 1, headY - 1, 3, 7, C);
-    if (s.hair === 'pony') {
-      pc.rect(cx + 3, headY - 2, 2, 2, C);
-      pc.rect(cx + 4, headY, 2, 4, C);
-    }
-    if (s.hair === 'spiky') for (const dx of [-2, 0, 2]) pc.px(cx + dx, top - 1, C);
-    if (s.hair === 'bun') pc.disc(cx + 1, top - 1, 1.5, C);
-    if (s.hair === 'cap') pc.rect(cx - 4, top + 1, 6, 1, C);
-    // 팔: 0 내림 · 1 한 손 흔들기 · 2 두 팔 벌리기
-    const shY = neck + 1;
-    const L = cx - s.sh;
-    const R = cx + s.sh - 1;
-    if (f === 0) {
-      pc.rect(L, shY, 1, 8, C);
-      pc.rect(R, shY, 1, 8, C);
-    } else if (f === 1) {
-      pc.rect(R, shY, 1, 8, C);
-      for (let i = 0; i < 6; i++) pc.px(L - Math.min(2, Math.floor(i / 2)), shY - i, C);
-      pc.rect(L - 3, shY - 7, 2, 2, C); // 흔드는 손
-    } else {
-      for (let i = 0; i < 6; i++) {
-        pc.px(L - i, shY + 1 - Math.floor(i / 2), C);
-        pc.px(R + i, shY + 1 - Math.floor(i / 2), C);
-      }
-    }
-    if (s.cane) pc.rect(R + 2, hip - 1, 1, foot - hip + 2, '#8a6a4a');
-  }
-  pc.outline(RIM);
-  return pc.canvas;
-}
-
 /** 꽃잎 3x3 (분홍·노랑 두 장) */
 export function petalSheet(): HTMLCanvasElement {
   const pc = new PixelCanvas(6, 3);
