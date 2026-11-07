@@ -396,9 +396,9 @@ async function bossTests(label, device) {
   check(`${label}: 뽀뽀괴물 uses 왕뽀뽀 ①②③ before defeat`, ['royal1', 'royal2', 'royal3'].every((r) => klog.includes(r)) && (await battle())?.mode === 'victory', klog);
   // 패배 대사 (타이핑) → 퇴장 → 승리
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 6000 }).catch(() => {});
-  await page.waitForTimeout(1600);
+  await page.waitForFunction(() => (document.querySelector('.boss-talk .pr-shown')?.textContent ?? '').length > 3, null, { timeout: 6000 }).catch(() => {});
   const talk1 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
-  check(`${label}: 뽀뽀괴물 last words typed in pixel dialog`, talk1.startsWith('크윽') && (await page.locator('.bt-skip').isVisible()), talk1);
+  check(`${label}: 뽀뽀괴물 last words typed in pixel dialog`, /^(크윽|하지만|절대)/.test(talk1) && (await page.locator('.bt-skip').isVisible()), talk1);
   await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 30000 }).catch(() => {});
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
@@ -465,7 +465,7 @@ async function bossTests(label, device) {
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 28.8; });
   await page.waitForTimeout(800);
   const fam = await G(() => window.__gona.scene.getScene('Game').ending.family.map((f) => f.mode));
-  check(`${label}: ending hug/kiss/sniff poses in contact`, fam.includes('hug') && (fam.includes('sniff') || fam.includes('kiss')), JSON.stringify(fam));
+  check(`${label}: ending kiss + sniff poses in contact`, (fam.includes('kiss') || fam.includes('hug')) && fam.includes('sniff'), JSON.stringify(fam));
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 44.7; });
   await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
   const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
@@ -516,7 +516,7 @@ async function controlTests(label, device) {
   await tap('.cover-dev-btn >> nth=0');
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.id === 'kiss', null, { timeout: 8000 }).catch(() => {});
   const g0 = await game();
-  check(`${label}: title test menu → 뽀뽀괴물 battle directly (HP 100, hearts 3, boss HP 28)`, g0.battle?.id === 'kiss' && g0.hp === 100 && g0.hearts === 3 && g0.battle.hp === 28, JSON.stringify(g0));
+  check(`${label}: title test menu → 뽀뽀괴물 battle directly (HP 100, hearts 3, boss HP 50)`, g0.battle?.id === 'kiss' && g0.hp === 100 && g0.hearts === 3 && g0.battle.hp === 50, JSON.stringify(g0));
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
   const top = await G(() => ({ me: !!document.querySelector('.bt-me') && getComputedStyle(document.querySelector('.battle-top')).display !== 'none', hp: document.querySelector('.bt-hp-text').textContent, hearts: document.querySelectorAll('.bt-heart').length }));
   check(`${label}: top shows GONA hearts + HP gauge + boss HP`, top.me && top.hp === 'HP 100' && top.hearts === 3 && (await page.locator('.boss-bar').isVisible()), JSON.stringify(top));

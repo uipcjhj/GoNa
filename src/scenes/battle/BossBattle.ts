@@ -490,7 +490,8 @@ export abstract class BossBattle {
     // 분노 단계 (HP 비율)
     const ratio = this.hp / this.def.maxHp;
     const want = ratio <= BossBattle.RAGE_AT[2] ? 3 : ratio <= BossBattle.RAGE_AT[1] ? 2 : ratio <= BossBattle.RAGE_AT[0] ? 1 : 0;
-    if (want > this.rage) {
+    // 이번 단계 필살기를 보여 주기 전엔 다음 분노 단계로 넘어가지 않음 (한 번에 한 단계씩)
+    if (want > this.rage && !this.specialDue) {
       this.rage = Math.min(this.rage + 1, want) as 1 | 2 | 3;
       this.applyTint();
       // 필살기 연출 중이면 그게 끝난 뒤
