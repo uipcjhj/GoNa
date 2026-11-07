@@ -114,3 +114,48 @@ export function moodFlower(): HTMLCanvasElement {
   pc.outline('#7a3a52');
   return pc.canvas;
 }
+
+/**
+ * 돼지코 3프레임 (각 22x16) — 킁카괴물 필살기 '돼지코 군단'
+ *   0 보통 · 1 킁! 부풀어 콧구멍이 커짐 · 2 쭈욱 빨아들이며 납작
+ *   분홍 둥근 코 + 진한 테두리 + 콧구멍 2개(세로 타원, 안쪽 더 진함) + 위쪽 하이라이트 → 단순한 원이 아니라 '돼지코'로 보이게
+ */
+export const PIG_NOSE_FRAME = { w: 22, h: 16 };
+export function pigNoseSheet(): HTMLCanvasElement {
+  const { w, h } = PIG_NOSE_FRAME;
+  const pc = new PixelCanvas(w * 3, h);
+  const RIM = '#e0679a';
+  const BASE = '#ff9ec0';
+  const HI = '#ffd0e2';
+  const HOLE = '#7a2a4a';
+  const DEEP = '#3e0f24';
+  const shapes = [
+    { rx: 8, ry: 6, hole: [1, 2] as const },
+    { rx: 9.5, ry: 6.8, hole: [2, 3] as const },
+    { rx: 9.5, ry: 4.6, hole: [1, 1] as const },
+  ];
+  shapes.forEach((sh, f) => {
+    const cx = f * w + 11;
+    const cy = 8;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = (x + 0.5 - 11) / sh.rx;
+        const dy = (y + 0.5 - cy) / sh.ry;
+        const d = dx * dx + dy * dy;
+        if (d <= 1) pc.px(f * w + x, y, d > 0.72 ? RIM : BASE);
+      }
+    }
+    // 하이라이트 (왼쪽 위 반짝)
+    pc.rect(cx - 5, cy - Math.round(sh.ry) + 2, 3, 1, HI);
+    pc.px(cx - 6, cy - Math.round(sh.ry) + 3, HI);
+    // 콧구멍 2개 (세로로 긴 타원)
+    const [hw, hh] = sh.hole;
+    for (const sx of [-1, 1]) {
+      const hx = cx + sx * 3 - (sx < 0 ? hw : 0);
+      pc.rect(hx, cy - hh, hw + 1, hh * 2 + 1, HOLE);
+      pc.rect(hx + (sx < 0 ? 0 : hw), cy - hh + 1, 1, Math.max(1, hh * 2 - 1), DEEP);
+    }
+  });
+  pc.outline('#6a2040');
+  return pc.canvas;
+}

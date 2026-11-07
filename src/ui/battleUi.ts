@@ -231,7 +231,7 @@ export class BattleUi {
     if (h.boss) {
       this.setText(this.bossName, h.boss.name);
       this.bossPhase.classList.toggle('hidden', h.boss.phase < 2);
-      this.setText(this.bossPhase, h.boss.phase >= 3 ? '💥 2차 분노' : '💢 1차 분노');
+      this.setText(this.bossPhase, h.boss.phase >= 4 ? '🔥 최종 분노' : h.boss.phase >= 3 ? '💥 2차 분노' : '💢 1차 분노');
       this.bossBar.classList.toggle('phase2', h.boss.phase >= 2);
       this.setStyle(this.bossHp, 'width', `${Math.max(0, (h.boss.hp / h.boss.maxHp) * 100)}%`);
       if (this.lastHp >= 0 && h.boss.hp < this.lastHp) this.shake(this.bossBar);

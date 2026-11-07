@@ -11,13 +11,13 @@ import { StageManager } from '../game/stages';
 import { NEST_H, NEST_SINK, NEST_W } from '../art/nest';
 import { BATTLE_HP, BOSSES, SHIELD } from '../game/boss';
 import { clearCheckpoint, loadCheckpoint, saveCheckpoint } from '../game/checkpoint';
-import { MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
+import { MONSTER_DASH, MONSTERS, ROCK_DAMAGE, maxMonsters, monsterWeight, type MonsterKind } from '../game/monsters';
 import { CLOUD_FRAME, dizzyStar, FLASK_FRAME, flaskSheet, fartCloudSheet, monsterSheet, pathArrow, POP_FRAME, popSheet, PUDDLE_FRAME, puddleSheet, SHATTER_FRAME, shatterSheet } from '../art/monsterArt';
 import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
 import { FAMILY_ORDER, familySheet, FAMILY_FRAME, petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
 import { FamilyEnding } from './ending/FamilyEnding';
-import { auraRing, leaf, moodFlower, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
+import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
@@ -60,7 +60,7 @@ interface Entity {
   dmg?: number;
   /** 이미 고나를 맞힘 (구름은 한 번만) */
   hit?: boolean;
-  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number; post: number; burstN?: number };
+  mon?: { kind: MonsterKind; hp: number; cd: number; tele: number; flash: number; id: number; burst: number; burstT: number; post: number; burstN?: number; attacks: number; dashTele: number; dashT: number; recover: number };
   /** 투사체·구름 애니메이션 시간(초) */
   age?: number;
 }
@@ -577,6 +577,7 @@ export class GameScene extends Phaser.Scene {
   // ───────────────────────── 점프 ─────────────────────────
 
   private pressJump(): void {
+    if (this.battle?.mode === 'victory') return; // 보스 마지막 대사·퇴장 중엔 조작 없음
     const now = this.time.now;
     const c = this.growth.stage.controls; // 단계별 조작 (기본값 1배 = 기존과 동일)
     if (this.grounded) {
@@ -701,6 +702,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateEntities(move, time, dt);
+    this.syncMonsterTags();
     if (this.battle && this.state === 'playing') this.battle.update(rawDt);
     this.updateBoomerang(dt);
     this.updateShield();
@@ -1087,13 +1089,33 @@ export class GameScene extends Phaser.Scene {
   // ───────────────────────── 일반 몬스터 ─────────────────────────
 
   private monsterSeq = 1;
+  /** 몬스터 이름표 */
+  private monTags = new Map<Entity, Phaser.GameObjects.Image>();
+
+  /** 이름표: 몬스터 머리 바로 위 (화면 위로 잘리지 않게) · 몬스터가 사라지면 같이 삭제 */
+  private syncMonsterTags(): void {
+    if (!this.monTags.size) return;
+    for (const [e, tag] of this.monTags) {
+      if (e.done || !e.sprite.active) {
+        tag.destroy();
+        this.monTags.delete(e);
+        continue;
+      }
+      const top = this.groundY - e.alt - e.sprite.displayHeight - 2;
+      const half = tag.displayWidth / 2;
+      tag.setPosition(Math.round(Phaser.Math.Clamp(e.x, half + 1, this.W - half - 1) * 5) / 5, Math.round(Math.max(tag.displayHeight + 1, top) * 5) / 5);
+    }
+  }
 
   private addMonster(kind: MonsterKind, x: number): void {
     const d = MONSTERS[kind];
     const sprite = this.add.image(x, 0, `mon-${kind}`, 0).setOrigin(0.5, 1).setDepth(6);
     this.spawned++;
     this.sinceMonster = 0;
-    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.8, tele: 0, flash: 0, id: this.monsterSeq++, burst: 0, burstT: 0, post: 0 } });
+    this.entities.push({ sprite, type: 'monster', x, alt: 0, w: d.box.w, h: d.box.h, phase: 0, done: false, vx: 0, dmg: d.bodyDamage, mon: { kind, hp: d.hp, cd: 0.8, tele: 0, flash: 0, id: this.monsterSeq++, burst: 0, burstT: 0, post: 0, attacks: 0, dashTele: 0, dashT: 0, recover: 0 } });
+    // 머리 위 이름표 ([화학과안경잽이] · [방구할배]) — 몬스터를 따라다니고 사라지면 같이 지움 (syncMonsterTags)
+    const tag = this.add.image(x, 0, this.textTexture(`[${d.name}]`, kind === 'glasses' ? '#e8d4ff' : '#f2ffc8')).setOrigin(0.5, 1).setScale(0.5).setDepth(6.95);
+    this.monTags.set(this.entities[this.entities.length - 1], tag);
   }
 
   private updateMonster(e: Entity, dt: number, time: number): void {
@@ -1101,12 +1123,13 @@ export class GameScene extends Phaser.Scene {
     const d = MONSTERS[m.kind];
     const dx = e.x - this.playerX;
     const onScreen = e.x < this.W - 6;
-    const stopped = m.tele > 0 || m.post > 0;
+    const stopped = m.tele > 0 || m.post > 0 || m.dashTele > 0 || m.recover > 0;
     // 이동 (vx = 땅 흐름보다 더 왼쪽으로 가는 속도 → 화면 속도 = -(speed + vx))
     //   화면 밖: 빨리 들어옴 · 화면 안: 고나 쪽으로 계속 천천히 · 예고·뀐 직후만 잠깐 멈춤
     //   안경잽이는 현금다발을 쏘는 동안에도 조금씩(절반 속도) 다가옴 · 고나를 지나치면 땅과 함께 지나감
     const approach = Math.max(d.approach, (this.W - this.playerX) / d.travelSec) * (m.burst > 0 ? 0.5 : 1);
-    if (stopped) e.vx = -this.speed;
+    if (m.dashT > 0) e.vx = MONSTER_DASH.speed - this.speed; // 돌진: 화면에서 빠르게 고나 쪽으로
+    else if (stopped) e.vx = -this.speed;
     else if (!onScreen) e.vx = d.walk;
     else if (dx < -4) e.vx = 0;
     else e.vx = approach - this.speed;
@@ -1120,6 +1143,26 @@ export class GameScene extends Phaser.Scene {
         frame = t < 0.35 ? 2 : 2 + (Math.floor((t - 0.35) / 0.1) % 2);
       } else if (m.post > 0) frame = 4; // 능청스러운 만족 표정
     }
+    // 돌진: 예고(안경 번쩍 + 몸 뒤로 젖힘 / 배 내밀고 출렁) → 앞으로 기울여 다다다 → (안경잽이) 비틀비틀
+    let ang = 0;
+    let sx = 1;
+    if (m.dashTele > 0) {
+      const t = MONSTER_DASH.telegraph - m.dashTele;
+      if (m.kind === 'glasses') {
+        frame = 2;
+        ang = Math.min(1, t / 0.25) * 9;
+      } else {
+        frame = 0;
+        sx = 1 + Math.abs(Math.sin(t * 18)) * 0.12 * Math.max(0, 1 - t / 0.5); // 배가 한 번 출렁
+        ang = -4;
+      }
+    } else if (m.dashT > 0) {
+      frame = Math.floor(time / 70) % 2;
+      ang = -8;
+    } else if (m.recover > 0) {
+      ang = Math.sin(m.recover * 22) * 7;
+    }
+    e.sprite.setAngle(ang).setScale(sx, 1);
     const total = e.sprite.texture.frameTotal - 1;
     e.sprite.setFrame(Math.min(frame, total - 1));
     if (m.flash > 0) {
@@ -1132,7 +1175,30 @@ export class GameScene extends Phaser.Scene {
       m.post -= dt;
       return;
     }
-    // 현금다발 연속 발사 (뽑! 뽑! 뽑!)
+    // 돌진 예고 → 돌진 → 숨 고르기 (방구할배는 돌진 끝에 바로 엉덩이 내밀고 방귀)
+    if (m.dashTele > 0) {
+      m.dashTele -= dt;
+      if (m.dashTele <= 0) {
+        m.dashT = MONSTER_DASH.time;
+        sound.boing();
+        this.dustEmitter.explode(perf.low ? 2 : 4, e.x + 6, this.groundY - 2);
+      }
+      return;
+    }
+    if (m.dashT > 0) {
+      m.dashT -= dt;
+      if (!perf.low && Math.random() < dt * 20) this.dustEmitter.explode(1, e.x + 6, this.groundY - 2);
+      if (m.dashT <= 0) {
+        if (m.kind === 'farter') m.tele = d.telegraph;
+        else m.recover = MONSTER_DASH.recover;
+      }
+      return;
+    }
+    if (m.recover > 0) {
+      m.recover -= dt;
+      return;
+    }
+    // 플라스크 연속 투척
     if (m.burst > 0) {
       m.burstT -= dt;
       if (m.burstT <= 0) {
@@ -1153,6 +1219,16 @@ export class GameScene extends Phaser.Scene {
     // 고나와 몬스터 사이에 바위·다른 공격이 있으면 쏘지 않음 (한 번에 못 피하는 상황 방지)
     const blocked = this.entities.some((o) => !o.done && (o.type === 'rock' || o.type === 'mshot' || o.type === 'cloud' || o.type === 'puddle') && o.x > this.playerX - 10 && o.x < e.x);
     if (m.cd <= 0 && !blocked) {
+      m.attacks++;
+      // 가끔 돌진 (처음 공격은 절대 아님 · 너무 가깝거나 멀면 안 함) — 반드시 0.7초 예고 ('!' + 안경 번쩍/배 출렁)
+      if (m.attacks > 1 && dx > MONSTER_DASH.minDist && dx < MONSTER_DASH.maxDist && Math.random() < MONSTER_DASH.chance) {
+        m.dashTele = MONSTER_DASH.telegraph;
+        m.cd = d.cooldownFar;
+        sound.warn();
+        this.floatText('!', e.x, this.groundY - e.h - 12, '#ffef7a');
+        if (m.kind === 'glasses') this.sparkleEmitter.explode(perf.low ? 2 : 4, e.x - 4, this.groundY - 14);
+        return;
+      }
       m.tele = d.telegraph;
       if (m.kind === 'glasses') {
         // 안경 번쩍 + 앞에 보라 물약 플라스크를 꺼냄 (보글보글)
@@ -1664,6 +1740,7 @@ export class GameScene extends Phaser.Scene {
     if (!tm.exists('end-heart')) addCanvas(this, 'end-heart', endHeart());
     if (!tm.exists('sp-ring-gold')) addCanvas(this, 'sp-ring-gold', auraRing('#ffd54a', '#c8ff8a'));
     if (!tm.exists('sp-tornado')) addSheet(this, 'sp-tornado', tornadoSheet(), TORNADO_FRAME.w, TORNADO_FRAME.h);
+    if (!tm.exists('sp-pignose')) addSheet(this, 'sp-pignose', pigNoseSheet(), PIG_NOSE_FRAME.w, PIG_NOSE_FRAME.h);
     if (!tm.exists('sp-leaf')) addCanvas(this, 'sp-leaf', leaf());
     if (!tm.exists('sp-safe')) addCanvas(this, 'sp-safe', safeMark());
     if (!tm.exists('mon-flask')) addSheet(this, 'mon-flask', flaskSheet(), FLASK_FRAME.w, FLASK_FRAME.h);

@@ -11,6 +11,7 @@ import { AudioPanel } from './ui/audioPanel';
 import { Subtitles } from './ui/subtitles';
 import { BattleUi } from './ui/battleUi';
 import { EndingUi } from './ui/endingUi';
+import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import { perf } from './perf';
@@ -119,6 +120,7 @@ async function boot(): Promise<void> {
   endingUi.onReplay = () => bus.emit(EV.endingReplay);
   const audioPanel = new AudioPanel(ui);
   new BattleUi(ui);
+  new BossTalk(ui);
   cover.onAudioTest = () => audioPanel.open();
   overlay.onAudioTest = () => audioPanel.open();
 

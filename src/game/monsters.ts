@@ -6,6 +6,9 @@
  *              땅에 닿으면 '팡' 깨지며 보라 물약이 잠깐 퍼짐 → 점프 / 부메랑으로 공중에서 깸 / 몸은 부메랑 2번
  *   배불뚝이 아저씨몹: 뒤뚱뒤뚱(배 출렁) → 멈춤 → 엉덩이 뒤로 쭉 → 씰룩 → 엉덩이에서 '뿡' 팡! → 황록 구름이 고나 쪽으로
  *                     → 능청스러운 표정 → 다시 다가옴. 가까울수록 자주 → 점프 / 부메랑 3번
+ * 돌진 (두 번째 공격부터 가끔, 35%): 예고 0.7초(안경 번쩍·몸 뒤로 젖힘 / 배 내밀고 출렁) → 짧고 빠르게 돌진(약 0.45초)
+ *   → 안경잽이는 비틀비틀 숨 고르기 · 방구할배는 바로 엉덩이 내밀고 방귀 → 다시 천천히 다가옴. 점프로 넘거나 부메랑으로 처치
+ * 머리 위 이름표: [화학과안경잽이] · [방구할배]
  * 정식 그림: public/assets/monsters/{glasses,farter}-sheet.png (프레임 3장 가로, 왼쪽을 봄) — 없으면 코드 도트
  */
 export type MonsterKind = 'glasses' | 'farter';
@@ -40,10 +43,13 @@ export interface MonsterDef {
   box: { w: number; h: number };
 }
 
+/** 돌진: 확률(두 번째 공격부터) · 예고(초) · 화면 속도(px/s) · 지속(초) · 끝나고 숨 고르기(초) · 이 거리 안에서만 */
+export const MONSTER_DASH = { chance: 0.35, telegraph: 0.7, speed: 115, time: 0.45, recover: 0.7, minDist: 46, maxDist: 130 };
+
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   glasses: {
     kind: 'glasses',
-    name: '안경잽이몹',
+    name: '화학과안경잽이',
     hp: 2,
     walk: 20,
     approach: 14,
@@ -63,7 +69,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   farter: {
     kind: 'farter',
-    name: '배불뚝이 아저씨몹',
+    name: '방구할배', // 이름만 '방구할배' — 생김새는 배불뚝이 중년 아저씨 그대로
     hp: 3,
     walk: 8,
     approach: 9,

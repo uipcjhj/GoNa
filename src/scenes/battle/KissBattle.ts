@@ -3,8 +3,11 @@
  *   모든 공격 전 0.8초 이상 예고, 공격 뒤 2초 쉼, 공격끼리 겹치지 않음, 모두 점프 또는 방패로 피할 수 있음.
  *   일반(HP 100~71%): 느린 하트탄(낮게 3발, 1초 간격) · 짧은 돌진
  *   1차 분노(70~36%): 하트탄 2개 연속(한 번 점프로 둘 다 넘음) · 빠르게 통통 뛰며 자리 바꾸기 · 분홍 오라 · 화난 표정
- *   2차 분노(35~0%): 왕뽀뽀 필살기 — 화살표로 길을 1.6초 미리 보여 준 뒤 커다란 하트 → 점프 또는 방패,
- *                    쓰고 나면 2초 동안 지쳐서 공격 기회 (1.5배 피해)
+ *   2차 분노(40~16%): 뽀뽀 파동이 더 자주 · 하트가 조금 빨라짐
+ *   최종 분노(15~0%): 가장 빠르고 화려함
+ *   필살기 (분노 단계마다 첫 공격 = 최소 3회, 최종 분노에선 4번째 공격마다 다시):
+ *     ① 초대형 왕뽀뽀 1개  ② 왕뽀뽀 + 작은 하트탄 연발  ③ 왕뽀뽀 2연속 + 하트 폭풍(가장 화려)
+ *     모두 화살표로 길을 1.6초 미리 보여 줌 → 점프 또는 방패. 쓰고 나면 지쳐서 공격 기회 (1.5배 피해)
  *   각성: 처음엔 공격 수단이 없다가, 두 번째 공격 뒤 고나의 머리카락이 반짝 → 머리카락 부메랑 각성
  */
 import Phaser from 'phaser';
@@ -21,9 +24,8 @@ export class KissBattle extends BossBattle {
   private last: Attack | null = null;
   private dashing = false;
   private dashHit = false;
-  private royalTurn = true;
-  /** 왕뽀뽀를 쏘고 지쳐서 약점을 보이기 시작했는지 (그 전에는 2차 분노에서 쓰러지지 않음 — 필살기·약점 연출 보장) */
-  private royalShown = false;
+  /** 마지막 필살기 뒤 공격 수 (최종 분노에서 4번째마다 필살기 다시) */
+  private sinceRoyal = 0;
   private aura: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
 
   constructor(
@@ -47,9 +49,15 @@ export class KissBattle extends BossBattle {
       return;
     }
     let pick: Attack;
+    let variant = 0;
     if (!this.awakened) pick = this.done === 0 ? 'shots' : 'dash';
-    else if (this.rage === 2 && this.royalTurn) pick = 'royal';
-    else {
+    else if (this.specialDue) {
+      pick = 'royal';
+      variant = this.specialsDone + 1;
+    } else if (this.rage === 3 && this.sinceRoyal >= 4) {
+      pick = 'royal';
+      variant = 3;
+    } else {
       const w: [Attack, number][] =
         this.rage === 0
           ? [
@@ -60,7 +68,7 @@ export class KissBattle extends BossBattle {
               ['double', 3],
               ['hop', 2],
               ['dash', 1.5],
-              ['wave', 1.2],
+              ['wave', this.rage >= 2 ? 2.2 : 1.2],
             ];
       const pool = w.filter(([a]) => a !== this.last);
       const total = pool.reduce((sum, [, n]) => sum + n, 0);
@@ -74,16 +82,19 @@ export class KissBattle extends BossBattle {
         }
       }
     }
-    if (this.rage === 2) this.royalTurn = pick !== 'royal';
+    this.sinceRoyal = pick === 'royal' ? 0 : this.sinceRoyal + 1;
     this.last = pick;
-    this.attackLog.push(pick + (this.rage ? `#${this.rage}` : ''));
+    this.attackLog.push(pick + (variant ? variant : '') + (this.rage ? `#${this.rage}` : ''));
     this.done++;
+    if (pick === 'royal') {
+      this.royalKiss(variant || 1);
+      return;
+    }
     if (pick === 'shots') this.shots();
     else if (pick === 'double') this.doubleShots();
     else if (pick === 'hop') this.hop();
     else if (pick === 'dash') this.dash();
-    else if (pick === 'wave') this.wave();
-    else this.royalKiss();
+    else this.wave();
   }
 
   /** 입술 위치 */
@@ -102,8 +113,13 @@ export class KissBattle extends BossBattle {
   }
 
   /** 일반: 느린 하트탄 — 0.9초 예고 뒤 낮게 3발, 1초 간격 (한 발씩 점프) */
+  /** 분노할수록 하트가 조금씩 빨라짐 (점프 타이밍은 그대로 넉넉하게) */
+  private get heartSpeed(): number {
+    return 69 * (1 + 0.07 * this.rage);
+  }
+
   private shots(): void {
-    const speed = 69;
+    const speed = this.heartSpeed;
     this.warn(0.9);
     this.setPose(2, 0.9);
     for (let i = 0; i < 3; i++) this.after(0.9 + i * 1.0, () => this.fireHeart(true, speed));
@@ -116,7 +132,7 @@ export class KissBattle extends BossBattle {
    * 묶음 사이는 1.6초 (착지하고 다시 뛸 시간). 속도는 그대로.
    */
   private doubleShots(): void {
-    const speed = 69;
+    const speed = this.heartSpeed;
     this.warn(0.9);
     this.setPose(2, 0.9);
     for (const t0 of [0.9, 2.5]) {
@@ -231,17 +247,20 @@ export class KissBattle extends BossBattle {
   }
 
   /**
-   * 2차 분노 필살기 '왕뽀뽀': 분홍 화살표로 하트가 지나갈 길(땅 위 낮은 높이)을 1.6초 동안 보여 준 뒤
-   * 커다란 하트가 천천히 날아옴 → 점프(높이 약 22px — 한 번 점프로 넘음) 또는 방패.
-   * 쏜 뒤 2.2초 동안 지쳐서 공격하지 않고 1.5배로 아픔.
+   * 필살기 '왕뽀뽀' (variant 1~3) — 분홍 화살표로 하트가 지나갈 길(땅 위 낮은 높이)을 1.6초 동안 보여 준 뒤
+   * 커다란 하트가 날아옴 → 점프(높이 약 22px — 한 번 점프로 넘음) 또는 방패.
+   *   ① 왕뽀뽀 1개  ② 왕뽀뽀 + 작은 하트탄 2발(착지 뒤 하나씩 점프)  ③ 왕뽀뽀 2연속(1.5초 간격) + 하트 폭풍 연출
+   * 다 지나가면 지쳐서 공격하지 않고 1.5배로 아픔 (반격 시간).
    */
-  private royalKiss(): void {
+  private royalKiss(variant: number): void {
     const scene = this.host.scene;
     const m = this.lips();
     const y = this.host.groundY - 12;
+    const names = ['', '초대형 왕뽀뽀!', '왕뽀뽀 + 하트 연발!', '왕뽀뽀 하트 폭풍!'];
+    const descs = ['', '분홍 화살표 길로 거대한 하트가 와요 — 점프하거나 방패!', '큰 하트를 넘고, 작은 하트도 하나씩 점프!', '거대한 하트가 두 번! 한 번씩 점프!'];
     this.warn(1.6);
     this.setPose(2, 1.7); // 입술 쭉 (오므림)
-    this.banner({ top: '💗 필살기', name: '초대형 왕뽀뽀!', desc: '분홍 화살표 길로 거대한 하트가 와요 — 점프하거나 방패!', ms: 1700, tone: 'boss' });
+    this.banner({ top: `💗 필살기 ${variant}/3`, name: names[variant], desc: descs[variant], ms: 1700, tone: 'boss' });
     // 예고 1.6초: 크게 부풀어 오름 · 분홍 오라 · 화면이 어두워짐(보스만 밝게) · 차오르는 소리
     scene.tweens.add({ targets: this.boss, scaleX: 1.3, scaleY: 1.3, duration: 1400, ease: 'Sine.In' });
     this.specialTelegraph('sp-ring-pink', 1.6);
@@ -252,63 +271,99 @@ export class KissBattle extends BossBattle {
     // 입술 앞에 거대한 하트가 점점 커짐
     const charge = this.fx(scene.add.image(m.x - 6, this.host.groundY - 4, 'sp-heart').setOrigin(0.5, 1).setDepth(11).setScale(0.3));
     scene.tweens.add({ targets: charge, scale: 2.2, duration: 1500, ease: 'Sine.In' });
-    const speed = 105;
+    // ③ 하트 폭풍: 화면 가득 분홍 하트가 휘몰아침 (보이기만 — 판정 없음, 개수 제한)
+    if (variant === 3) {
+      const storm = this.fx(
+        scene.add
+          .particles(0, 0, 'boss-tinyheart', {
+            x: { min: 0, max: this.host.W },
+            y: { min: -10, max: this.host.groundY - 40 },
+            speedX: { min: -90, max: -40 },
+            speedY: { min: 10, max: 40 },
+            lifespan: 1600,
+            scale: { start: 1.6, end: 0.6 },
+            alpha: { start: 0.75, end: 0 },
+            frequency: perf.low ? 120 : 55,
+          })
+          .setDepth(9.7),
+      );
+      this.after(6.2, () => {
+        storm.stop();
+        scene.time.delayedCall(1700, () => storm.active && storm.destroy());
+      }, true);
+      this.after(0.9, () => scene.cameras.main.flash(260, 255, 150, 200), true);
+    }
+    const speed = 105 + (variant - 1) * 8;
     this.after(1.7, () => {
       arrows.forEach((a) => a.destroy());
       charge.destroy();
       scene.tweens.add({ targets: this.boss, scaleX: 1, scaleY: 1, duration: 140 });
       // 발사 순간: 화면이 분홍으로 번쩍 + 아주 짧은 흔들림 + 쾅
       this.specialRelease([255, 120, 190]);
-      sound.smooch();
-      // 거대한 하트 (그림 약 40x35 = 일반 하트탄의 4배) — 충돌 판정은 예전과 같은 22x20 (한 번 점프로 넘을 수 있게)
-      const h = this.spawn('sp-heart', m.x - 6, y, { vx: -speed, shape: 'box', w: 22, h: 20, pierce: true, breakable: false, life: 5, dmg: DAMAGE.kissRoyal });
-      h.sprite.setScale(2.2).setOrigin(0.5, 0.66); // 그림 아래가 땅에 닿게 (판정 중심은 그대로)
-      h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-heart', [255, 150, 200], blocked);
-      // 하트 주위를 도는 작은 하트 4개 + 지나가며 흩어지는 분홍 반짝이·하트 (개수 제한)
-      const orbit = [0, 1, 2, 3].map(() => this.fx(scene.add.image(h.x, h.y, 'boss-heart').setDepth(11.2)));
-      const trail = this.fx(
-        scene.add
-          .particles(0, 0, 'boss-heart', { follow: h.sprite, followOffset: { x: 12, y: -6 }, lifespan: 450, frequency: perf.low ? 140 : 70, speedX: { min: 20, max: 70 }, speedY: { min: -40, max: 30 }, scale: { start: 0.9, end: 0.3 }, alpha: { start: 1, end: 0 } })
-          .setDepth(10.9),
-      );
-      const spin = scene.tweens.addCounter({
-        from: 0,
-        to: 1,
-        duration: 5000,
-        onUpdate: (tw) => {
-          if (h.dead || !h.sprite.active) {
-            orbit.forEach((o) => o.active && o.destroy());
-            if (trail.active) {
-              trail.stop();
-              scene.time.delayedCall(500, () => trail.active && trail.destroy());
-            }
-            tw.stop();
-            return;
-          }
-          const a0 = (tw.getValue() ?? 0) * Math.PI * 2 * 7;
-          orbit.forEach((o, i) => {
-            const a = a0 + (i * Math.PI) / 2;
-            o.setPosition(Math.round((h.x + Math.cos(a) * 26) * 5) / 5, Math.round((h.y - 12 + Math.sin(a) * 18) * 5) / 5);
-          });
-        },
+      this.launchRoyal(m.x - 6, y, speed);
+    });
+    let lastPass = 1.7 + (m.x - this.host.basePlayerX) / speed;
+    if (variant === 2) {
+      // 큰 하트를 넘고 착지한 뒤 작은 하트 2발 (1초 간격)
+      const hs = this.heartSpeed;
+      const travel = (m.x - this.host.basePlayerX) / hs;
+      const arrive0 = lastPass + 1.0;
+      for (let i = 0; i < 2; i++) this.after(Math.max(1.9, arrive0 + i * 1.0 - travel), () => this.fireHeart(true, hs));
+      lastPass = arrive0 + 1.0;
+    } else if (variant === 3) {
+      // 두 번째 왕뽀뽀 (1.5초 뒤 — 착지하고 다시 뛸 시간)
+      this.after(3.2, () => {
+        this.setPose(2, 0.4);
+        scene.cameras.main.flash(160, 255, 140, 200);
+        this.launchRoyal(m.x - 6, y, speed);
       });
-      this.after(5.2, () => spin.stop(), true);
-    });
-    const pass = (m.x - this.host.basePlayerX) / speed;
-    // 지나간 뒤: 어지러워하며 약점 노출 (2.2초 · 1.5배)
-    this.after(1.7 + pass + 0.4, () => {
-      this.royalShown = true;
-      this.stun(2.2, 1.5, '뽀뽀괴물이 지쳤어요!');
+      lastPass += 1.5;
+    }
+    // 다 지나간 뒤: 어지러워하며 약점 노출 (1.5배)
+    this.after(lastPass + 0.4, () => {
+      this.specialShown();
+      this.stun(variant === 3 ? 2.8 : 2.3, 1.5, variant === 3 ? '뽀뽀괴물이 녹초가 됐어요!' : '뽀뽀괴물이 지쳤어요!');
     });
   }
 
-  /** 2차 분노에 들어온 뒤 왕뽀뽀(예고·발사) → 지침까지 보여 주기 전에는 HP 1 을 남김 (약 4초 · 맞으면 피해 숫자는 그대로 보임) */
-  protected hpFloor(): number {
-    const base = super.hpFloor();
-    return this.rage === 2 && !this.royalShown ? Math.max(base, 1) : base;
+  /** 거대한 하트 한 발 (그림 약 40x35 = 일반 하트탄의 4배 · 판정 22x20) + 도는 하트 4개 + 꼬리 */
+  private launchRoyal(x: number, y: number, speed: number): void {
+    const scene = this.host.scene;
+    sound.smooch();
+    const h = this.spawn('sp-heart', x, y, { vx: -speed, shape: 'box', w: 22, h: 20, pierce: true, breakable: false, life: 5, dmg: DAMAGE.kissRoyal });
+    h.sprite.setScale(2.2).setOrigin(0.5, 0.66); // 그림 아래가 땅에 닿게 (판정 중심은 그대로)
+    h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-heart', [255, 150, 200], blocked);
+    const orbit = [0, 1, 2, 3].map(() => this.fx(scene.add.image(h.x, h.y, 'boss-heart').setDepth(11.2)));
+    const trail = this.fx(
+      scene.add
+        .particles(0, 0, 'boss-heart', { follow: h.sprite, followOffset: { x: 12, y: -6 }, lifespan: 450, frequency: perf.low ? 140 : 70, speedX: { min: 20, max: 70 }, speedY: { min: -40, max: 30 }, scale: { start: 0.9, end: 0.3 }, alpha: { start: 1, end: 0 } })
+        .setDepth(10.9),
+    );
+    const spin = scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 5000,
+      onUpdate: (tw) => {
+        if (h.dead || !h.sprite.active) {
+          orbit.forEach((o) => o.active && o.destroy());
+          if (trail.active) {
+            trail.stop();
+            scene.time.delayedCall(500, () => trail.active && trail.destroy());
+          }
+          tw.stop();
+          return;
+        }
+        const a0 = (tw.getValue() ?? 0) * Math.PI * 2 * 7;
+        orbit.forEach((o, i) => {
+          const a = a0 + (i * Math.PI) / 2;
+          o.setPosition(Math.round((h.x + Math.cos(a) * 26) * 5) / 5, Math.round((h.y - 12 + Math.sin(a) * 18) * 5) / 5);
+        });
+      },
+    });
+    this.after(5.2, () => spin.stop(), true);
   }
 
-  protected onRage(level: 1 | 2): void {
+  protected onRage(level: 1 | 2 | 3): void {
     // 분노: 전투 음악이 같은 박자 위치에서 더 강한 판으로
     if (level >= 1) sound.switchMusicSync('kiss2');
     this.aura?.destroy();
@@ -321,13 +376,68 @@ export class KissBattle extends BossBattle {
         speedY: { min: -26, max: -8 },
         lifespan: 700,
         alpha: { start: 0.9, end: 0 },
-        frequency: level === 2 ? 70 : 140,
+        frequency: level === 3 ? 40 : level === 2 ? 70 : 140,
+        scale: level === 3 ? 1.5 : 1,
       })
       .setDepth(8.5);
   }
 
-  protected rageText(level: 1 | 2): string {
-    return level === 1 ? '하트탄이 두 발씩! 통통 뛰며 자리를 바꿔요' : '왕뽀뽀 필살기 — 화살표 길을 보고 피해요';
+  protected rageText(level: 1 | 2 | 3): string {
+    return level === 1 ? '왕뽀뽀 필살기가 와요! 하트탄도 두 발씩' : level === 2 ? '왕뽀뽀 + 하트 연발! 뽀뽀 파동도 자주 와요' : '마지막 왕뽀뽀 하트 폭풍! 화살표 길을 보고 피해요';
+  }
+
+  // ───────────────────────── 패배 ─────────────────────────
+
+  protected defeatLines(): string[] {
+    return ['크윽… 두고 보자, 고나…!', '하지만… 내 뽀뽀는…', '절대 멈추지 않는다아아…! 쪽♡'];
+  }
+
+  /** 주저앉아 어질어질 — 작은 하트가 주변에 톡톡 떨어짐 */
+  protected onDefeat(): void {
+    const scene = this.host.scene;
+    const hearts = this.fx(
+      scene.add
+        .particles(this.bx, this.host.groundY - this.fh, 'boss-tinyheart', {
+          x: { min: -this.fw * 0.6, max: this.fw * 0.6 },
+          speedY: { min: -30, max: -10 },
+          speedX: { min: -20, max: 20 },
+          gravityY: 120,
+          lifespan: 900,
+          alpha: { start: 1, end: 0 },
+          frequency: perf.low ? 260 : 150,
+        })
+        .setDepth(12),
+    );
+    this.after(6, () => hearts.active && hearts.stop(), true);
+  }
+
+  /** 대사 뒤: 입술 삐죽 → 고나에게 작은 하트 하나 '쪽♡' → 펑! 사라짐 */
+  protected exitAnim(): number {
+    const scene = this.host.scene;
+    this.stunT = 0;
+    this.setPose(2, 1.2);
+    this.boss.setScale(1);
+    const m = this.lips();
+    const head = this.host.playerHead();
+    this.after(0.25, () => {
+      sound.smooch();
+      const h = this.fx(scene.add.image(m.x, m.y, 'boss-heart').setDepth(12));
+      scene.tweens.add({ targets: h, x: head.x + 6, y: head.y - 8, duration: 600, ease: 'Sine.InOut', onComplete: () => {
+        this.floatText('쪽♡', head.x, head.y - 16, '#ff9fc4');
+        this.host.sparkle(6, head.x, head.y - 6);
+        h.destroy();
+      } });
+    }, true);
+    this.after(1.0, () => {
+      this.detached = true;
+      sound.puff();
+      const b = this.boss;
+      const pop = this.fx(scene.add.sprite(b.x, b.y - this.fh / 2, 'mon-pop', 0).setDepth(12).setScale(2.4));
+      scene.tweens.add({ targets: pop, alpha: 0, duration: 380, delay: 120, onComplete: () => pop.destroy() });
+      scene.tweens.add({ targets: b, scaleX: 1.4, scaleY: 0.2, alpha: 0, duration: 220, ease: 'Quad.In' });
+      this.host.sparkle(14, b.x, b.y - this.fh / 2);
+    }, true);
+    return 1.3;
   }
 
   protected onCleanup(): void {

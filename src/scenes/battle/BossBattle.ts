@@ -77,7 +77,9 @@ export abstract class BossBattle {
    * 분노 단계: 0 일반(HP 100~71%) · 1 1차 분노(70~36%) · 2 2차 분노(35~0%).
    * 바뀔 때 1.5초 멈추고 화내는 연출 + 경고 문구.
    */
-  rage: 0 | 1 | 2 = 0;
+  rage: 0 | 1 | 2 | 3 = 0;
+  /** 보여 준 필살기 수 — 분노 단계마다 필살기 1개 (1차·2차·최종 분노 = 최소 3회) */
+  specialsDone = 0;
   get phase2(): boolean {
     return this.rage >= 1;
   }
@@ -120,7 +122,7 @@ export abstract class BossBattle {
   private warnMark: Phaser.GameObjects.Image;
   private warnT = 0;
   /** 승리 연출: 보스가 날아가는 중 (위치를 트윈에 맡김) */
-  private detached = false;
+  protected detached = false;
   private dim: Phaser.GameObjects.Rectangle;
   protected readonly fw: number;
   protected readonly fh: number;
@@ -153,9 +155,9 @@ export abstract class BossBattle {
   /** 다음 공격 하나 시작 (끝나면 endAttack) */
   protected abstract chooseAttack(): void;
   /** 분노 단계 진입 (연출이 끝난 뒤 오라 등) */
-  protected abstract onRage(level: 1 | 2): void;
+  protected abstract onRage(level: 1 | 2 | 3): void;
   /** 분노 안내 문구 */
-  protected abstract rageText(level: 1 | 2): string;
+  protected abstract rageText(level: 1 | 2 | 3): string;
   /** 전투 시작 직후 (각성 등) */
   protected onFightStart(): void {}
   /** 매 프레임 (흡입 같은 지속 효과) */
@@ -262,7 +264,7 @@ export abstract class BossBattle {
       this.pose.t -= dt;
       const n = b.texture.frameTotal - 1;
       b.setFrame(this.pose.frame < n ? this.pose.frame : this.pose.frame === 4 ? 0 : 2);
-    } else if (this.mode !== 'victory') {
+    } else if (this.mode !== 'victory' || this.stunT > 0) {
       b.setFrame(this.moodFrame(this.idleFrame()));
     }
     if (!this.detached) b.setPosition(Math.round(this.bx * 5) / 5, Math.round((this.host.groundY - this.balt) * 5) / 5);
@@ -284,7 +286,8 @@ export abstract class BossBattle {
   }
 
   protected applyTint(): void {
-    if (this.rage === 2) this.boss.setTint(0xff9a8a);
+    if (this.rage === 3) this.boss.setTint(0xff8070);
+    else if (this.rage === 2) this.boss.setTint(0xff9a8a);
     else if (this.rage === 1) this.boss.setTint(0xffc4b8);
     else this.boss.clearTint();
   }
@@ -417,7 +420,7 @@ export abstract class BossBattle {
 
   /** 분노 전환: 1.5초 멈춤 + 화내는 연출 + 경고 문구 */
   private enterRage(): void {
-    const lv = this.rage as 1 | 2;
+    const lv = this.rage as 1 | 2 | 3;
     this.pendingRage = false;
     this.ai = [];
     this.onInterrupt();
@@ -426,7 +429,7 @@ export abstract class BossBattle {
     const scene = this.host.scene;
     const cam = scene.cameras.main;
     sound.rage();
-    cam.shake(500, lv === 2 ? 0.014 : 0.009);
+    cam.shake(500, lv >= 2 ? 0.012 + (lv - 2) * 0.004 : 0.009);
     cam.flash(220, 255, 90, 90);
     this.setPose(3, 1.5);
     // 부들부들 + 커졌다 작아짐 + 김
@@ -435,7 +438,7 @@ export abstract class BossBattle {
       const p = this.fx(scene.add.image(this.bx + (Math.random() - 0.5) * this.fw * 0.6, this.host.groundY - this.fh + 4, 'boss-dot').setDepth(12).setTint(0xffffff));
       scene.tweens.add({ targets: p, y: p.y - 18 - Math.random() * 12, x: p.x + (Math.random() - 0.5) * 14, alpha: 0, scale: 2, duration: 900, delay: i * 90, onComplete: () => p.destroy() });
     }
-    this.banner({ top: lv === 1 ? '💢 1차 분노!' : '💥 2차 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : '폭발했어요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' });
+    this.banner({ top: lv === 1 ? '💢 1차 분노!' : lv === 2 ? '💥 2차 분노!' : '🔥 최종 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : lv === 2 ? '폭발했어요!' : '마지막 힘을 끌어모아요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' });
     this.cutscene(1.5, () => {
       this.busy = false;
       this.cooldown = 0.9;
@@ -444,8 +447,18 @@ export abstract class BossBattle {
     });
   }
 
-  /** 분노 단계 문턱 (HP 비율) */
-  static readonly RAGE_AT = [0.7, 0.35] as const;
+  /** 분노 단계 문턱 (HP 비율): 1차 70% · 2차 40% · 최종 15% */
+  static readonly RAGE_AT = [0.7, 0.4, 0.15] as const;
+
+  /** 이번 분노 단계의 필살기를 아직 안 보여 줬으면 true → 하위 클래스가 다음 공격으로 필살기를 고름 */
+  protected get specialDue(): boolean {
+    return this.specialsDone < this.rage;
+  }
+
+  /** 필살기 하나를 끝까지 보여 줌 (지침 시작 때) — 그 뒤부터 다음 분노 단계로 내려갈 수 있음 */
+  protected specialShown(): void {
+    this.specialsDone = Math.max(this.specialsDone, Math.min(this.rage, this.specialsDone + 1));
+  }
 
   /**
    * 한 번의 공격으로 내려갈 수 있는 최저 HP.
@@ -454,9 +467,10 @@ export abstract class BossBattle {
    */
   protected hpFloor(): number {
     const max = this.def.maxHp;
-    if (this.rage === 0) return Math.floor(max * BossBattle.RAGE_AT[0]);
-    if (this.rage === 1) return Math.floor(max * BossBattle.RAGE_AT[1]);
-    return 0;
+    const next = this.rage < 3 ? Math.floor(max * (BossBattle.RAGE_AT as readonly number[])[this.rage]) : 0;
+    // 이번 단계 필살기를 보여 주기 전엔 다음 단계(또는 패배)로 못 넘어감 — 필살기는 그 단계 첫 공격이라 오래 걸리지 않음
+    if (this.specialDue) return this.rage < 3 ? next + 1 : 1;
+    return next;
   }
 
   protected damage(n: number): void {
@@ -474,9 +488,9 @@ export abstract class BossBattle {
     }
     // 분노 단계 (HP 비율)
     const ratio = this.hp / this.def.maxHp;
-    const want = ratio <= BossBattle.RAGE_AT[1] ? 2 : ratio <= BossBattle.RAGE_AT[0] ? 1 : 0;
+    const want = ratio <= BossBattle.RAGE_AT[2] ? 3 : ratio <= BossBattle.RAGE_AT[1] ? 2 : ratio <= BossBattle.RAGE_AT[0] ? 1 : 0;
     if (want > this.rage) {
-      this.rage = want as 1 | 2;
+      this.rage = Math.min(this.rage + 1, want) as 1 | 2 | 3;
       this.applyTint();
       // 필살기 연출 중이면 그게 끝난 뒤
       if (this.mode === 'cutscene') this.pendingRage = true;
@@ -852,6 +866,20 @@ export abstract class BossBattle {
 
   // ───────────────────────── 승리 ─────────────────────────
 
+  /** 패배 대사 (타이핑) */
+  protected abstract defeatLines(): string[];
+  /** 쓰러진 뒤 대사 전까지의 보스별 연출 (작은 하트가 떨어짐 · 돼지코가 떨어짐 등) */
+  protected onDefeat(): void {}
+  /** 대사가 끝난 뒤 퇴장 연출 — sec 초 뒤 사라짐 (반환값) */
+  protected abstract exitAnim(): number;
+
+  private talkDone: (() => void) | null = null;
+
+  /**
+   * 승리: 마지막 공격에 휘청 → 주저앉음 · 어질어질 → 픽셀 대화창에 마지막 대사(타이핑, 건너뛰기 가능)
+   * → 보스별 퇴장 연출 → 승리 팡파르 · 보너스 → 평화로운 음악·배경 (GameScene.endBattle)
+   * 대사 중엔 공격·판정 없음(투사체 모두 제거, 고나 입력 막음).
+   */
   private victory(): void {
     this.mode = 'victory';
     // 보스 체력 0: 모든 공격 즉시 중단 + 날아오던 것·예고·효과 제거 (예약된 공격이 뒤늦게 나오지 않게)
@@ -863,24 +891,49 @@ export abstract class BossBattle {
     if (this.bx < 20 || this.bx > this.host.W - 10) this.bx = this.homeX;
     const scene = this.host.scene;
     const cam = scene.cameras.main;
-    // 전투 음악이 자연스럽게 끝나고 → 쓰러지는 소리 → (날아갈 때) 짧은 승리 팡파르
     sound.fadeOutMusic(500);
     sound.bossDown();
-    this.after(0.9, () => sound.fanfare(), true);
     cam.shake(500, 0.012);
     cam.flash(250, 255, 250, 230);
     const b = this.boss;
-    this.setPose(2, 0.9);
-    scene.tweens.add({ targets: b, x: b.x + 2, duration: 50, yoyo: true, repeat: 8 });
+    // 휘청휘청
+    this.setPose(2, 1.0);
+    scene.tweens.add({ targets: b, angle: { from: -8, to: 8 }, duration: 140, yoyo: true, repeat: 3, onComplete: () => b.setAngle(0) });
+    // 털썩 주저앉음 + 어질어질 별
     this.after(0.9, () => {
-      // 빙글빙글 작아지며 멀리 날아감
+      sound.nestJump();
+      cam.shake(160, 0.008);
+      scene.tweens.add({ targets: b, scaleY: 0.82, scaleX: 1.12, duration: 160, ease: 'Quad.Out' });
+      for (let i = 0; i < 3; i++) this.stars.push(scene.add.image(this.bx, this.host.groundY - this.fh, 'boss-star').setDepth(12));
+      this.stunT = 99; // 어지러움 프레임 · 별 회전 (공격은 이미 멈춤)
+      this.onDefeat();
+    }, true);
+    // 마지막 대사
+    this.after(1.9, () => {
+      this.talkDone = () => {
+        this.talkDone = null;
+        this.afterTalk();
+      };
+      bus.once(EV.bossTalkDone, this.talkDone);
+      bus.emit(EV.bossTalk, { name: this.def.name, lines: this.defeatLines() });
+    }, true);
+  }
+
+  private afterTalk(): void {
+    if (this.mode !== 'victory') return;
+    const scene = this.host.scene;
+    this.clearStars();
+    const sec = this.exitAnim();
+    this.after(sec, () => {
       this.detached = true;
-      scene.tweens.add({ targets: b, angle: 720, scale: 0.2, y: b.y - 70, x: b.x + 40, alpha: 0, duration: 1100, ease: 'Quad.In' });
-      this.host.sparkle(20, b.x, b.y - this.fh / 2);
+      sound.fanfare();
+      this.boss.setVisible(false);
       this.banner({ top: '승리!', name: `${this.def.name}을 물리쳤어요!`, desc: `보너스 +${this.def.scoreBonus}점`, ms: 2000, tone: 'good' });
       this.host.addScore(this.def.scoreBonus, this.host.basePlayerX + 20, this.host.groundY - 40);
+      this.host.sparkle(12, this.bx, this.host.groundY - this.fh / 2);
+      scene.cameras.main.flash(200, 255, 248, 220);
     }, true);
-    this.after(3.0, () => {
+    this.after(sec + 2.0, () => {
       this.mode = 'done';
       this.host.onBattleEnd(true);
     }, true);
@@ -949,6 +1002,11 @@ export abstract class BossBattle {
   }
 
   destroy(): void {
+    if (this.talkDone) {
+      bus.off(EV.bossTalkDone, this.talkDone);
+      this.talkDone = null;
+      bus.emit(EV.bossTalkCancel);
+    }
     this.cleanupCombat();
     this.host.scene.tweens.killTweensOf(this.boss);
     this.boss.destroy();

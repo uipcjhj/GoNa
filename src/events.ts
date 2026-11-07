@@ -52,6 +52,10 @@ export const EV = {
   bossEnd: 'bossEnd',
   /** 엔딩 (마지막 보스 격파) — GameOverInfo 와 같은 모양 + cleared */
   ending: 'ending',
+  /** 보스 패배 대사: 시작({ name, lines }) / 끝(타이핑 완료·건너뛰기) / 취소(다시하기 등) */
+  bossTalk: 'bossTalk',
+  bossTalkDone: 'bossTalkDone',
+  bossTalkCancel: 'bossTalkCancel',
   /** 가족 엔딩 연출 시작 (GameOverInfo) / THE END 화면 / 엔딩 다시보기 요청 */
   endingStart: 'endingStart',
   endingTheEnd: 'endingTheEnd',

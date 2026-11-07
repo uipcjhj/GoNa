@@ -2664,3 +2664,73 @@ body.has-pad .touch-hint {
     padding: 8px 16px 10px;
   }
 }
+
+/* 보스 패배 대사 (픽셀 대화창) */
+.boss-talk {
+  position: absolute;
+  left: 50%;
+  top: calc(max(6px, env(safe-area-inset-top)) + 118px);
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 24px));
+  box-sizing: border-box;
+  padding: 18px 16px 12px;
+  color: #4a2a14;
+  background: rgba(255, 244, 220, 0.95);
+  border: 3px solid #5a3418;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px rgba(255, 244, 220, 0.5), 0 5px 0 rgba(58, 32, 14, 0.55);
+  pointer-events: auto;
+  z-index: 5;
+  contain: layout paint;
+}
+.boss-talk.hidden {
+  display: none;
+}
+.boss-talk.pop {
+  animation: bt-pop 0.2s steps(3, end);
+}
+@keyframes bt-pop {
+  from { transform: translateX(-50%) translateY(4px); }
+  to { transform: translateX(-50%) translateY(0); }
+}
+.bt-name {
+  position: absolute;
+  left: 12px;
+  top: -13px;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: #fff8e6;
+  background: #b0305a;
+  border: 2px solid #5a1830;
+  border-radius: 6px;
+}
+.bt-text {
+  margin: 0;
+  min-height: 1.6em;
+  font-size: 17px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+.bt-skip {
+  position: absolute;
+  right: 8px;
+  bottom: -16px;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  color: #fff8e6;
+  background: #7a5a3a;
+  border: 2px solid #3a2410;
+  border-radius: 6px;
+  cursor: pointer;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .boss-talk {
+    top: calc(max(4px, env(safe-area-inset-top)) + 92px);
+    width: min(520px, calc(100% - 160px));
+    padding: 14px 14px 10px;
+  }
+  .bt-text {
+    font-size: 15px;
+  }
+}
