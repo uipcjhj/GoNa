@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
+import { CHARACTER_ASSET, FAMILY_SHEET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
 import { sound, type MusicMode } from '../audio';
@@ -1731,7 +1731,7 @@ export class GameScene extends Phaser.Scene {
       if (!tm.exists(`family-ph-${id}`)) addSheet(this, `family-ph-${id}`, familySheet(id), FAMILY_FRAME.w, FAMILY_FRAME.h);
       if (tm.exists(`family-src-${id}`) && !tm.exists(`family-${id}`)) {
         const img = tm.get(`family-src-${id}`).getSourceImage() as HTMLImageElement;
-        addSheet(this, `family-${id}`, img, Math.floor(img.width / 3), img.height);
+        addSheet(this, `family-${id}`, img, FAMILY_SHEET.w, FAMILY_SHEET.h);
       }
     }
     if (!tm.exists('end-petal')) addSheet(this, 'end-petal', petalSheet(), 3, 3);
@@ -1768,6 +1768,20 @@ export class GameScene extends Phaser.Scene {
         sp.ctx.drawImage(hurtFace(base, 0, 'serious'), 0, 0);
         sp.ctx.drawImage(hurtFace(bald, 0, 'serious'), base.width, 0);
         addSheet(this, sk, sp.canvas, base.width, base.height);
+      }
+    }
+    // 엔딩용 웃는 얼굴(모든 프레임) · 반가워 눈이 커진 얼굴 — 아기(newborn)·자이언트(bigbaby)만, 같은 그림에서 눈·입만 바꿈
+    for (const id of ['newborn', 'bigbaby'] as const) {
+      const v = this.visuals[id];
+      const tex = tm.get(v.texture);
+      const n = tex.frameTotal - 1;
+      const f0 = this.frameCanvas(v.texture, 0);
+      for (const mood of ['happy', 'wow'] as const) {
+        const key = `${mood}-${id}`;
+        if (tm.exists(key)) continue;
+        const pc = new PixelCanvas(f0.width * n, f0.height);
+        for (let i = 0; i < n; i++) pc.ctx.drawImage(hurtFace(this.frameCanvas(v.texture, i), 0, mood), i * f0.width, 0);
+        addSheet(this, key, pc.canvas, f0.width, f0.height);
       }
     }
     const done = new Set<string>();
@@ -2201,7 +2215,9 @@ export class GameScene extends Phaser.Scene {
         this.speed = v;
       },
       sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
+      dust: (n, x, y) => this.dustEmitter.explode(n, x, y),
       label: (t, c) => this.textTexture(t, c),
+      floatText: (t, x, y, c) => this.floatText(t, x, y, c),
     });
     bus.emit(EV.endingStart, this.endingInfo);
   }

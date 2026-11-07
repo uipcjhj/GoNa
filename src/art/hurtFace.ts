@@ -17,7 +17,10 @@ const isGreen = (p: RGBA): boolean => p[3] > 0 && p[1] > p[0] + 10 && p[1] > p[2
 /**
  * mood 'serious': 필살기용 진지한 얼굴 — 실눈(가로 한 줄) + 안쪽이 내려간 눈썹 한 점 + 꾹 다문 입(가로 한 줄). 볼·머리카락은 그대로.
  */
-export function hurtFace(src: HTMLCanvasElement, hairShift: number, mood: 'hurt' | 'serious' = 'hurt'): HTMLCanvasElement {
+/**
+ * mood 'happy': 엔딩용 활짝 웃는 얼굴 — 눈 ^ ^ · 입 벌려 웃음(∪ + 분홍 혀) · 'wow': 반가워 눈이 커짐(2x2 점 + 반짝) · 작은 'o' 입
+ */
+export function hurtFace(src: HTMLCanvasElement, hairShift: number, mood: 'hurt' | 'serious' | 'happy' | 'wow' = 'hurt'): HTMLCanvasElement {
   const W = src.width;
   const H = src.height;
   const c = document.createElement('canvas');
@@ -108,6 +111,26 @@ export function hurtFace(src: HTMLCanvasElement, hairShift: number, mood: 'hurt'
   eyes.sort((p, q) => cx(p) - cx(q));
   const wide = eyes.length === 2 && cx(eyes[1]) - cx(eyes[0]) > 3;
   const mx0 = Math.round(eyes.reduce((s, cp) => s + cx(cp), 0) / eyes.length);
+  if (mood === 'happy' || mood === 'wow') {
+    eyes.forEach((cp) => {
+      const x = Math.round(cx(cp));
+      const y = Math.round(cy(cp));
+      const pts =
+        mood === 'happy'
+          ? [[x - 1, y + 1], [x, y], [x + 1, y + 1]]
+          : [[x, y], [x + 1, y], [x, y + 1], [x + 1, y + 1], [x - 1, y], [x - 1, y + 1]];
+      for (const [px, py] of pts) if (canDraw(px, py)) set(px, py, DK);
+      if (mood === 'wow' && canDraw(x, y)) set(x, y, [255, 255, 255, 255]);
+    });
+    const my0 = Math.round(eyeY) + 3;
+    const mouth: [number, number, RGBA][] =
+      mood === 'happy'
+        ? [[mx0 - 1, my0, MO], [mx0, my0, MO], [mx0 + 1, my0, MO], [mx0 - 1, my0 + 1, MO], [mx0, my0 + 1, [240, 128, 140, 255]], [mx0 + 1, my0 + 1, MO], [mx0, my0 + 2, MO]]
+        : [[mx0, my0, MO], [mx0, my0 + 1, MO]];
+    for (const [px, py, c] of mouth) if (canDraw(px, py)) set(px, py, c);
+    g.putImageData(img, 0, 0);
+    return c;
+  }
   if (mood === 'serious') {
     // 실눈 — 와 안쪽 눈썹 \ /
     eyes.forEach((cp, i) => {

@@ -389,12 +389,17 @@ async function bossTests(label, device) {
   const sp2 = await battle();
   check(`${label}: special = cutscene + big damage`, sp.mode === 'cutscene' && sp2.hp === Math.max(0, hp1 - 3) && sp2.special === 0 && sp2.mode === 'fight', `${JSON.stringify(sp)} → hp ${sp2.hp}`);
   // 승리 → 3단계 직립보행
-  // (HP 를 1 로 낮춰도 2차 분노 → 왕뽀뽀 → 지침을 보여 준 뒤에야 쓰러짐)
+  // (HP 를 1 로 낮춰도 1차·2차·최종 분노마다 왕뽀뽀 ①②③ → 지침을 보여 준 뒤에야 쓰러짐)
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
-  for (let i = 0; i < 22 && ['fight', 'cutscene'].includes((await battle())?.mode); i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
-  const klog = await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.join(',') ?? window.__gona.scene.getScene('Game').lastAttackLog.join(','));
-  check(`${label}: 뽀뽀괴물 defeated (after 왕뽀뽀)`, (await battle())?.mode === 'victory', klog);
-  await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 9000 }).catch(() => {});
+  for (let i = 0; i < 70 && ['fight', 'cutscene'].includes((await battle())?.mode); i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(700); }
+  const klog = await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.join(',') ?? '');
+  check(`${label}: 뽀뽀괴물 uses 왕뽀뽀 ①②③ before defeat`, ['royal1', 'royal2', 'royal3'].every((r) => klog.includes(r)) && (await battle())?.mode === 'victory', klog);
+  // 패배 대사 (타이핑) → 퇴장 → 승리
+  await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(1600);
+  const talk1 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
+  check(`${label}: 뽀뽀괴물 last words typed in pixel dialog`, talk1.startsWith('크윽') && (await page.locator('.bt-skip').isVisible()), talk1);
+  await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 30000 }).catch(() => {});
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
   // (필살 버튼은 평소에도 보임 — 몬스터 처치로 모은 게이지를 다음 보스전으로)
@@ -440,15 +445,28 @@ async function bossTests(label, device) {
   check(`${label}: sniff phase 2 at half HP`, (await battle())?.phase2 && (await page.locator('.bb-phase').isVisible()));
   // (엔딩 화면 확인용: HP 1 로 낮춰도 2차 분노 전환을 거친 뒤 쓰러짐 — 그동안 고나는 무적)
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.debugBoss(1); });
-  for (let i = 0; i < 16 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(900); }
+  for (let i = 0; i < 80 && (await battle()) && (await battle()).mode !== 'victory'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(700); }
+  const slog = await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.join(',') ?? '');
+  check(`${label}: 킁카괴물 uses 돼지코 필살기 ①②③ before defeat`, ['storm1', 'storm2', 'storm3'].every((r) => slog.includes(r)), slog);
+  // 건너뛰기 버튼으로 대사 넘기기
+  await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(700);
+  const talk2 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
+  await tapEl('.bt-skip');
+  check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 12000 }).catch(() => {});
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
   const en = await G(() => ({ e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: window.__gona.scene.getScene('Game').children.list.filter((o) => /^family-/.test(o.texture?.key || '')).length }));
   check(`${label}: final boss win → family ending (6 family, ending BGM)`, en.e?.state === 'ending' && en.fam === 6 && en.music === 'ending', JSON.stringify(en));
   await page.waitForTimeout(2500);
   const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
   check(`${label}: ending subtitle types by itself`, sub1.startsWith('길고 길었던'), sub1);
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 37.2; });
+  // 포옹·뽀뽀·킁카 장면 (가족 6명이 각자 동작)
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 29.6; });
+  await page.waitForTimeout(800);
+  const fam = await G(() => window.__gona.scene.getScene('Game').ending.family.map((f) => f.mode));
+  check(`${label}: ending hug/kiss/sniff poses in contact`, fam.includes('hug') && (fam.includes('sniff') || fam.includes('kiss')), JSON.stringify(fam));
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 44.7; });
   await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
   const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
   check(`${label}: THE END screen with 3 buttons`, endTxt.includes('THE END') && endTxt.includes('2026.04.10') && (await page.locator('.ending-ui .end-btn').count()) === 3, endTxt);
@@ -652,6 +670,8 @@ async function featureTests(label, device) {
   check(`${label}: monsters appear from stage 3`, later > 10, `spawned ${later} / 300 patterns`);
   // 몬스터 공격(예고 뒤) → 맞으면 HP / 부메랑 처치 → 점수·필살 게이지
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.invincibleUntil = 0; g.addMonster('glasses', g.W + 5); });
+  const tagKey = await G(() => { const g = window.__gona.scene.getScene('Game'); const t = [...g.monTags.values()][0]; return t ? t.texture.key : ''; });
+  check(`${label}: monster name tag [화학과안경잽이] above head`, tagKey.includes('[화학과안경잽이]'), tagKey);
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').entities.some((e) => !e.done && e.type === 'mshot'), null, { timeout: 8000 }).catch(() => {});
   const shotDist = await G(() => { const g = window.__gona.scene.getScene('Game'); const sh = g.entities.find((e) => !e.done && e.type === 'mshot'); return sh ? Math.round(sh.x - g.playerX) : -1; });
   check(`${label}: glasses throws a dodgeable potion flask from distance`, shotDist > 70, `shot at +${shotDist}px`);
@@ -686,18 +706,17 @@ async function featureTests(label, device) {
   // 체크포인트
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(); g.boomerangAwake = true; g.debugStartBoss('kiss'); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 8000 });
-  // 분노 1·2단계 (HP 70% / 35%) — 전환 때 멈춤
+  // 분노 1단계(HP 70%) — 전환 때 멈춤 → 필살기 ① → 그 뒤에야 2차 분노(40%)
   const rage = [];
-  for (const hp of [6, 3]) {
-    await G((h) => window.__gona.scene.getScene('Game').debugBoss(h), hp);
-    for (let i = 0; i < 8; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(400); const r = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { rage: bt.rage, frozen: bt.frozen, label: document.querySelector('.bb-phase').textContent }; }); if (r.rage >= rage.length + 1) { rage.push(r); break; } }
-    await page.waitForTimeout(1700);
-  }
-  check(`${label}: boss rage 1 (≤70%) and rage 2 (≤35%) with freeze`, rage.length === 2 && rage[0].frozen && rage[1].rage === 2 && rage[1].label.includes('2차'), JSON.stringify(rage));
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal')), null, { timeout: 25000 }).catch(() => {});
-  check(`${label}: rage 2 uses 왕뽀뽀 special`, await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal'))));
+  await G(() => window.__gona.scene.getScene('Game').debugBoss(3));
+  for (let i = 0; i < 8; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(400); const r = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { rage: bt.rage, frozen: bt.frozen, label: document.querySelector('.bb-phase').textContent }; }); if (r.rage >= 1) { rage.push(r); break; } }
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal1')), null, { timeout: 25000 }).catch(() => {});
+  for (let i = 0; i < 40; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(500); const r = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { rage: bt.rage, frozen: bt.frozen, label: document.querySelector('.bb-phase').textContent, done: bt.specialsDone }; }); if (r.rage >= 2) { rage.push(r); break; } }
+  check(`${label}: boss rage 1 → 왕뽀뽀① → rage 2 (special shown before next rage)`, rage.length === 2 && rage[0].frozen && rage[1].rage === 2 && rage[1].done >= 1 && rage[1].label.includes('2차'), JSON.stringify(rage));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal2')), null, { timeout: 25000 }).catch(() => {});
+  check(`${label}: rage 2 uses 왕뽀뽀② special`, await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal2'))));
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
-  for (let i = 0; i < 8 && (await G(() => window.__gona.scene.getScene('Game').debugBattle()?.mode)) === 'fight'; i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(700); }
+  for (let i = 0; i < 60 && ['fight', 'cutscene'].includes(await G(() => window.__gona.scene.getScene('Game').debugBattle()?.mode)); i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(600); }
   await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.growth.stageIndex === 2 && g.state === 'playing'; }, null, { timeout: 12000 }).catch(() => {});
   const cp = await G(() => JSON.parse(localStorage.getItem('gona.checkpoint') || 'null'));
   check(`${label}: checkpoint saved after first boss`, cp?.id === 'walker', JSON.stringify(cp));
