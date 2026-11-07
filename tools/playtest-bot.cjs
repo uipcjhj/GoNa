@@ -65,7 +65,7 @@ async function play(run) {
       return {
         state: g.state, grounded: g.grounded, jumps: g.jumpsUsed, alt: g.alt, px: g.playerX, gy: g.groundY, speed: g.speed,
         hearts: g.hearts, hp: g.hp, out: g.boomerang.isOut, canThrow: g.canThrow, pull: g.pull, stage: g.growth.stageIndex,
-        shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared'),
+        shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
         b: bt && { mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
           hs: bt.hostiles.filter((h) => !h.dead && !h.hitPlayer).map((h) => ({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, ay: h.ay, c: h.shape === 'circle', r: h.r, w: h.w, h: h.h, g: h.onGround, wave: !!h.wave })) },
       };
@@ -75,6 +75,7 @@ async function play(run) {
     else if (s.hp < last.hp) stats.hpLost += last.hp - s.hp;
     last = { hearts: s.hearts, hp: s.hp };
     if (s.state === 'dead' || (s.over && !s.cleared)) { result = 'LOSE'; break; }
+    if (!s.b || s.b.mode === 'victory') stats.battleSec = stats.battleSec ?? Math.round((Date.now() - t0) / 1000);
     if (!s.b) {
       // 보스전 끝: 뽀뽀괴물이면 진화(3단계) 확인, 킁카괴물이면 엔딩 화면
       if (boss === 'kiss' && s.stage >= 2) { result = 'WIN'; break; }

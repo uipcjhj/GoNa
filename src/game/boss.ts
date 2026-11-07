@@ -44,7 +44,8 @@ export const BOSSES: Record<BossId, BossDef> = {
     intro: '쪽쪽! 뽀뽀로 괴롭히는 장난꾸러기',
     // 첫 보스: 일반 → 1차 분노(70%) → 2차 분노(35%) → 왕뽀뽀 → 지침 을 모두 겪도록 (8 → 28, 전투 약 1~2분)
     // 한 번에 분노 단계를 건너뛰지 않고(BossBattle.hpFloor), 왕뽀뽀→지침을 보여 주기 전엔 쓰러지지 않음(KissBattle.hpFloor)
-    maxHp: 28,
+    // 분노 4단계 + 필살기 ①②③ 을 모두 겪는 길이 (playtest-bot 반응 120ms 기준 전투 78~79초 — 사람은 더 김)
+    maxHp: 50,
     phase2At: 0.5,
     specialDamage: 3,
     scoreBonus: 300,
@@ -59,7 +60,8 @@ export const BOSSES: Record<BossId, BossDef> = {
     id: 'sniff',
     name: '킁카괴물',
     intro: '킁킁! 냄새로 숲을 뒤덮는 마지막 괴물',
-    maxHp: 40,
+    // 최종 보스: 돼지코 필살기 ①②③ + 최종 분노 (playtest-bot 반응 120ms 기준 전투 94~115초 — 사람은 더 김)
+    maxHp: 200,
     phase2At: 0.5,
     specialDamage: 8,
     scoreBonus: 600,

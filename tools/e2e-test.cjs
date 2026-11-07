@@ -717,7 +717,7 @@ async function featureTests(label, device) {
   check(`${label}: rage 2 uses 왕뽀뽀② special`, await G(() => window.__gona.scene.getScene('Game').battle?.attackLog.some((a) => a.startsWith('royal2'))));
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
   for (let i = 0; i < 60 && ['fight', 'cutscene'].includes(await G(() => window.__gona.scene.getScene('Game').debugBattle()?.mode)); i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(600); }
-  await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.growth.stageIndex === 2 && g.state === 'playing'; }, null, { timeout: 12000 }).catch(() => {});
+  await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.growth.stageIndex === 2 && g.state === 'playing'; }, null, { timeout: 35000 }).catch(() => {});
   const cp = await G(() => JSON.parse(localStorage.getItem('gona.checkpoint') || 'null'));
   check(`${label}: checkpoint saved after first boss`, cp?.id === 'walker', JSON.stringify(cp));
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.hearts = 1; g.hp = 10; g.invincibleUntil = 0; g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.addRock(g.playerX + 25); });
