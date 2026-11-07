@@ -50,6 +50,8 @@ export interface Hostile {
   dmg: number;
   /** 땅에 닿으면 (포물선 탄 → 장판) */
   onLand: ((h: Hostile) => void) | null;
+  /** 돌진하는 돼지코 (화면 왼쪽 끝에서 땅에 부딪혀 터짐) */
+  crash?: boolean;
   /** 고나에게 맞거나 방패에 막혔을 때 (필살기 충격 연출) */
   onHit?: ((h: Hostile, blocked: boolean) => void) | null;
   dead: boolean;
@@ -372,7 +374,7 @@ export abstract class BossBattle {
       bm.hitIds.add('boss');
       bm.bounce();
       if (this.mode === 'fight') {
-        this.damage(bm.damage * this.weakMul());
+        this.damage(bm.damage * this.weakMul(bm.x, bm.y));
         this.gain(SPECIAL_GAIN.boomerangHit);
       } else {
         sound.catch(); // 등장 중에는 팅
@@ -383,7 +385,12 @@ export abstract class BossBattle {
   }
 
   /** 약점 배율 (지침·기절 중엔 더 아픔 / 킁카괴물 흡입 중 코 등은 하위 클래스) */
-  protected weakMul(): number {
+  /** 부메랑이 노릴 곳 (약점이 열려 있을 때만 — 없으면 null = 보스 몸 가운데) */
+  aimPoint(): { x: number; y: number } | null {
+    return null;
+  }
+
+  protected weakMul(_x?: number, _y?: number): number {
     return this.stunT > 0 ? this.stunMul : 1;
   }
 

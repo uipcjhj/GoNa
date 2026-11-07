@@ -18,7 +18,7 @@ import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
 import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
 import type { EndingScene } from './EndingScene';
-import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
+import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, targetSheet, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
@@ -1732,6 +1732,7 @@ export class GameScene extends Phaser.Scene {
     if (!tm.exists('end-heart')) addCanvas(this, 'end-heart', endHeart());
     if (!tm.exists('sp-ring-gold')) addCanvas(this, 'sp-ring-gold', auraRing('#ffd54a', '#c8ff8a'));
     if (!tm.exists('sp-tornado')) addSheet(this, 'sp-tornado', tornadoSheet(), TORNADO_FRAME.w, TORNADO_FRAME.h);
+    if (!tm.exists('sp-target')) addSheet(this, 'sp-target', targetSheet(), 17, 17);
     if (!tm.exists('sp-pignose')) addSheet(this, 'sp-pignose', pigNoseSheet(), PIG_NOSE_FRAME.w, PIG_NOSE_FRAME.h);
     if (!tm.exists('sp-leaf')) addCanvas(this, 'sp-leaf', leaf());
     if (!tm.exists('sp-safe')) addCanvas(this, 'sp-safe', safeMark());
@@ -1956,6 +1957,9 @@ export class GameScene extends Phaser.Scene {
     if (this.battle) {
       const r = this.battle.bossRect();
       aimY = Math.max(h.y, (r.y0 + r.y1) / 2 - 2);
+      // 약점(과녁)이 열려 있으면 부메랑이 코를 향해 날아감
+      const wp = this.battle.aimPoint();
+      if (wp) aimY = wp.y;
     }
     b.update(dt, h.x, h.y, aimY);
     if (!b.isOut || this.state !== 'playing') return;

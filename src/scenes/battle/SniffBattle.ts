@@ -10,9 +10,10 @@
  */
 import Phaser from 'phaser';
 import { sound } from '../../audio';
+import { haptics } from '../../haptics';
 import { perf } from '../../perf';
 import { DAMAGE } from '../../game/boss';
-import { BossBattle } from './BossBattle';
+import { BossBattle, type Hostile } from './BossBattle';
 import type { BattleHost } from './types';
 
 type Attack = 'clouds' | 'inhale' | 'bomb' | 'puddles' | 'storm';
@@ -37,6 +38,8 @@ export class SniffBattle extends BossBattle {
   private inhalePower = 1;
   /** 마지막 필살기 뒤 공격 수 (최종 분노에서 4번째마다 필살기 다시) */
   private sinceStorm = 0;
+  /** (검증용) 약점 명중 횟수 */
+  weakHits = 0;
   /** 돼지코 (재사용, 최대 5개) */
   private pigNoses: PigNose[] = [];
   private aura: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -137,6 +140,17 @@ export class SniffBattle extends BossBattle {
   protected onUpdate(dt: number): void {
     const host = this.host;
     if (this.pigNoses.length) this.updateNoses(dt);
+    // 돌진하는 돼지코: 킁킁 프레임 · 화면 끝에서 땅에 부딪혀 터짐
+    for (const h of this.hostiles) {
+      if (h.dead || !h.crash) continue;
+      h.sprite.setFrame(Math.floor(this.time / 0.08) % 2 ? 1 : 2);
+      if (h.x < 10) this.noseCrash(h);
+    }
+    // 과녁은 코를 따라감
+    if (this.target?.active) {
+      const m = this.nose();
+      this.target.setPosition(Math.round(m.x), Math.round(m.y)).setFrame(Math.floor(this.time / 0.15) % 2);
+    }
     if (this.inhaling > 0) {
       this.inhaling -= dt;
       this.inhaleSnd -= dt;
@@ -161,8 +175,25 @@ export class SniffBattle extends BossBattle {
     }
   }
 
-  /** 흡입 중 코를 맞히면 2배 + 흡입 멈춤 */
-  protected weakMul(): number {
+  /** 약점(과녁) 때 코를 맞히면 2배 + 코가 찌그러지고 밀려남 · 흡입 중 코를 맞혀도 2배 */
+  protected weakMul(x?: number, y?: number): number {
+    if (this.weakOpen && x !== undefined && y !== undefined) {
+      const m = this.nose();
+      if ((x - m.x) ** 2 + (y - m.y) ** 2 < 15 * 15) {
+        this.weakHits++;
+        const scene = this.host.scene;
+        this.floatText('약점 명중! ×2', m.x, m.y - 16, '#ffe14a');
+        sound.puff();
+        haptics.play('specialHit');
+        this.setPose(4, 0.6); // 눈 찡그림
+        scene.tweens.add({ targets: this.boss, scaleX: 1.18, scaleY: 0.84, duration: 90, yoyo: true, ease: 'Quad.Out' });
+        this.moveTo(Math.min(this.host.W - this.fw / 2 - 2, this.bx + 8), 0, 0.25, 4);
+        this.host.sparkle(10, m.x, m.y);
+        if (this.target?.active) this.target.setFrame(1);
+        return 2;
+      }
+      return 1;
+    }
     if (this.inhaling <= 0) return super.weakMul();
     this.inhaling = 0;
     this.setPose(2, 0.8);
@@ -282,29 +313,94 @@ export class SniffBattle extends BossBattle {
     this.pigNoses.forEach((_, i) => this.noseOut(i, drop, drop ? i * 0.12 : i * 0.06));
   }
 
-  /** 돼지코가 냄새 파동 발사 (땅을 따라 옴 → 한 번 점프 또는 방패) */
-  private noseFire(i: number, speed: number, big = false): void {
+  /**
+   * 돼지코 돌진: 예고 0.55초(땅 높이로 내려와 부르르 떨며 '킁!' + 앞에 빨간 화살표) → 고나를 향해 빠르게 돌진
+   * (땅을 따라 옴 → 한 번 점프 또는 방패 · 부메랑으로 부술 수 있음) → 피하면 화면 끝 땅에 '쾅' 부딪혀 터짐
+   */
+  private noseDash(i: number, speed: number, big = false): void {
     const n = this.pigNoses[i];
     if (!n?.on) return;
     const scene = this.host.scene;
     const gy = this.host.groundY;
-    n.puff = 0.35;
-    sound.puff();
-    // 코에서 땅으로 내리꽂히는 바람 줄기 (점 4개, 보이기만)
-    for (let k = 0; k < 4; k++) {
-      const d = this.fx(scene.add.image(n.s.x, n.s.y, 'boss-dot').setDepth(10.7).setScale(1.6));
-      scene.tweens.add({ targets: d, x: n.s.x - 6 - k * 3, y: gy - 6, alpha: 0.2, duration: 160 + k * 40, onComplete: () => d.destroy() });
-    }
-    const h = this.spawn('boss-bigcloud', n.s.x - 4, gy - 9, { vx: -speed, shape: 'box', w: 14, h: 18, pierce: true, breakable: false, life: 3.5, dmg: big ? DAMAGE.sniffStorm : DAMAGE.sniffNose });
-    h.sprite.setScale(big ? 2.4 : 1.5).setOrigin(0.5, big ? 0.65 : 0.6);
-    h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-dot', [200, 255, 120], blocked);
+    const laneY = gy - (big ? 12 : 9);
+    n.on = false;
+    scene.tweens.killTweensOf(n.s);
+    // 예고: 땅 높이로 휙 내려와 부르르 (킁! 킁!)
+    n.s.setFrame(1);
+    scene.tweens.add({ targets: n.s, y: laneY, x: n.s.x + 4, angle: 0, duration: 260, ease: 'Quad.Out' });
+    scene.tweens.add({ targets: n.s, scaleX: n.scale * 1.18, scaleY: n.scale * 0.86, duration: 70, yoyo: true, repeat: 3, delay: 260 });
+    this.floatText(big ? '킁!! 킁!!' : '킁!', n.s.x, laneY - 14 * n.scale, '#ffc2d8');
+    sound.inhale();
+    const arrows: Phaser.GameObjects.Image[] = [];
+    for (let x = n.s.x - 22; x > this.host.basePlayerX - 10; x -= 16) arrows.push(this.fx(scene.add.image(x, gy - 7, 'boss-arrow').setDepth(10.8).setTint(0xff7a7a).setAlpha(0.2)));
+    scene.tweens.add({ targets: arrows, alpha: 0.95, duration: 120, yoyo: true, repeat: 2 });
+    this.after(0.55, () => {
+      arrows.forEach((a) => a.destroy());
+      const x = n.s.x;
+      n.s.setVisible(false);
+      sound.puff();
+      sound.boing();
+      const w = big ? 26 : 18;
+      const hgt = big ? 18 : 12;
+      const h = this.spawn('sp-pignose', x, laneY, { vx: -speed, shape: 'box', w, h: hgt, pierce: false, breakable: true, life: 4, dmg: big ? DAMAGE.sniffStorm : DAMAGE.sniffNose, crash: true });
+      h.sprite.setScale(n.scale).setDepth(11);
+      h.onHit = (hh, blocked) => this.specialImpact(hh.x, hh.y, 'boss-dot', [255, 160, 200], blocked);
+      // 뒤로 남는 바람 자국 (개수 제한)
+      const trail = this.fx(scene.add.particles(0, 0, 'boss-dot', { follow: h.sprite, lifespan: 260, frequency: perf.low ? 90 : 45, speedX: { min: 40, max: 90 }, scale: { start: 1.6, end: 0.4 }, alpha: { start: 0.8, end: 0 } }).setDepth(10.9));
+      this.after(3, () => trail.active && trail.stop(), true);
+    });
   }
 
-  /** 도착 시각(arrive, 초)에 맞춰 발사 시각 계산 — 파동 사이 간격을 1초 이상으로 지키려고 */
+  /** 돌진한 돼지코가 화면 끝 땅에 부딪힘 → 픽셀 폭발 */
+  private noseCrash(h: Hostile): void {
+    const scene = this.host.scene;
+    this.kill(h);
+    sound.puff();
+    sound.nestJump();
+    scene.cameras.main.shake(140, 0.009);
+    const burst = this.fx(scene.add.particles(Math.max(6, h.x), this.host.groundY - 4, 'boss-dot', { speed: { min: 40, max: 120 }, angle: { min: 200, max: 340 }, lifespan: 420, scale: { start: 2, end: 0.4 }, emitting: false }).setDepth(11));
+    burst.explode(perf.low ? 6 : 12);
+    const pop = this.fx(scene.add.sprite(Math.max(8, h.x), this.host.groundY, 'mon-pop', 1).setOrigin(0.5, 1).setDepth(11).setScale(1.6));
+    scene.tweens.add({ targets: pop, alpha: 0, scale: 2.4, duration: 300, onComplete: () => pop.destroy() });
+    this.after(0.6, () => burst.destroy(), true);
+  }
+
+  /** 도착 시각(arrive, 초)에 맞춰 돌진 예고·출발 시각 계산 — 돌진 사이 간격을 1초 이상으로 지키려고 */
   private fireAt(i: number, x: number, arrive: number, speed: number, big = false): number {
-    const t = Math.max(0.2, arrive - (x - this.host.basePlayerX) / speed);
-    this.after(t, () => this.noseFire(i, speed, big));
+    const t = Math.max(0.8, arrive - (x - this.host.basePlayerX) / speed);
+    this.after(t - 0.55, () => this.noseDash(i, speed, big));
     return t;
+  }
+
+  // ───────────────────────── 코 약점 (필살기 뒤 지쳤을 때) ─────────────────────────
+
+  private weakOpen = false;
+  private target: Phaser.GameObjects.Sprite | null = null;
+
+  /** 코 중앙에 황금 과녁 — 그동안 부메랑이 코를 노리고, 코에 맞으면 2배 */
+  private openWeakPoint(sec: number): void {
+    const scene = this.host.scene;
+    this.weakOpen = true;
+    const m = this.nose();
+    this.target?.destroy();
+    this.target = this.fx(scene.add.sprite(m.x, m.y, 'sp-target', 0).setDepth(12.5).setScale(0.4));
+    scene.tweens.add({ targets: this.target, scale: 1.3, duration: 260, ease: 'Back.Out' });
+    this.floatText('코가 약점! 지금 공격!', m.x, m.y - 20, '#ffe14a');
+    sound.warn();
+    this.after(sec, () => this.closeWeakPoint());
+  }
+
+  private closeWeakPoint(): void {
+    this.weakOpen = false;
+    if (this.target?.active) {
+      const t = this.target;
+      this.host.scene.tweens.add({ targets: t, alpha: 0, scale: 0.4, duration: 200, onComplete: () => t.destroy() });
+    }
+    this.target = null;
+  }
+
+  aimPoint(): { x: number; y: number } | null {
+    return this.weakOpen ? this.nose() : null;
   }
 
   /** 매 프레임: 돼지코 킁킁 (수축·팽창) · 고나 쪽으로 고개 돌림 · '킁!' 글자 */
@@ -374,7 +470,7 @@ export class SniffBattle extends BossBattle {
     const scene = this.host.scene;
     const gy = this.host.groundY;
     const names = ['', '킁킁 탐지!', '돼지코 대소동!', '초특급 킁카 폭풍!'];
-    const descs = ['', '돼지코가 고나를 찾아요 — 냄새 파동을 점프!', '돼지코 4개가 번갈아 킁킁! 하나씩 점프!', '빨려 들어가지 않게 계속 점프! 파동 3개도 점프!'];
+    const descs = ['', '돼지코가 돌진해요 — 빨간 화살표를 보면 점프!', '돼지코 4개가 연속 돌진! 하나씩 점프!', '빨려 들어가지 않게 계속 점프! 마지막 거대 돼지코도 점프!'];
     this.bossSpecialOn = true;
     const prep = variant === 3 ? 1.4 : 1.0;
     /** 돼지코 배율 (렌더 배율 5 와 곱해 정수 → 도트가 고르게) */
@@ -398,9 +494,9 @@ export class SniffBattle extends BossBattle {
       });
       this.suckLeaves(2.2, left - 20);
       this.after(1.1, () => this.specialRelease([200, 255, 120]));
-      this.fireAt(0, left - 4, 3.3, 120);
-      this.fireAt(1, left - 26, 4.4, 120);
-      lastArrive = 4.4;
+      this.fireAt(0, left - 4, 3.6, 150);
+      this.fireAt(1, left - 26, 4.8, 150);
+      lastArrive = 4.8;
     } else if (variant === 2) {
       const pos: [number, number][] = [
         [left + 6, gy - this.fh - 52],
@@ -411,19 +507,11 @@ export class SniffBattle extends BossBattle {
       pos.forEach(([x, y], i) => this.noseIn(i, x, y, S, 0.2 + i * 0.16));
       this.suckLeaves(5.6, left - 20);
       this.after(1.0, () => this.specialRelease([200, 255, 120]));
-      // 번갈아 빨아들였다 뿜기 (빨아들이는 동안 점프하면 덜 끌려감)
+      // 번갈아 연속 돌진 (점점 빨라짐 · 도착 간격 1.05초 — 한 번씩 점프)
       const order = [2, 0, 3, 1];
-      const speeds = [115, 135, 125, 150];
-      order.forEach((ni, k) => {
-        const arrive = 2.9 + k * 1.15;
-        const ft = this.fireAt(ni, pos[ni][0], arrive, speeds[k]);
-        this.after(Math.max(0.3, ft - 0.55), () => {
-          this.inhaling = 0.45;
-          this.inhalePower = 1.1;
-          this.inhaleSnd = 0;
-        });
-      });
-      lastArrive = 2.9 + 3 * 1.15;
+      const speeds = [140, 160, 150, 185];
+      order.forEach((ni, k) => this.fireAt(ni, pos[ni][0], 3.4 + k * 1.05, speeds[k]));
+      lastArrive = 3.4 + 3 * 1.05;
     } else {
       // 거대 돼지코 + 작은 돼지코 4개 · 황록 회오리 · 강한 흡입
       this.noseIn(4, left + 4, gy - this.fh - 30, 2.8, 0.2);
@@ -469,12 +557,19 @@ export class SniffBattle extends BossBattle {
         this.specialRelease([200, 255, 120]);
         scene.tweens.add({ targets: tornado, alpha: 0, scale: 2.2, duration: 500, onComplete: () => tornado.destroy() });
       });
-      // 동시에 발사 (거대 파동 + 작은 파동 2개 — 도착 간격 1.1초)
-      const A = 3.5 + (left + 2 - this.host.basePlayerX) / 140;
-      this.after(3.5, () => this.noseFire(4, 140, true));
-      this.fireAt(1, small[1][0], A + 1.1, 130);
-      this.fireAt(0, small[0][0], A + 2.2, 130);
-      lastArrive = A + 2.2;
+      // 냄새 폭발 → 작은 돼지코 2개 연속 돌진 → 마지막 거대 돼지코가 가장 빠르게 돌진 (도착 간격 1.1초 이상)
+      this.after(3.5, () => {
+        const m = this.nose();
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          const c = this.fx(scene.add.image(m.x, m.y, 'boss-bigcloud').setDepth(10.7).setAlpha(0.9));
+          scene.tweens.add({ targets: c, x: m.x + Math.cos(a) * 50, y: m.y + Math.sin(a) * 30, alpha: 0, scale: 1.7, duration: 700, onComplete: () => c.destroy() });
+        }
+      });
+      this.fireAt(1, small[1][0], 4.6, 150);
+      this.fireAt(0, small[0][0], 5.7, 165);
+      this.fireAt(4, left + 4, 7.0, 215, true);
+      lastArrive = 7.0;
       this.after(lastArrive + 0.3, () => {
         safe.destroy();
         turn.stop();
@@ -493,7 +588,9 @@ export class SniffBattle extends BossBattle {
     this.after(lastArrive + 0.45, () => {
       this.allNosesOut(variant === 3);
       this.specialShown();
-      this.stun(variant === 3 ? 3.0 : 2.4, 2, variant === 3 ? '킁카괴물이 재채기하다 기절했어요!' : '킁카괴물이 어질어질! 코가 약점!');
+      const sec = variant === 3 ? 3.2 : 2.6;
+      this.stun(sec, 1, variant === 3 ? '킁카괴물이 재채기하다 기절했어요!' : '킁카괴물이 어질어질!');
+      this.openWeakPoint(sec);
     });
   }
 
@@ -582,6 +679,8 @@ export class SniffBattle extends BossBattle {
     this.aura?.destroy();
     this.aura = null;
     this.inhaling = 0;
+    this.weakOpen = false;
+    this.target = null;
     for (const n of this.pigNoses) {
       this.host.scene.tweens.killTweensOf(n.s);
       n.s.destroy();

@@ -159,3 +159,21 @@ export function pigNoseSheet(): HTMLCanvasElement {
   pc.outline('#6a2040');
   return pc.canvas;
 }
+
+/** 약점 과녁 2프레임 (각 17x17) — 황금 고리 + 십자 (킁카괴물 코 약점) */
+export function targetSheet(): HTMLCanvasElement {
+  const pc = new PixelCanvas(34, 17);
+  for (let f = 0; f < 2; f++) {
+    const ox = f * 17;
+    const col = f ? '#fff6b0' : '#ffd23a';
+    for (let a = 0; a < 40; a++) {
+      const t = (a / 40) * Math.PI * 2;
+      pc.px(Math.round(ox + 8 + Math.cos(t) * 6.5), Math.round(8 + Math.sin(t) * 6.5), col);
+    }
+    for (const [dx, dy] of [[0, -8], [0, 7], [-8, 0], [7, 0]]) pc.rect(ox + 8 + (dx ? dx : 0), 8 + (dy ? dy : 0), dx ? 2 : 1, dy ? 2 : 1, col);
+    pc.rect(ox + 8, 7, 1, 3, col);
+    pc.rect(ox + 7, 8, 3, 1, col);
+  }
+  pc.outline('#7a4a10');
+  return pc.canvas;
+}
