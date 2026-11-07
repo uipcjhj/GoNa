@@ -166,14 +166,25 @@ export class OpeningScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBackgroundColor('#cfe3c6');
     if (this.textures.exists(TEX.bgImage)) {
-      this.add.image(0, 0, TEX.bgImage).setOrigin(0, 0);
+      // 봄빛(살짝 분홍)을 배경 그림에 한 번만 섞어 둠 — 예전엔 화면 전체 크기 반투명 사각형을 매 프레임 한 겹 더 그렸음
+      if (!this.textures.exists('op-bg-spring')) {
+        const src = this.textures.get(TEX.bgImage).getSourceImage() as HTMLImageElement;
+        const c = document.createElement('canvas');
+        c.width = src.width;
+        c.height = src.height;
+        const g = c.getContext('2d')!;
+        g.drawImage(src, 0, 0);
+        g.fillStyle = 'rgba(255, 198, 220, 0.1)';
+        g.fillRect(0, 0, c.width, c.height);
+        addCanvas(this, 'op-bg-spring', c);
+      }
+      this.add.image(0, 0, 'op-bg-spring').setOrigin(0, 0).setDisplaySize(BG_W, BG_H);
     } else {
       const g = this.add.graphics();
       g.fillStyle(0xbfe3ee, 1).fillRect(0, 0, BG_W, NEST_Y);
       g.fillStyle(0x9fd06a, 1).fillRect(0, NEST_Y - 4, BG_W, BG_H - NEST_Y + 4);
+      this.add.rectangle(0, 0, BG_W, BG_H, 0xffc6dc, 0.1).setOrigin(0, 0).setDepth(0.1);
     }
-    // 봄빛 (살짝 분홍)
-    this.add.rectangle(0, 0, BG_W, BG_H, 0xffc6dc, 0.1).setOrigin(0, 0).setDepth(0.1);
     // 벚꽃나무 (선사시대의 둥글둥글한 나무)
     const trees: [number, number, number][] = [
       [70, 0, 1],
@@ -185,9 +196,9 @@ export class OpeningScene extends Phaser.Scene {
     }
     // 숲 전체에 흩날리는 벚꽃잎 (두 겹)
     for (const [tex, freq, sp] of [
-      // 성능: 예전 90/140ms 마다 → 살아 있는 꽃잎 약 200개. 지금 약 120개 (보이는 느낌은 비슷)
-      ['op-petal', 150, 1],
-      ['op-petal2', 230, 0.7],
+      // 성능: 예전 90/140ms 마다 → 살아 있는 꽃잎 약 200개 → 150/230ms 약 120개 → 지금 저사양 모바일 기준 약 80개
+      ['op-petal', perf.low ? 300 : 220, 1],
+      ['op-petal2', perf.low ? 460 : 340, 0.7],
     ] as const) {
       this.add
         .particles(0, 0, tex, {

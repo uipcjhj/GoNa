@@ -456,16 +456,16 @@ async function bossTests(label, device) {
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
-  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); return { e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: sc.children.list.filter((o) => /^fam-[a-z]+$/.test(o.texture?.key || '')).length, gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), hud: document.querySelector('.battle-top')?.classList.contains('hidden') ?? true }; });
-  check(`${label}: final boss win → cinematic family ending (own bg, 6 family, game hidden, ending BGM)`, en.e?.state === 'ending' && en.fam === 6 && en.bg && en.gameHidden && en.music === 'ending', JSON.stringify(en));
+  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); return { e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: sc.children.list.filter((o) => /^fam-/.test(o.texture?.key || '')).length, shotsLoaded: ['discover', 'run', 'hug', 'kiss', 'sniff', 'final'].every((k) => sc.textures.exists('end-shot-' + k)), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), hud: document.querySelector('.battle-top')?.classList.contains('hidden') ?? true }; });
+  check(`${label}: final boss win → image cinematic ending (own bg, original scene images loaded, no drawn family sprites, game hidden, ending BGM)`, en.e?.state === 'ending' && en.fam === 0 && en.shotsLoaded && en.bg && en.gameHidden && en.music === 'ending', JSON.stringify(en));
   await page.waitForTimeout(2500);
   const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
   check(`${label}: ending subtitle types by itself`, sub1.startsWith('길고 길었던'), sub1);
   // 포옹·뽀뽀·킁카 장면 (가족 6명이 각자 동작)
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 29.2; });
   await page.waitForTimeout(800);
-  const fam = await G(() => window.__gona.scene.getScene('Game').ending.family.map((f) => f.mode));
-  check(`${label}: ending hug + cheek kiss poses in contact`, fam.includes('kiss') && fam.includes('hug'), JSON.stringify(fam));
+  const shotNow = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const c = e.children.list.filter((o) => /^end-shot-/.test(o.texture?.key || '')); const img = c[c.length - 1]; const cam = e.cameras.main; const r = img.getBounds(); return { shot: e.shotNow, inView: r.x >= cam.worldView.x - 0.5 && r.right <= cam.worldView.right + 0.5 && r.y >= cam.worldView.y - 0.5 && r.bottom <= cam.worldView.bottom + 0.5, aspect: +(img.displayWidth / img.displayHeight).toFixed(3), src: +(img.width / img.height).toFixed(3) }; });
+  check(`${label}: ending kiss scene = original image, whole picture on screen, aspect kept`, shotNow.shot === 'kiss' && shotNow.inView && Math.abs(shotNow.aspect - shotNow.src) < 0.01, JSON.stringify(shotNow));
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 47.2; });
   await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
   const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');

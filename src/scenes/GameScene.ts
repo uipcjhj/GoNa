@@ -1433,6 +1433,9 @@ export class GameScene extends Phaser.Scene {
     this.hurtAt = this.time.now;
     this.hurtKick = 1;
     this.squash = 0.8;
+    // 맞은 순간 고나가 빨갛게 번쩍 (짧은 색 변화 — 진동 없는 기기에서도 피격이 확실히 보이게)
+    this.player.setTint(0xff7a7a);
+    this.time.delayedCall(110, () => this.player.clearTint());
     this.floatText(`-${damage}`, this.playerX, this.player.y - this.player.displayHeight / 2 - 4, '#ff8f8f');
     if (this.inNest) {
       this.nestShake = 0.35; // 둥지가 덜컹

@@ -251,6 +251,42 @@ export abstract class BossBattle {
   }
 
   /** sec 초 뒤 실행 (cine=true: 연출 중에도 진행 / false: 전투 중에만) */
+  /** 픽셀 충격파 고리 (도트 고리 그림을 키우며 사라짐) */
+  protected shockwave(x: number, y: number, big: boolean): void {
+    const scene = this.host.scene;
+    if (!scene.textures.exists('fx-ring')) {
+      const c = document.createElement('canvas');
+      c.width = 17;
+      c.height = 17;
+      const g = c.getContext('2d')!;
+      for (let py = 0; py < 17; py++) {
+        for (let px = 0; px < 17; px++) {
+          const d = Math.hypot(px - 8, py - 8);
+          if (d > 6.6 && d <= 8) {
+            g.fillStyle = '#ffffff';
+            g.fillRect(px, py, 1, 1);
+          } else if (d > 5.6 && d <= 6.6) {
+            g.fillStyle = 'rgba(255, 236, 150, 0.85)';
+            g.fillRect(px, py, 1, 1);
+          }
+        }
+      }
+      scene.textures.addCanvas('fx-ring', c);
+    }
+    const ring = this.fx(scene.add.image(x, y, 'fx-ring').setDepth(12.8).setScale(big ? 0.8 : 0.4));
+    if (big) ring.setTint(0xfff3a0);
+    scene.tweens.add({ targets: ring, scale: big ? 6.5 : 2.6, alpha: 0, duration: big ? 420 : 230, ease: 'Quad.Out', onComplete: () => ring.destroy() });
+  }
+
+  /** 히트스톱: 잠깐(ms) 전투 시간을 거의 멈춤 (화면 그리기는 계속) */
+  protected hitStop(ms: number): void {
+    const prev = this.timeScale;
+    this.timeScale = 0.03;
+    this.host.scene.time.delayedCall(ms, () => {
+      if (this.timeScale === 0.03) this.timeScale = prev;
+    });
+  }
+
   protected after(sec: number, fn: () => void, cine = false): void {
     (cine ? this.cine : this.ai).push({ t: sec, fn });
   }
@@ -491,6 +527,11 @@ export abstract class BossBattle {
     haptics.play('bossHit');
     const r = this.bossRect();
     this.host.sparkle(5, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2);
+    // 타격감 (진동이 없는 아이폰에서도 느껴지게): 짧은 화면 흔들림 + 픽셀 충격파
+    // 진동이 안 되는 기기는 흔들림을 조금 더 크게
+    const k = haptics.supported && haptics.enabled ? 1 : 1.35;
+    this.host.scene.cameras.main.shake(80, 0.0045 * k);
+    this.shockwave((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, false);
     this.floatText(`-${n}`, this.bx, r.y0 - 2, '#ffe680');
     if (this.hp <= 0) {
       this.victory();
@@ -767,6 +808,9 @@ export abstract class BossBattle {
     this.after(2.95, () => {
       sound.starBurst();
       haptics.play('specialFinal');
+      // 마지막 강타: 짧은 히트스톱(세상이 0.12초 멈칫) + 큰 픽셀 충격파
+      this.hitStop(120);
+      this.shockwave(bcx, bcy, true);
       cam.shake(320, 0.02);
       cam.flash(200, 255, 255, 230);
       const boom = this.fx(scene.add.particles(bcx, bcy, 'boss-star', { speed: { min: 60, max: 170 }, lifespan: 650, scale: { start: 2.6, end: 0.6 }, alpha: { start: 1, end: 0 }, rotate: { min: 0, max: 360 }, tint: [0xffffff, GOLD, LIME], emitting: false }).setDepth(12.6));

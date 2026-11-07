@@ -2656,6 +2656,22 @@ body.has-pad .touch-hint {
     font-size: clamp(13px, 4vmin, 18px);
   }
 }
+/* 엔딩 THE END: 최종 그림(게임 화면)을 가리지 않게 글자·버튼을 세로는 아래쪽, 가로는 오른쪽에 */
+@media (orientation: portrait) {
+  .ending-ui {
+    align-items: flex-end;
+    padding-bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .ending-ui {
+    justify-content: flex-end;
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .ending-ui .end-card {
+    max-width: 46vw;
+  }
+}
 /* 가로 화면 엔딩: 자막을 위쪽에 (아래쪽 땅 위 고나·가족을 가리지 않게) */
 @media (orientation: landscape) and (max-height: 500px) {
   .prologue-ui.auto .pr-box {

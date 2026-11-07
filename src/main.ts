@@ -15,7 +15,7 @@ import { EndingUi } from './ui/endingUi';
 import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
-import { perf } from './perf';
+import { perf, setPerfOverlay } from './perf';
 import { runScenario, showTestMenu, testParam } from './devtest';
 import { storage } from './storage';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
@@ -73,6 +73,9 @@ async function boot(): Promise<void> {
   };
   subs.onBegin = beginPrologue;
   bus.on(EV.openingStart, () => {
+    // 성능: 프롤로그 동안 뒤의 게임 장면(배경·오브젝트)은 화면을 덮인 채로도 매 프레임 계산·그리기를 하고 있었음
+    // → 재워 둠 (그리기 시간이 약 절반으로). 프롤로그가 끝나면 다시 깨움.
+    if (game.scene.isActive('Game')) game.scene.sleep('Game');
     openingActive = true;
     prologueStarted = false;
     opUi.classList.remove('hidden');
@@ -83,6 +86,7 @@ async function boot(): Promise<void> {
     }
   });
   bus.on(EV.openingDone, (info: { instant: boolean }) => {
+    if (game.scene.isSleeping('Game')) game.scene.wake('Game');
     openingActive = false;
     opUi.classList.add('hidden');
     subs.hide();
@@ -160,13 +164,33 @@ async function boot(): Promise<void> {
   if (scenario === 'menu') showTestMenu(ui);
   else if (scenario) {
     // 프롤로그 외에는 오프닝을 건너뛰고 타이틀 → 곧바로 게임 시작 → 시나리오
+    const prologueTest = scenario === 'prologue' || scenario === 'prologue-perf' || scenario === 'prologue-loop';
     bus.once(EV.openingStart, () => {
-      if (scenario !== 'prologue') window.setTimeout(() => bus.emit(EV.skipOpening), 50);
+      if (!prologueTest) window.setTimeout(() => bus.emit(EV.skipOpening), 50);
     });
-    if (scenario !== 'prologue') {
+    if (!prologueTest) {
       bus.once(EV.openingDone, () => window.setTimeout(() => cover.start(), 120));
       bus.once(EV.start, () => window.setTimeout(() => runScenario(scenario, game, ui), 300));
-    } else runScenario('prologue', game, ui);
+    } else {
+      runScenario(scenario, game, ui);
+      // 성능 테스트: FPS·끊긴 프레임 기록 표시 (장면별 기록은 '복사'로)
+      if (scenario !== 'prologue') setPerfOverlay(true);
+      if (scenario === 'prologue-loop') {
+        // 프롤로그가 끝나면 1.5초 뒤 다시 처음부터 (반복 재생 중 오브젝트·리스너가 쌓이지 않는지 확인용)
+        let loops = 0;
+        bus.on(EV.openingDone, () => {
+          loops++;
+          window.setTimeout(() => {
+            const info = document.querySelector('.tm-info');
+            if (info) {
+              info.textContent = `프롤로그 반복 ${loops}회 · 장면 오브젝트 ${game.scene.getScene('Game').children.list.length}개`;
+              info.classList.remove('hidden');
+            }
+            cover.onReplay?.();
+          }, 1500);
+        });
+      }
+    }
   }
 
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출

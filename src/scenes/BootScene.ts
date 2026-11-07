@@ -82,13 +82,9 @@ export class BootScene extends Phaser.Scene {
       const a = STAGE_ASSETS[st.id];
       if (a?.url) this.load.image(stageSrcKey(st.id), a.url);
     }
-    // 엔딩 컷신 전용 (B스타일): 해 질 녘 버섯마을 배경(가로·세로) · 가족 6명 시트(몸·앞팔)
+    // 엔딩 컷신: 해 질 녘 버섯마을 배경(가로·세로). 가족이 나오는 원본 장면 그림(shot-*.png)은 엔딩이 시작될 때만 불러옴 (EndingScene.preload)
     this.load.image('end-bgB-land', 'assets/ending/bgB-land.png');
     this.load.image('end-bgB-port', 'assets/ending/bgB-port.png');
-    for (const id of ['stripe', 'glasses', 'ponytail', 'blacktee', 'curly', 'grey']) {
-      this.load.spritesheet(`fam-${id}`, `assets/ending/fam-${id}.png`, { frameWidth: 64, frameHeight: 60 });
-      this.load.spritesheet(`fam-${id}-arms`, `assets/ending/fam-${id}-arms.png`, { frameWidth: 64, frameHeight: 60 });
-    }
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
     // 일반 몬스터 정식 그림 (선택)

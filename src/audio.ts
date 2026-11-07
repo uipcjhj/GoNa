@@ -139,6 +139,9 @@ export const MUSIC_FILES: Record<MusicMode, string> = {
   sniff2: 'bgm-sniff2.mp3',
   ending: 'bgm-ending.mp3',
 };
+/** 배경음악 준비 순서 (필요해지는 순서) */
+const PRIME_ORDER: MusicMode[] = ['title', 'game', 'kiss', 'kiss2', 'sniff', 'sniff2', 'ending'];
+
 /** 반복하지 않는 곡 (엔딩) */
 const MUSIC_ONCE: Partial<Record<MusicMode, boolean>> = { ending: true };
 export const SFX_NAMES = [
@@ -255,13 +258,14 @@ class Sound {
    */
   unlock(): void {
     const now = performance.now();
-    if (this.ctx && this.primed) {
+    if (this.ctx && this.unlockedOnce) {
       const ctxOk = this.ctx.state === 'running';
       const keepOk = !this.keepAliveEl || !this.keepAliveEl.paused;
       const want = this.wantedMusicEl();
       const musicOk = !want || this.muted || this.musicSource === 'synth' || !want.paused;
-      if (ctxOk && keepOk && musicOk) return;
-      if (now - this.lastUnlock < 1000) return;
+      if (ctxOk && keepOk && musicOk && this.primed) return;
+      // 아직 준비 안 된 배경음악이 남았으면: 터치 때마다가 아니라 1.2초에 한 번, 한 곡씩만 준비
+      if (now - this.lastUnlock < (ctxOk && keepOk && musicOk ? 1200 : 1000)) return;
     }
     this.lastUnlock = now;
     perf.time('audio:unlock', () => this.unlockNow());
@@ -364,6 +368,8 @@ class Sound {
     };
     (Object.keys(MUSIC_FILES) as MusicMode[]).forEach((m) => {
       const a = mk(AUDIO_DIR + MUSIC_FILES[m], !MUSIC_ONCE[m]);
+      // 처음 화면에 필요 없는 곡(보스·엔딩)은 시작할 때 미리 내려받지 않음 (준비/재생할 때 받음)
+      if (m !== 'title' && m !== 'game') a.preload = 'none';
       a.addEventListener('error', () => {
         this.musicBroken[m] = true;
         this.log(`배경음악 파일 오류 (${MUSIC_FILES[m]})`, a.error?.message || `code ${a.error?.code}`);
@@ -420,9 +426,19 @@ class Sound {
     // Web Audio 를 못 쓰는 브라우저 / 앞선 터치에서 켜지지 않았으면 효과음 예비 파일 준비
     if (!this.ctx || (this.primed && this.ctx.state !== 'running')) this.ensureSfxFallback();
     if (this.primed) return;
-    this.primed = true;
-    this.primeList([...(Object.values(this.music) as HTMLAudioElement[])]);
+    // 배경음악 <audio> 준비(음소거 재생→정지)는 아이폰에서 곡마다 내려받기·해독을 시작시킴.
+    // 예전: 첫 터치(= 프롤로그 시작) 때 7곡을 한꺼번에 → 약 2.4MB 다운로드·MP3 해독이 프롤로그 첫 장면과 겹쳐 끊김.
+    // 지금: 지금 필요한 곡만 먼저, 나머지는 이후 터치 때 한 곡씩 (보스·엔딩 곡은 한참 뒤에 필요)
+    const want = this.wantedMusicEl();
+    const next = want && !this.primedEls.has(want) ? want : PRIME_ORDER.map((m) => this.music[m]).find((a) => a && !this.primedEls.has(a));
+    if (next) {
+      this.primedEls.add(next);
+      this.primeList([next]);
+    }
+    this.primed = (Object.values(this.music) as HTMLAudioElement[]).every((a) => this.primedEls.has(a));
   }
+
+  private primedEls = new Set<HTMLAudioElement>();
 
   private primeList(all: HTMLAudioElement[]): void {
     for (const a of all) {

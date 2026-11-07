@@ -1,7 +1,7 @@
 /**
  * 개발용 기능 테스트 메뉴 — 프롤로그부터 끝까지 하지 않고 고친 기능으로 바로 이동
  *   진입: 주소 끝 ?test=menu (또는 대표 타이틀 오른쪽 위 🧪 → '기능 테스트 메뉴')
- *   바로 이동: ?test=<id>  (예: ?test=kiss-boss · ?test=sniff-weakpoint · ?test=family-ending)
+ *   바로 이동: ?test=<id>  (예: ?test=kiss-boss · ?test=prologue-perf · ?test=ending-image)
  *   테스트 중에는 저장하지 않음(최고 점수·체크포인트 그대로) · 왼쪽 위 '🧪 메뉴' 로 언제든 메뉴로 (새로 불러와서 오브젝트·타이머가 남지 않음)
  *   ?test (값 없음) 는 예전처럼 자동 테스트용 훅만 켬
  */
@@ -27,9 +27,14 @@ export const TEST_ITEMS: [string, string][] = [
   ['farter-dash', '13. 방구할배 돌진'],
   ['hurt', '14. 고나 피격 애니메이션 (4단계)'],
   ['vibrate', '15. 진동 테스트'],
-  ['family-ending', '16. 가족 엔딩 전체'],
-  ['ending-hug', '17. 엔딩 포옹·뽀뽀·킁카'],
-  ['layout', '18. 세로·가로 레이아웃 (엔딩 단체 컷)'],
+  ['family-ending', '16. 엔딩 전체 시네마틱'],
+  ['ending-hug', '17. 엔딩 포옹·뽀뽀·킁카 장면부터'],
+  ['layout', '18. 세로·가로 화면 확인 (엔딩 최종 그림)'],
+  ['prologue-perf', '19. 프롤로그 성능 테스트 (FPS·끊김 기록 표시)'],
+  ['prologue-loop', '20. 프롤로그 반복 재생 테스트'],
+  ['boss-hitfx', '21. 보스 피격 효과 (흔들림·충격파·필살기 히트스톱)'],
+  ['gona-hitfx', '22. 고나 피격 효과 (움찔·빨간 번쩍·흔들림)'],
+  ['ending-image', '23. 엔딩 최종 그림 바로 보기'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -169,6 +174,29 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
       say(`${kind === 'glasses' ? '화학과안경잽이' : '방구할배'} 돌진 (예고 '!' 뒤 돌진 · 반복)`);
       break;
     }
+    case 'boss-hitfx': {
+      // 보스를 1.2초마다 맞혀 타격 효과를 보고, 필살기 게이지를 채워 두어 '필살기' 버튼으로 마지막 강타(히트스톱) 확인
+      sc.debugSetStage(1);
+      sc.boomerangAwake = true;
+      sc.debugGod();
+      sc.debugStartBoss('kiss');
+      waitFight(() => {
+        const b = g().battle;
+        b.ai = [];
+        b.busy = true;
+        b.cooldown = 1e9;
+        window.setInterval(() => {
+          const bb = g().battle;
+          if (!bb || bb.mode !== 'fight') return;
+          bb.hp = bb.def.maxHp;
+          bb.damage(1);
+          if (bb.special < 1) bb.special = 1;
+        }, 1200);
+      });
+      say('보스가 1.2초마다 맞아요 (흔들림·충격파) · 필살기 버튼 = 마지막 강타 히트스톱');
+      break;
+    }
+    case 'gona-hitfx':
     case 'hurt': {
       sc.debugGod(false);
       let st = 0;
@@ -213,20 +241,24 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     }
     case 'family-ending':
     case 'ending-hug':
-    case 'layout': {
+    case 'layout':
+    case 'ending-image': {
       sc.debugSetStage(3);
       sc.debugFinish();
-      const jump = id === 'ending-hug' ? 18.4 : id === 'layout' ? 40 : 0;
+      const jump = id === 'ending-hug' ? 18.4 : id === 'layout' || id === 'ending-image' ? 39.8 : 0;
       if (jump) {
         const t = window.setInterval(() => {
           const e = g().ending;
           if (e) {
             clearInterval(t);
             e.t = jump;
+            // 최종 그림 바로 보기: THE END 직전에서 멈춰 그림만 계속 보여 줌
+            if (id === 'ending-image') e.holdAt = 46;
           }
         }, 100);
       }
       if (id === 'layout') say('세로·가로로 돌려 보세요 (엔딩 다시보기로 해당 방향 구도 확인)');
+      if (id === 'ending-image') say('엔딩 최종 그림 (원본 픽셀 그대로 · 화면에 맞춰 표시)');
       break;
     }
     default:

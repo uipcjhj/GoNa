@@ -1,21 +1,9 @@
 /**
- * 가족 엔딩: 가족 이름·순서와 작은 효과 그림 (꽃잎·하트 등 — 앱 시작 때 한 번 만들어 재사용).
- * 가족 캐릭터 그림은 public/assets/ending/fam-*.png (tools/build_family_v3.py — art-src/ending/family-v3 원본 그림 기반).
+ * 가족 엔딩: 작은 효과 그림 (꽃잎·하트 등 — 앱 시작 때 한 번 만들어 재사용). 사람(가족) 그림은 코드로 그리지 않음.
+ * 가족이 나오는 장면은 원본 그림 public/assets/ending/shot-*.png (EndingScene).
  */
 import { PixelCanvas } from './PixelCanvas';
 
-export type FamilyId = 'mom' | 'dad' | 'aunt' | 'uncle' | 'grandma' | 'grandpa';
-
-/** 왼쪽(고나가 달려오는 쪽)부터 서는 순서 */
-export const FAMILY_ORDER: FamilyId[] = ['mom', 'dad', 'aunt', 'uncle', 'grandma', 'grandpa'];
-export const FAMILY_NAME: Record<FamilyId, string> = {
-  mom: '엄마',
-  dad: '아빠',
-  aunt: '이모',
-  uncle: '삼촌',
-  grandma: '할머니',
-  grandpa: '할아버지',
-};
 /** 꽃잎 3x3 (분홍·노랑 두 장) */
 export function petalSheet(): HTMLCanvasElement {
   const pc = new PixelCanvas(6, 3);
