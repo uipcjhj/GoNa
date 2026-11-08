@@ -927,7 +927,109 @@ class Sound {
     this.wantMusic = null;
     this.pauseFileMusic();
     this.stopSynth();
+    this.stopEnding();
     this.emit();
+  }
+
+  // ───────────────────────── 엔딩 곡 (Web Audio 버퍼: 자막 나올 때 음량 낮추기·페이드가 아이폰에서도 됨) ─────────────────────────
+
+  private endingBuf: AudioBuffer | null = null;
+  private endingLoad: Promise<boolean> | null = null;
+  private endingSrc: AudioBufferSourceNode | null = null;
+  private endingGain: GainNode | null = null;
+  /** 엔딩 곡이 Web Audio 로 재생 중인지 (아니면 <audio> 파일로 재생 — 음량 조절 안 됨) */
+  endingMode: 'buffer' | 'file' | null = null;
+
+  get endingReady(): boolean {
+    return !!this.endingBuf;
+  }
+
+  /** 엔딩 곡 미리 받기·해독 (최종 보스전 때 미리 — 엔딩 시작 때 멈칫 없게). 실패하면 false */
+  prepareEnding(): Promise<boolean> {
+    if (this.endingBuf) return Promise.resolve(true);
+    const ctx = this.ctx;
+    if (!ctx) return Promise.resolve(false);
+    if (!this.endingLoad) {
+      this.endingLoad = fetch(AUDIO_DIR + MUSIC_FILES.ending)
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })
+        .then((ab) => new Promise<AudioBuffer>((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+        .then((b) => {
+          this.endingBuf = b;
+          return true;
+        })
+        .catch((e) => {
+          this.log('엔딩 음악 준비', e);
+          this.endingLoad = null;
+          return false;
+        });
+    }
+    return this.endingLoad;
+  }
+
+  /** 엔딩 곡 처음부터 (다른 배경음악은 모두 멈춤 — 겹쳐 나오지 않게) */
+  playEndingTrack(offsetSec = 0): void {
+    this.stopMusic();
+    const ctx = this.ctx;
+    if (ctx && ctx.state === 'running' && this.endingBuf && this.master) {
+      const g = ctx.createGain();
+      g.gain.value = 0.92;
+      g.connect(this.master);
+      const src = ctx.createBufferSource();
+      src.buffer = this.endingBuf;
+      src.connect(g);
+      // 늦게 시작하면 그만큼 건너뛰어 장면과 박자를 맞춤
+      src.start(0, Math.max(0, Math.min(offsetSec, this.endingBuf.duration - 1)));
+      src.onended = () => {
+        if (this.endingSrc === src) this.endingSrc = null;
+      };
+      this.endingSrc = src;
+      this.endingGain = g;
+      this.endingMode = 'buffer';
+      this.emit();
+      return;
+    }
+    // 예비: <audio> 파일 (아이폰은 음량을 바꿀 수 없어 낮추기·페이드 없이 그대로 재생)
+    this.endingMode = 'file';
+    this.startMusic('ending');
+  }
+
+  /** 자막(내레이션)이 나오는 동안 음악을 살짝 낮춤 */
+  duckEnding(on: boolean): void {
+    if (!this.ctx || !this.endingGain) return;
+    this.endingGain.gain.setTargetAtTime(on ? 0.58 : 0.92, this.ctx.currentTime, 0.35);
+  }
+
+  /** 엔딩 곡을 sec 초 동안 천천히 줄여 끝냄 */
+  fadeOutEnding(sec: number): void {
+    if (this.endingMode === 'file') {
+      this.fadeOutMusic(sec * 1000);
+      return;
+    }
+    if (!this.ctx || !this.endingGain) return;
+    const g = this.endingGain.gain;
+    const now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0, now + sec);
+  }
+
+  stopEnding(): void {
+    const src = this.endingSrc;
+    this.endingSrc = null;
+    if (src) {
+      try {
+        src.stop();
+      } catch {
+        /* 이미 끝남 */
+      }
+      src.disconnect();
+    }
+    this.endingGain?.disconnect();
+    this.endingGain = null;
+    this.endingMode = null;
   }
 
   private startSynthMusic(mode: MusicMode): void {

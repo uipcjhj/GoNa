@@ -109,11 +109,19 @@ async function boot(): Promise<void> {
     subs.hideGate();
     subs.root.classList.add('auto');
   });
+  // 타이틀이 나오면 자막 상자는 닫음 (타이틀·크레딧·마지막 문구는 endingUi)
+  bus.on(EV.endingPhase, (p: string) => {
+    if (p === 'title') {
+      subs.hide();
+      subs.root.classList.remove('auto');
+    }
+  });
   bus.on(EV.endingTheEnd, () => {
     subs.hide();
     subs.root.classList.remove('auto');
   });
   const leaveEnding = (): void => {
+    sound.stopEnding();
     endingActive = false;
     document.body.classList.remove('in-ending');
     subs.hide();

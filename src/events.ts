@@ -63,6 +63,8 @@ export const EV = {
   /** 가족 엔딩 연출 시작 (GameOverInfo) / THE END 화면 / 엔딩 다시보기 요청 */
   endingStart: 'endingStart',
   endingTheEnd: 'endingTheEnd',
+  /** 엔딩 마지막 화면 단계: 'title' 타이틀 · 'credits' 크레딧 · 'final' 마지막 문구 · 'black' 검은 화면 */
+  endingPhase: 'endingPhase',
   endingReplay: 'endingReplay',
 } as const;
 

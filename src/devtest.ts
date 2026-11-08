@@ -27,14 +27,15 @@ export const TEST_ITEMS: [string, string][] = [
   ['farter-dash', '13. 방구할배 돌진'],
   ['hurt', '14. 고나 피격 애니메이션 (4단계)'],
   ['vibrate', '15. 진동 테스트'],
-  ['family-ending', '16. 엔딩 전체 시네마틱'],
-  ['ending-hug', '17. 엔딩 포옹·뽀뽀·킁카 장면부터'],
-  ['layout', '18. 세로·가로 화면 확인 (엔딩 최종 그림)'],
+  ['family-ending', '16. 엔딩 전체 (8장면 → 타이틀 → 크레딧 → 마지막 문구)'],
+  ['ending-hug', '17. 엔딩 가족의 품·뽀뽀·킁카 장면부터'],
+  ['layout', '18. 세로·가로 화면 확인 (엔딩 가족사진 장면)'],
   ['prologue-perf', '19. 프롤로그 성능 테스트 (FPS·끊김 기록 표시)'],
   ['prologue-loop', '20. 프롤로그 반복 재생 테스트'],
   ['boss-hitfx', '21. 보스 피격 효과 (흔들림·충격파·필살기 히트스톱)'],
   ['gona-hitfx', '22. 고나 피격 효과 (움찔·빨간 번쩍·흔들림)'],
-  ['ending-image', '23. 엔딩 최종 그림 바로 보기'],
+  ['ending-image', '23. 엔딩 가족사진(원본 캐릭터) 바로 보기'],
+  ['ending-credits', '24. 엔딩 타이틀·크레딧·마지막 문구'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -242,10 +243,11 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'family-ending':
     case 'ending-hug':
     case 'layout':
-    case 'ending-image': {
+    case 'ending-image':
+    case 'ending-credits': {
       sc.debugSetStage(3);
       sc.debugFinish();
-      const jump = id === 'ending-hug' ? 18.4 : id === 'layout' || id === 'ending-image' ? 39.8 : 0;
+      const jump = { 'ending-hug': 37.6, layout: 66.0, 'ending-image': 70.0, 'ending-credits': 78.0 }[id as 'layout'] ?? 0;
       if (jump) {
         const t = window.setInterval(() => {
           const e = g().ending;
@@ -253,12 +255,12 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
             clearInterval(t);
             e.t = jump;
             // 최종 그림 바로 보기: THE END 직전에서 멈춰 그림만 계속 보여 줌
-            if (id === 'ending-image') e.holdAt = 46;
+            if (id === 'ending-image') e.holdAt = 76;
           }
         }, 100);
       }
       if (id === 'layout') say('세로·가로로 돌려 보세요 (엔딩 다시보기로 해당 방향 구도 확인)');
-      if (id === 'ending-image') say('엔딩 최종 그림 (원본 픽셀 그대로 · 화면에 맞춰 표시)');
+      if (id === 'ending-image') say('엔딩 가족사진 — 가족 여섯 명은 디자인 시트 원본 그대로');
       break;
     }
     default:

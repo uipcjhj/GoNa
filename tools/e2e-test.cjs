@@ -456,20 +456,32 @@ async function bossTests(label, device) {
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
-  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); return { e: window.__gona.scene.getScene('Game').debugEnding(), music: window.__sound.wantMusic, fam: sc.children.list.filter((o) => /^fam-/.test(o.texture?.key || '')).length, shotsLoaded: ['discover', 'run', 'hug', 'kiss', 'sniff', 'final'].every((k) => sc.textures.exists('end-shot-' + k)), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), hud: document.querySelector('.battle-top')?.classList.contains('hidden') ?? true }; });
-  check(`${label}: final boss win → image cinematic ending (own bg, original scene images loaded, no drawn family sprites, game hidden, ending BGM)`, en.e?.state === 'ending' && en.fam === 0 && en.shotsLoaded && en.bg && en.gameHidden && en.music === 'ending', JSON.stringify(en));
+  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); const ids = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji']; return { e: window.__gona.scene.getScene('Game').debugEnding(), fam: sc.children.list.filter((o) => /^fam-/.test(o.texture?.key || '')).map((o) => o.texture.key).sort().join(','), famOk: ids.every((id) => sc.textures.exists('fam-' + id)), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), gona: sc.children.list.some((o) => /^dino-stage-newborn$/.test(o.texture?.key || '')) }; });
+  check(`${label}: final boss win → ending (own bg, 6 original family cutouts loaded, baby GONA sprite, game hidden)`, en.e?.state === 'ending' && en.famOk && en.fam === 'fam-dad,fam-halabeoji,fam-halmeoni,fam-imo,fam-mom,fam-samchon' && en.bg && en.gameHidden && en.gona, JSON.stringify(en));
   await page.waitForTimeout(2500);
+  const music = await G(() => ({ mode: window.__sound.endingMode, want: window.__sound.wantMusic }));
+  check(`${label}: ending music started (one track, buffer or file fallback)`, music.mode === 'buffer' || (music.mode === 'file' && music.want === 'ending'), JSON.stringify(music));
   const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
-  check(`${label}: ending subtitle types by itself`, sub1.startsWith('길고 길었던'), sub1);
-  // 포옹·뽀뽀·킁카 장면 (가족 6명이 각자 동작)
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 29.2; });
+  check(`${label}: ending narration line 1 types by itself`, '처음 세상에 왔을 땐, 모든 것이 낯설고 커다랬던 고나.'.startsWith(sub1) && sub1.length > 3, sub1);
+  // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
+  await page.waitForTimeout(1500);
+  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length, halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
+  check(`${label}: ending scene 6 (grandma kiss) — 6 family on screen, grandma beside GONA`, s6.scene === 6 && s6.visible === 6 && s6.halmeoniNearGona, JSON.stringify(s6));
+  // 타이틀 → 크레딧 → 마지막 문구 → 검은 화면 + 버튼
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 79.5; });
   await page.waitForTimeout(800);
-  const shotNow = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const c = e.children.list.filter((o) => /^end-shot-/.test(o.texture?.key || '')); const img = c[c.length - 1]; const cam = e.cameras.main; const r = img.getBounds(); return { shot: e.shotNow, inView: r.x >= cam.worldView.x - 0.5 && r.right <= cam.worldView.right + 0.5 && r.y >= cam.worldView.y - 0.5 && r.bottom <= cam.worldView.bottom + 0.5, aspect: +(img.displayWidth / img.displayHeight).toFixed(3), src: +(img.width / img.height).toFixed(3) }; });
-  check(`${label}: ending kiss scene = original image, whole picture on screen, aspect kept`, shotNow.shot === 'kiss' && shotNow.inView && Math.abs(shotNow.aspect - shotNow.src) < 0.01, JSON.stringify(shotNow));
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 47.2; });
-  await page.waitForSelector('.ending-ui:not(.hidden)', { timeout: 5000 }).catch(() => {});
+  const title = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, txt: document.querySelector('.end-title-card')?.textContent }));
+  check(`${label}: ending title card (no big THE END)`, title.phase === 'title' && title.txt.includes('GONA’s Food Adventure') && title.txt.includes('고나의 첫 번째 모험') && title.txt.includes('2026.04.10') && !title.txt.includes('THE END'), JSON.stringify(title));
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 108; });
+  await page.waitForTimeout(600);
+  const fin = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, txt: document.querySelector('.end-final')?.textContent }));
+  check(`${label}: ending final message after credits`, fin.phase === 'final' && fin.txt === '현이의 모든 모험을 응원하며…', JSON.stringify(fin));
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.9; });
+  await page.waitForSelector('.ending-ui.with-btns', { timeout: 5000 }).catch(() => {});
   const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
-  check(`${label}: THE END screen with 3 buttons`, endTxt.includes('THE END') && endTxt.includes('2026.04.10') && (await page.locator('.ending-ui .end-btn').count()) === 3, endTxt);
+  check(`${label}: black screen + 3 small buttons`, (await G(() => document.querySelector('.ending-ui')?.dataset.phase)) === 'black' && endTxt.includes('2026.04.10') && (await page.locator('.ending-ui .end-btn').count()) === 3, endTxt.slice(0, 80));
+  await page.waitForTimeout(800);
   await page.screenshot({ path: `${S}/boss-${label}-ending.png` });
   await page.waitForTimeout(700);
   await page.locator('.end-restart').click(); await page.waitForTimeout(800);

@@ -17,7 +17,7 @@ import { CLOUD_FRAME, dizzyStar, FLASK_FRAME, flaskSheet, fartCloudSheet, monste
 import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
 import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
-import type { EndingScene } from './EndingScene';
+import { ENDING_FAMILY, type EndingScene } from './EndingScene';
 import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, targetSheet, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
@@ -2042,6 +2042,18 @@ export class GameScene extends Phaser.Scene {
     if (!this.growth.isFinal) this.startEvolution();
   }
 
+  /** 엔딩에 쓰는 가족 그림을 미리 불러 둠 (이미 있으면 아무것도 안 함) */
+  private preloadEndingArt(): void {
+    let added = 0;
+    for (const id of ENDING_FAMILY) {
+      const key = `fam-${id}`;
+      if (this.textures.exists(key)) continue;
+      this.load.image(key, `assets/ending/fam-${id}.png`);
+      added++;
+    }
+    if (added) this.load.start();
+  }
+
   private startBoss(id: BossId): void {
     if (this.battle) return;
     // 화면의 바위는 치움 (간식은 그대로)
@@ -2059,6 +2071,11 @@ export class GameScene extends Phaser.Scene {
     this.shieldReadyAt = 0;
     const tex = `boss-${id}`;
     this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : new SniffBattle(this.host, tex);
+    // 최종 보스전 동안 엔딩 곡·엔딩 그림을 미리 받아 둠 (엔딩이 시작될 때 내려받기·해독으로 멈칫하지 않게)
+    if (id === 'sniff') {
+      void sound.prepareEnding();
+      this.preloadEndingArt();
+    }
     // 일반 스테이지에서 모은 필살 게이지를 이어서
     this.battle.special = this.specialCarry;
     this.specialCarry = 0;
