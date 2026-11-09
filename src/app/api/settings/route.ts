@@ -21,7 +21,9 @@ export async function PUT(req: Request) {
   next.lookbackDays = Math.max(1, Math.min(30, Math.round(next.lookbackDays)));
   next.maxJobMinutes = Math.max(5, Math.min(120, Math.round(next.maxJobMinutes || 20)));
   next.hotThreshold = Math.max(1, Math.min(100, next.hotThreshold));
-  next.weekly.recommendCount = Math.max(5, Math.min(40, Math.round(next.weekly.recommendCount)));
+  next.weekly.recommendCount = Math.max(5, Math.min(30, Math.round(next.weekly.recommendCount)));
+  next.weekly.rejectCount = Math.max(5, Math.min(10, Math.round(next.weekly.rejectCount ?? 8)));
+  next.weekly.aiPerRun = Math.max(5, Math.min(200, Math.round(next.weekly.aiPerRun ?? 30)));
   next.weekly.maxAnalyzePerRun = Math.max(10, Math.min(500, Math.round(next.weekly.maxAnalyzePerRun)));
   next.watchThreshold = Math.max(0, Math.min(next.hotThreshold - 1, next.watchThreshold));
   await saveSettings(next);

@@ -23,7 +23,7 @@ export const RELEVANCE_CRITERIA = [
 // keyword dictionaries (Korean + English); matched case-insensitively on title + description/body
 export const KW = {
   business: [
-    "물류자동화", "물류 자동화", "자동창고", "자동화창고", "스마트물류", "물류로봇", "물류 로봇", "AMR", "AGV", "AS/RS", "ASRS", "셔틀", "컨베이어", "소터", "분류기",
+    "물류자동화", "물류 자동화", "자동창고", "자동화창고", "스마트물류", "물류로봇", "물류 로봇", "AMR", "AGV", "AS/RS", "ASRS", "셔틀 시스템", "셔틀 랙", "컨베이어", "소터", "분류기",
     "WMS", "WCS", "WES", "풀필먼트", "물류센터", "로봇 도입", "로봇 자동화", "자동화 설비", "공정 자동화", "제조 자동화", "자동화 라인", "스마트팩토리", "스마트공장", "공정물류", "생산물류", "콜드체인", "냉동창고", "냉장창고", "수하물", "승강장 안전문", "스크린도어",
     "warehouse automation", "automated warehouse", "intralogistics", "material handling", "conveyor", "sorter", "shuttle", "automated storage", "fulfillment center", "fulfilment centre",
     "distribution center", "distribution centre", "cold storage", "baggage handling", "cargo handling", "palletizing", "picking robot", "mobile robot", "smart factory",
@@ -71,4 +71,5 @@ export const COMPETITOR_RULES: Record<string, { ko: string[]; caseSensitive?: st
   KNAPP: { ko: ["크납"], caseSensitive: ["KNAPP"] },
   Vanderlande: { ko: ["반더란데", "반데란데"] },
   Swisslog: { ko: ["스위스로그"] },
+  TGW: { ko: [], caseSensitive: ["TGW Logistics", "TGW"] },
 };

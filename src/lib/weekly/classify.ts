@@ -2,7 +2,8 @@
 // Separate from the Opportunity Score: a policy change or a competitor contract can be highly
 // relevant to the weekly report even when it is not a sales opportunity.
 import { COMPETITOR_RULES, KW } from "./categories";
-import type { Article, CompetitorCheck, DateStatus, Opportunity, RelevanceBreakdown, Settings, WeeklyAnalysis, WeeklyCategory } from "@/lib/types";
+import { REVIEW_LABEL, TAXONOMY, labelOf, withV2 } from "./taxonomy";
+import type { Article, CompetitorCheck, DateStatus, DetailCategory, Opportunity, RelevanceBreakdown, Settings, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment } from "@/lib/types";
 
 const KO_COUNTRIES: Record<string, string> = {
   미국: "United States", 캐나다: "Canada", 멕시코: "Mexico", 폴란드: "Poland", 헝가리: "Hungary", 체코: "Czech Republic", 슬로바키아: "Slovakia",
@@ -28,6 +29,8 @@ export function isKoreanArticle(a: Pick<Article, "language" | "sourceDomain" | "
   return a.language === "Korean" || a.sourceDomain.endsWith(".kr") || /[가-힣]/.test(a.title);
 }
 
+const STRONG_CONTEXT = ["물류자동화", "물류 자동화", "자동창고", "물류센터 자동화", "스마트물류", "스마트팩토리", "스마트공장", "제조물류", "공정물류", "물류로봇", "물류 로봇", "AMR", "AGV", "WMS", "WCS", "intralogistics", "warehouse automation", "automated warehouse", "material handling", "logistics automation", "AS/RS"];
+
 export function checkCompetitors(text: string, settings: Settings): CompetitorCheck[] {
   const t = lc(text);
   const context = KW.logisticsContext.some((w) => t.includes(lc(w)));
@@ -43,9 +46,15 @@ export function checkCompetitors(text: string, settings: Settings): CompetitorCh
       else if (loose) out.push({ name: c.name, confirmed: false, note: "유사 명칭(인명·일반어 가능성) — 경쟁사로 보지 않음" });
       continue;
     }
-    if (koHit || [c.name, ...c.aliases].some((k) => t.includes(lc(k)))) {
-      out.push({ name: c.name, confirmed: true, note: context ? "회사명 일치 + 물류·자동화 문맥 확인" : "회사명 일치" });
+    const hit = koHit || [c.name, ...c.aliases].some((k) => (k.length <= 4 ? new RegExp(`(^|[^A-Za-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`).test(text) : t.includes(lc(k))));
+    if (!hit) continue;
+    if (c.requiresContext) {
+      // 국내 SI·물류운영사 등: 회사명이 나왔다는 이유만으로 경쟁사로 보지 않음 — 물류자동화·제조물류 사업 문맥일 때만
+      const strong = STRONG_CONTEXT.some((w) => t.includes(lc(w)));
+      out.push({ name: c.name, confirmed: strong, note: strong ? "물류자동화·제조물류 사업 문맥 확인 → 유사 경쟁군" : "회사명 등장 — 물류자동화 사업 기사 아님 (경쟁사 아님)" });
+      continue;
     }
+    out.push({ name: c.name, confirmed: true, note: context ? "회사명 일치 + 물류·자동화 문맥 확인" : "회사명 일치" });
   }
   return out;
 }
@@ -177,7 +186,7 @@ export function weeklyRules(a: Article, settings: Settings, opp: Opportunity | n
   const src = (a.excerpt || bodyText || "").replace(/\s+/g, " ").trim();
   const sentences = src.split(/(?<=[.!?。]|다\.)\s+/).map((x) => x.trim()).filter((x) => x.length > 15).slice(0, 3);
   const cats2 = [...cats];
-  return {
+  const out: WeeklyAnalysis = {
     mode: "rules",
     analyzedAt: ref,
     categories: cats2,
@@ -194,6 +203,7 @@ export function weeklyRules(a: Article, settings: Settings, opp: Opportunity | n
     policy: cats.has("policy") ? { kind: /(법|시행령|개정|act|bill|law)/i.test(a.title) ? "law" : /(시행|enforce|effective)/i.test(a.title) ? "enforcement" : "government_announcement", effectiveDate: null, note: "규칙 기반 판별 — 시행일은 원문 확인 필요" } : null,
     eventDate: a.analysis?.eventDate ?? null,
   };
+  return withV2(a, out, opp); // + 실무 분류체계 · 내부 판단 · 4줄 요약 (규칙 기반)
 }
 
 /** Weekly pre-filter score (category-aware), so policy/tech/competitor news is not dropped by the opportunity filter. */
@@ -228,7 +238,7 @@ export function weeklyFromAI(a: Article, raw: import("@/lib/pipeline/analyze").W
   };
   const policyKinds = ["law", "government_announcement", "enforcement", "other"] as const;
   const pk = policyKinds.find((k) => k === raw.policy_kind.trim().toLowerCase());
-  return {
+  const res: WeeklyAnalysis = {
     ...base,
     mode: "ai",
     categories: cats,
@@ -241,4 +251,42 @@ export function weeklyFromAI(a: Article, raw: import("@/lib/pipeline/analyze").W
     competitorChecks: raw.competitor_checks.map((c) => ({ name: c.name, confirmed: c.is_actual_competitor, note: c.note })),
     policy: pk ? { kind: pk, effectiveDate: /^\d{4}-\d{2}-\d{2}$/.test(raw.policy_effective_date.trim()) ? raw.policy_effective_date.trim() : null, note: "AI 분석" } : null,
   };
+  return applyAiV2(a, res, raw, opp);
+}
+
+const LV = ["high", "medium", "low"] as const;
+const lv = <T extends string>(v: string | undefined, allowed: readonly T[]): T | undefined => allowed.find((x) => x === (v ?? "").trim().toLowerCase());
+const cleanLine = (l: string) => l.replace(/^\s*([§⇒•\-*·]|\d+[.)]|①|②|③|④)\s*/u, "").trim();
+
+/** Map the AI's v2 fields (taxonomy, judgment, 4-line report summary) onto the analysis; invalid/missing parts fall back to rules. */
+function applyAiV2(a: Article, w: WeeklyAnalysis, raw: import("@/lib/pipeline/analyze").WeeklyAIRaw, opp: Opportunity | null): WeeklyAnalysis {
+  let detail: DetailCategory | undefined;
+  const g = (raw.detail_group ?? "").trim().toLowerCase();
+  if (g === "review") detail = { group: "review", country: null, sub: REVIEW_LABEL, label: REVIEW_LABEL };
+  else if (g === "global" || g === "domestic" || g === "competitor") {
+    const subs = TAXONOMY[g].subs as readonly string[];
+    const sub = subs.find((x) => x === (raw.detail_sub ?? "").trim());
+    if (sub) {
+      const country = g === "global" && sub !== "Industry" ? (raw.detail_country ?? "").trim() || null : null;
+      detail = { group: g, country, sub, label: labelOf({ group: g, country, sub }) };
+    }
+  }
+  const withRules = withV2(a, { ...w, detail }, opp); // fills anything the AI left out
+  const j = withRules.judgment!;
+  const judgment: WeeklyJudgment = {
+    ...j,
+    winPotential: lv(raw.win_potential, LV) ?? j.winPotential,
+    isNewProject: typeof raw.is_new_project === "boolean" ? raw.is_new_project : j.isNewProject,
+    completed: typeof raw.completed_or_operating === "boolean" ? raw.completed_or_operating : j.completed,
+    supplierStatus: lv(raw.supplier_status, ["undecided", "decided", "unknown", "order_unconfirmed"] as const) ?? j.supplierStatus,
+    supplierNote: raw.supplier_note?.trim() || j.supplierNote,
+    orderRoom: lv(raw.order_room, ["yes", "no", "unknown"] as const) ?? j.orderRoom,
+    directRelevance: lv(raw.direct_relevance, LV) ?? j.directRelevance,
+    competitorValue: lv(raw.competitor_value, ["high", "medium", "low", "none"] as const) ?? j.competitorValue,
+    lowValueType: raw.low_value_type?.trim() || j.lowValueType,
+    basis: a.excerpt && a.excerpt.length > 120 ? "body" : j.basis,
+  };
+  const lines = (raw.report_summary ?? []).map(cleanLine).filter(Boolean);
+  const aiSummary = lines.length >= 4 ? lines.slice(0, 4) : null;
+  return { ...withRules, judgment, ...(aiSummary ? { summary4: aiSummary, summary4Basis: "ai" as const } : {}) };
 }

@@ -1,19 +1,40 @@
 import { NextResponse } from "next/server";
 import { periodFromRequest } from "@/lib/weekly/api";
-import { setItem } from "@/lib/weekly/report";
-import type { ReportStatus, WeeklyCategory } from "@/lib/types";
+import { getReport, saveReport, setItem } from "@/lib/weekly/report";
+import type { ReportItem, ReportStatus, WeeklyCategory } from "@/lib/types";
 
 const STATUSES: ReportStatus[] = ["unreviewed", "selected", "excluded", "hold"];
 const CATS: WeeklyCategory[] = ["domestic", "global", "competitor", "policy", "tech", "opportunity"];
+const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
-/** 보고서 상태(선정/제외/보류) 또는 보고서 카테고리 변경. 기사 자체는 삭제하지 않음. */
+/** 보고서 상태(선정/제외/보류), 순서, 사용자 수정본(제목·구분·4줄 요약) 저장. 원본 기사 데이터는 변경하지 않음. */
 export async function POST(req: Request) {
   const { period, body } = await periodFromRequest(req);
+  // bulk re-order: { orders: [{ id, order }] }
+  if (Array.isArray(body.orders)) {
+    const r = await getReport(period);
+    for (const o of body.orders as { id: string; order: number }[]) {
+      if (typeof o?.id === "string" && Number.isFinite(o.order) && r.items[o.id]) r.items[o.id] = { ...r.items[o.id], order: Math.round(o.order), updatedAt: new Date().toISOString() };
+    }
+    await saveReport(r);
+    return NextResponse.json({ ok: true });
+  }
   const ids = (Array.isArray(body.ids) ? body.ids : [body.articleId]).filter((x): x is string => typeof x === "string");
   if (!ids.length) return NextResponse.json({ error: "articleId 필요" }, { status: 400 });
   const status = STATUSES.includes(body.status as ReportStatus) ? (body.status as ReportStatus) : undefined;
   const category = body.category === null ? null : CATS.includes(body.category as WeeklyCategory) ? (body.category as WeeklyCategory) : undefined;
+  let edits: ReportItem["edits"] | null | undefined;
+  if (body.edits === null) edits = null;
+  else if (body.edits && typeof body.edits === "object") {
+    const e = body.edits as Record<string, unknown>;
+    const lines = Array.isArray(e.summary4) ? (e.summary4 as unknown[]).map((l) => str(l, 120) ?? "").slice(0, 4) : undefined;
+    edits = {
+      ...(str(e.titleKo, 200) ? { titleKo: str(e.titleKo, 200) } : {}),
+      ...(str(e.detailLabel, 80) ? { detailLabel: str(e.detailLabel, 80) } : {}),
+      ...(lines && lines.some(Boolean) ? { summary4: [...lines, "", "", "", ""].slice(0, 4) } : {}),
+    };
+  }
   let report;
-  for (const id of ids) report = await setItem(period, id, { status, category });
+  for (const id of ids) report = await setItem(period, id, { status, category, edits });
   return NextResponse.json({ ok: true, items: Object.fromEntries(ids.map((id) => [id, report!.items[id]])) });
 }

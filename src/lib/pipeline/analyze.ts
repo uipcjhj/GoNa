@@ -4,6 +4,7 @@
 
 
 
+
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -79,9 +80,23 @@ const AnalysisSchema = z.object({
   competitor_checks: z.array(z.object({ name: z.string(), is_actual_competitor: z.boolean(), note: z.string() })).describe("For each listed competitor name appearing in the text: is it the intralogistics company or a similarly named person/entity?"),
   policy_kind: z.string().describe("For policy news: law | government_announcement | enforcement | other. Otherwise 'none'"),
   policy_effective_date: z.string().describe("Policy effective/enforcement date if stated (YYYY-MM-DD), else empty"),
+  // ---- v2: Hyundai Movex weekly report taxonomy + internal judgment (optional: rules fill gaps)
+  report_summary: z.array(z.string()).optional().describe("EXACTLY 4 Korean lines for the weekly report, no bullets or symbols (no §, ⇒). Line1: who does what. Line2: key figures (investment, size, location, schedule) as stated. Line3: technology / automation content / business scope as stated (if automation is not in the article, say it is not mentioned). Line4: meaning for Hyundai Movex or the industry (inference allowed but hedged). Each line ~20-30 Korean characters, concise report style ending in nouns like 추진/확대/구축/강화/부각. Never invent companies, amounts, equipment or suppliers; do not just restate the title."),
+  detail_group: z.string().optional().describe("global | domestic | competitor | review (review = cannot decide)"),
+  detail_country: z.string().optional().describe("For global: the project country in Korean (e.g. 폴란드, 미국, 호주) if stated, else empty"),
+  detail_sub: z.string().optional().describe("global: 투자·확장 | 제조물류 투자 | 스마트창고 투자 | 콜드체인 투자 | 자동화 운영확대 | Industry. domestic: 투자·확장 | 스마트팩토리 | 제조자동화 | 자율물류 | 피지컬 AI | 정책·지원 | 항만자동화 | Industry. competitor: 수주·계약 | 사업전략 | M&A·사업확장 | 제품·솔루션 공개 | 실증·도입 | R&D·피지컬 AI | 국내시장 진출"),
+  win_potential: z.string().optional().describe("Hyundai Movex order-win potential: high | medium | low. High only for new facility projects (planned / early construction) where automation (AS/RS, AGV/AMR, conveyor, sorter, WMS/WCS) could still be ordered. Low for completed/operating facilities, supplier already chosen, real-estate deals, leases, outlooks, product launches, exhibitions, R&D centers, MOUs without investment."),
+  is_new_project: z.boolean().optional(),
+  completed_or_operating: z.boolean().optional(),
+  supplier_status: z.string().optional().describe("undecided (article says supplier not yet chosen / tender) | decided (article names the automation equipment supplier) | unknown (cannot tell) | order_unconfirmed (article does not say whether automation will be ordered). A construction contractor is NOT an automation supplier. Do not assume undecided just because no supplier is named."),
+  supplier_note: z.string().optional().describe("Short Korean note with the evidence (quote the supplier name only if in the article)"),
+  order_room: z.string().optional().describe("yes | no | unknown — room for future automation orders"),
+  direct_relevance: z.string().optional().describe("high | medium | low — direct link to intralogistics automation / manufacturing logistics"),
+  competitor_value: z.string().optional().describe("high | medium | low | none — monitoring value as competitor news (real competitors only: KNAPP, AutoStore, Jungheinrich, Swisslog, SSI Schäfer, Daifuku, TGW, Dematic, Geek+, Hai Robotics, Exotec, Kardex, Symbotic, Korean logistics-automation SIs; LG CNS/포스코DX/삼성SDS/LX판토스 only when the article is about their logistics-automation business; ESR/Prologis are developers, not competitors)"),
+  low_value_type: z.string().optional().describe("If applicable, one of: 물류부동산 매입·매각·임대 | 전시회·행사 | R&D센터·연구소 개설 | 실투자 근거 부족한 MOU | 제품 출시 중심 | 시장 전망·통계 ; else empty"),
 });
 
-export type WeeklyAIRaw = Pick<z.infer<typeof AnalysisSchema>, "title_ko" | "weekly_categories" | "weekly_primary_category" | "weekly_summary" | "rel_business" | "rel_impact" | "rel_strategic" | "rel_credibility" | "competitor_checks" | "policy_kind" | "policy_effective_date">;
+export type WeeklyAIRaw = Pick<z.infer<typeof AnalysisSchema>, "title_ko" | "weekly_categories" | "weekly_primary_category" | "weekly_summary" | "rel_business" | "rel_impact" | "rel_strategic" | "rel_credibility" | "competitor_checks" | "policy_kind" | "policy_effective_date" | "report_summary" | "detail_group" | "detail_country" | "detail_sub" | "win_potential" | "is_new_project" | "completed_or_operating" | "supplier_status" | "supplier_note" | "order_room" | "direct_relevance" | "competitor_value" | "low_value_type">;
 
 const SYSTEM = `You are a market-intelligence analyst for HYUNDAI MOVEX, a Korean intralogistics automation company (AS/RS, 4-way shuttles, shuttle systems, AGV/AMR, conveyors, sorters, WMS/WCS, automated warehouses, production logistics, cold-chain automation, airport baggage & cargo handling systems).
 Competitors: Daifuku, Dematic, SSI Schäfer, KNAPP, Vanderlande, Swisslog.
@@ -96,11 +111,18 @@ Strict rules:
 - Keep original English titles and proper nouns as-is (company names, project names) even when writing in Korean.
 - Be conservative: general industry news without a concrete facility project should score low.
 - The weekly_* and rel_* fields serve a different purpose (weekly industry report): policy changes, competitor orders and technology shifts can be highly relevant there even when the opportunity score is low.
-- Weekly summary style example (Korean report style):
-  § 폴란드 생산시설 신설·현대화 투자 추진
-  § 부품공장·생산라인 등 설비 확충 계획
-  § 주요 제조기업의 생산능력 확대 전망
-  ⇒ 중동부유럽 공정물류 자동화 수요 주목`;
+- report_summary: exactly 4 lines in Hyundai Movex weekly-report style, without symbols. Style examples (style only — use facts from THIS article):
+  아성다이소, 경기 양주 신규 물류허브 건설 추진
+  6,000억원 투자·2029년 완공 목표
+  자동창고·GTP 등 고도 물류자동화 설비 적용
+  대형 리테일 물류거점의 자동화 투자 확대
+  (or)
+  폴란드 제조기업, 신규 생산시설 신설·현대화 추진
+  부품공장·차체용접라인 등 생산설비 확충
+  신규 제조거점 중심으로 생산능력 확대
+  공정물류·자동창고·AGV 발주 가능성 주목
+  If automation is not stated in the article, line 3 must not present it as fact (e.g. "자동화 설비 도입 여부 미공개"). If only the title/excerpt is available, summarise only what they confirm.
+- Distinguish announcement / approval / groundbreaking dates from the article's publication date.`;
 
 const CATS: ArticleCategory[] = ["opportunity", "competitor", "industry", "irrelevant"];
 const HIST: HistoryEventType[] = ["announcement", "follow_up_investment", "groundbreaking", "equipment_procurement", "tender", "completion", "update"];
@@ -135,14 +157,14 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
     const timeout = setTimeout(() => controller.abort(), 40_000);
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel())}:generateContent`,
+        `${process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"}/v1beta/models/${encodeURIComponent(aiModel())}:generateContent`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
           signal: controller.signal,
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM + "\\nReturn exactly one valid JSON object. All keys defined by the requested schema must be present; no markdown or prose outside JSON." }] },
-            contents: [{ role: "user", parts: [{ text: body + "\\n\\nReturn a JSON object with ALL of these required fields and their documented types. Do not add fields:\\n" + JSON.stringify(z.toJSONSchema(AnalysisSchema)) }] }],
+            systemInstruction: { parts: [{ text: SYSTEM + "\nReturn exactly one valid JSON object. All keys defined by the requested schema must be present; no markdown or prose outside JSON." }] },
+            contents: [{ role: "user", parts: [{ text: body + "\n\nReturn a JSON object with ALL of these fields and their documented types. Do not add fields:\n" + JSON.stringify(z.toJSONSchema(AnalysisSchema)) }] }],
             generationConfig: { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.1 },
           }),
         }
@@ -201,6 +223,9 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
     title_ko: o.title_ko, weekly_categories: o.weekly_categories, weekly_primary_category: o.weekly_primary_category, weekly_summary: o.weekly_summary,
     rel_business: o.rel_business, rel_impact: o.rel_impact, rel_strategic: o.rel_strategic, rel_credibility: o.rel_credibility,
     competitor_checks: o.competitor_checks, policy_kind: o.policy_kind, policy_effective_date: o.policy_effective_date,
+    report_summary: o.report_summary, detail_group: o.detail_group, detail_country: o.detail_country, detail_sub: o.detail_sub, win_potential: o.win_potential,
+    is_new_project: o.is_new_project, completed_or_operating: o.completed_or_operating, supplier_status: o.supplier_status, supplier_note: o.supplier_note,
+    order_room: o.order_room, direct_relevance: o.direct_relevance, competitor_value: o.competitor_value, low_value_type: o.low_value_type,
   };
   const analysis: Analysis = {
     mode: "ai",

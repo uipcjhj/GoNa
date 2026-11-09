@@ -99,9 +99,14 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
   if (mode === "weekly-analyze" && range) {
     const inRange = (await listArticles({ sinceDays: Math.ceil((Date.now() - new Date(range.start).getTime()) / 86400_000) + 2 }))
       .filter((a) => !a.isDemo && (a.publishedAt ?? a.discoveredAt) >= range.start && (a.publishedAt ?? a.discoveredAt) < range.end);
-    const need = inRange.filter((a) => a.status === "queued" || (a.status === "analyzed" && (!a.weekly || (aiConfigured() ? a.weekly.mode !== "ai" : true))));
-    need.sort((a, b) => b.preScore - a.preScore);
-    job.analyzeQueue = need.slice(0, settings.weekly.maxAnalyzePerRun).map((a) => a.id);
+    // queued articles always; with an AI key, only the most relevant non-AI candidates (protects the API quota).
+    // Without a key, rule-based classification is recomputed on read for free, so nothing else needs a job.
+    const queued = inRange.filter((a) => a.status === "queued").sort((a, b) => b.preScore - a.preScore);
+    const aiCands = aiConfigured()
+      ? inRange.filter((a) => a.status === "analyzed" && a.weekly?.mode !== "ai").sort((a, b) => (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0)).slice(0, Math.max(5, settings.weekly.aiPerRun ?? 30))
+      : [];
+    const need = [...queued.slice(0, settings.weekly.maxAnalyzePerRun), ...aiCands];
+    job.analyzeQueue = need.map((a) => a.id);
     job.stats.queued = job.analyzeQueue.length;
     log(job, "info", `분석 대상 ${job.analyzeQueue.length}건 (미분석 ${need.filter((a) => a.status === "queued").length}건 포함)${aiConfigured() ? "" : " — AI 미연결: 규칙 기반 분류"}`);
   }

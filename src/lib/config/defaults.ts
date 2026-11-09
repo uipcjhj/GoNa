@@ -66,14 +66,34 @@ export const DEFAULT_SIGNALS: KeywordGroup[] = [
   g("Automation Modernization", ["modernization", "retrofit", "automation upgrade"]),
 ];
 
-export const DEFAULT_COMPETITORS = [
-  { name: "Daifuku", enabled: true, aliases: ["Daifuku", "Elettric80"] },
-  { name: "Dematic", enabled: true, aliases: ["Dematic"] },
-  { name: "SSI Schäfer", enabled: true, aliases: ["SSI Schaefer", "SSI Schäfer", "SSI SCHAEFER"] },
-  { name: "KNAPP", enabled: true, aliases: ["KNAPP"] },
-  { name: "Vanderlande", enabled: true, aliases: ["Vanderlande"] },
-  { name: "Swisslog", enabled: true, aliases: ["Swisslog"] },
+export const DEFAULT_COMPETITORS: Settings["competitors"] = [
+  { name: "Daifuku", enabled: true, aliases: ["Daifuku", "Elettric80", "다이후쿠"] },
+  { name: "Dematic", enabled: true, aliases: ["Dematic", "데마틱"] },
+  { name: "SSI Schäfer", enabled: true, aliases: ["SSI Schaefer", "SSI Schäfer", "SSI SCHAEFER", "SSI쉐퍼"] },
+  { name: "KNAPP", enabled: true, aliases: ["KNAPP", "크납"] },
+  { name: "Vanderlande", enabled: true, aliases: ["Vanderlande", "반더란데"] },
+  { name: "Swisslog", enabled: true, aliases: ["Swisslog", "스위스로그"] },
 ];
+
+/** Added with the weekly taxonomy v2 (merged into saved settings once). */
+export const COMPETITORS_V2: Settings["competitors"] = [
+  { name: "AutoStore", enabled: true, aliases: ["AutoStore", "오토스토어"] },
+  { name: "Jungheinrich", enabled: true, aliases: ["Jungheinrich", "융하인리히"] },
+  { name: "TGW", enabled: true, aliases: ["TGW Logistics", "TGW"], requiresContext: true },
+  { name: "Geek+", enabled: true, aliases: ["Geek+", "Geekplus", "Geek Plus", "긱플러스", "지크플러스"] },
+  { name: "Hai Robotics", enabled: true, aliases: ["Hai Robotics", "하이로보틱스"] },
+  { name: "Exotec", enabled: true, aliases: ["Exotec", "엑소텍"] },
+  { name: "Kardex", enabled: true, aliases: ["Kardex", "카덱스"] },
+  { name: "Symbotic", enabled: true, aliases: ["Symbotic", "심보틱"] },
+  // 국내 SI·유사 경쟁군: 물류자동화·제조물류 사업 기사에 한해서만 경쟁사로 판단
+  { name: "LG CNS", enabled: true, aliases: ["LG CNS", "LG씨엔에스", "엘지씨엔에스"], requiresContext: true, note: "물류자동화·제조물류 사업 기사에 한함" },
+  { name: "포스코DX", enabled: true, aliases: ["포스코DX", "POSCO DX"], requiresContext: true, note: "물류자동화·제조물류 사업 기사에 한함" },
+  { name: "삼성SDS", enabled: true, aliases: ["삼성SDS", "Samsung SDS"], requiresContext: true, note: "물류자동화·제조물류 사업 기사에 한함" },
+  { name: "LX판토스", enabled: true, aliases: ["LX판토스", "LX Pantos"], requiresContext: true, note: "자체 물류자동화 기술의 외부 사업화 기사에 한함" },
+];
+
+/** 물류부동산 개발사 — 경쟁사가 아니라 투자·개발 주체 */
+export const DEFAULT_DEVELOPERS = ["ESR", "Prologis", "프롤로지스", "GLP", "Goodman", "굿맨", "Segro", "Panattoni", "CTP", "Blackstone", "Link Logistics", "Mapletree", "켄달스퀘어", "Kendall Square"];
 
 export const DEFAULT_RSS: Settings["rssFeeds"] = [
   { name: "Supply Chain Dive", url: "https://www.supplychaindive.com/feeds/news/", enabled: true, scope: "global", lang: "en" },
@@ -90,6 +110,14 @@ export const WEEKLY_RSS: Settings["rssFeeds"] = [
   { name: "The Robot Report", url: "https://www.therobotreport.com/feed/", enabled: true, scope: "global", lang: "en" },
   { name: "Robotics & Automation News", url: "https://roboticsandautomationnews.com/feed/", enabled: true, scope: "global", lang: "en" },
 ];
+
+/** Coverage added in v2: AS/RS, WMS/WCS, AGV/AMR/무인지게차, 피킹·분류·팔레타이징, 피지컬 AI, 항만·공항·철도, 콜드체인·제약,
+ * and a broader regional spread for global news (Europe, SE Asia, Middle East, Australia, not only the US). */
+const WEEKLY_V2_QUERIES = {
+  domestic: ["무인지게차 OR 자율주행 물류로봇", "피킹 로봇 OR 분류 자동화 OR 팔레타이징", "항만 자동화 OR 스마트항만", "제약 물류센터 OR 콜드체인 센터", "반도체 공장 증설 물류", "물류 자동화 수주 OR 자동창고 구축"],
+  global: ["automated warehouse Germany OR \"United Kingdom\"", "distribution center Singapore OR Malaysia OR Thailand", "logistics park Saudi Arabia OR Dubai", "automated storage retrieval system contract", "fulfillment center automation Canada", "cold chain warehouse Europe investment", "port automation terminal investment"],
+  techKo: ["휴머노이드 물류 OR 피지컬 AI 제조", "AS/RS 자동창고 기술", "WES 창고실행시스템"],
+};
 
 export const DEFAULT_WEEKLY: WeeklySettings = {
   domesticQueries: [
@@ -116,7 +144,10 @@ export const DEFAULT_WEEKLY: WeeklySettings = {
   competitorQueriesKo: ["다이후쿠 OR 데마틱 OR 스위스로그", "크납 OR 반더란데 OR SSI쉐퍼"],
   googleNews: true,
   gdelt: true,
-  recommendCount: 18,
+  recommendCount: 12,
+  rejectCount: 8,
+  aiPerRun: 30,
+  queriesVersion: 2,
   maxAnalyzePerRun: 150,
 };
 
@@ -167,7 +198,9 @@ export const DEFAULT_SETTINGS: Settings = {
   industries: DEFAULT_INDUSTRIES,
   signals: DEFAULT_SIGNALS,
   customQueries: [],
-  competitors: DEFAULT_COMPETITORS,
+  competitors: [...DEFAULT_COMPETITORS, ...COMPETITORS_V2],
+  competitorsVersion: 2,
+  developers: DEFAULT_DEVELOPERS,
   rssFeeds: [...DEFAULT_RSS, ...WEEKLY_RSS],
   weekly: DEFAULT_WEEKLY,
   weights: DEFAULT_WEIGHTS,
@@ -203,6 +236,27 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
     merged.showDemoData = false;
     merged.demoPrefVersion = 2;
   }
+  // migration v2: expanded competitor list (keeps the user's own entries and edits)
+  if (stored && stored.competitorsVersion !== 2) {
+    const have = new Set((stored.competitors ?? []).map((c) => c.name.toLowerCase()));
+    merged.competitors = [...(stored.competitors ?? DEFAULT_COMPETITORS), ...COMPETITORS_V2.filter((c) => !have.has(c.name.toLowerCase()))];
+    merged.competitorsVersion = 2;
+  }
+  merged.developers = stored?.developers ?? DEFAULT_DEVELOPERS;
+  // migration v2: weekly selection defaults (12 picks) + wider search coverage
+  if (stored?.weekly && stored.weekly.queriesVersion !== 2) {
+    const add = (cur: string[], extra: string[]) => [...cur, ...extra.filter((q) => !cur.includes(q))];
+    merged.weekly = {
+      ...merged.weekly,
+      recommendCount: 12,
+      rejectCount: 8,
+      aiPerRun: 30,
+      queriesVersion: 2,
+      domesticQueries: add(merged.weekly.domesticQueries, WEEKLY_V2_QUERIES.domestic),
+      globalQueries: add(merged.weekly.globalQueries, WEEKLY_V2_QUERIES.global),
+      techQueriesKo: add(merged.weekly.techQueriesKo, WEEKLY_V2_QUERIES.techKo),
+    };
+  }
   // migration: settings saved before the weekly feature get the new domestic/global feeds once
   if (stored && !stored.weekly && stored.rssFeeds) {
     const have = new Set(stored.rssFeeds.map((f) => f.url));
@@ -210,3 +264,8 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
   }
   return merged;
 }
+
+// fresh installs get the v2 coverage directly
+DEFAULT_WEEKLY.domesticQueries.push(...WEEKLY_V2_QUERIES.domestic);
+DEFAULT_WEEKLY.globalQueries.push(...WEEKLY_V2_QUERIES.global);
+DEFAULT_WEEKLY.techQueriesKo.push(...WEEKLY_V2_QUERIES.techKo);

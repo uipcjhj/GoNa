@@ -8,5 +8,5 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const { period } = await periodFromRequest(req);
   const view = await loadWeekly(period);
-  return NextResponse.json({ period, data: buildExport(view.rows) });
+  return NextResponse.json({ period, data: buildExport(view.rows, view.curation) });
 }

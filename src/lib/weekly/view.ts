@@ -1,13 +1,15 @@
 import "server-only";
 import { ensureInitialized } from "@/lib/data";
-import { getSettings, listArticles, listOpportunities } from "@/lib/db/repo";
+import { getArticles, getSettings, listArticles, listOpportunities } from "@/lib/db/repo";
 import { aiConfigured } from "@/lib/pipeline/analyze";
 import { jaccard, normalizeTitle } from "@/lib/util/text";
 import { localDateStr } from "@/lib/util/week";
 import { dateStatus, weeklyRules } from "./classify";
+import { withV2 } from "./taxonomy";
 import { daysOf, type Period } from "./period";
-import { getReport } from "./report";
-import type { AccessType, DateStatus, Priority, RelevanceBreakdown, ReportStatus, SourceType, VerificationStatus, WeeklyCategory, WeeklyReport } from "@/lib/types";
+import { getReport, previousReports, saveReport } from "./report";
+import { curate } from "./curate";
+import type { AccessType, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportItem, ReportStatus, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
 
 export interface WeeklyRow {
   id: string; url: string; title: string; titleKo: string | null; sourceName: string; sourceType: SourceType;
@@ -19,6 +21,8 @@ export interface WeeklyRow {
   verification: VerificationStatus; access: AccessType; viaGoogleNews: boolean; altState: "found" | "none" | "not_searched" | null;
   competitors: string[]; competitorNotes: string[]; competitorActivity: string;
   reportStatus: ReportStatus; recommended: boolean; isDemo: boolean; dupGroup: string | null; excerpt: string | null; policyNote: string | null;
+  detail: DetailCategory | null; judgment: WeeklyJudgment | null; summary4: string[]; summary4Basis: WeeklyAnalysis["summary4Basis"] | null;
+  order: number | null; edits: ReportItem["edits"] | null; sourceDomain: string; publishedAtBasis: string; competitorChecks: { name: string; confirmed: boolean; note: string }[];
 }
 
 export interface WeeklyView {
@@ -30,6 +34,8 @@ export interface WeeklyView {
   dupGroups: { key: string; ids: string[] }[];
   ai: boolean;
   hotWatch: { id: string; company: string; projectName: string; country: string; score: number; priority: Priority; articleId: string; inPeriod: boolean; isDemo: boolean }[];
+  curation: Curation;
+  target: number;
 }
 
 export async function loadWeekly(p: Period): Promise<WeeklyView> {
@@ -49,7 +55,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     const opp = a.opportunityId ? oppById.get(a.opportunityId) ?? null : null;
     // AI results are stored; rule-based classification is cheap and deterministic, so it is recomputed on read
     // (older records and rule improvements apply immediately, no network / API cost)
-    const w = a.status !== "analyzed" ? null : a.weekly?.mode === "ai" ? a.weekly : { ...weeklyRules(a, settings, opp), ...(a.weekly?.summaryLines.length ? { summaryLines: a.weekly.summaryLines } : {}) };
+    // AI results are stored (v2 fields filled by rules if the AI run predates them); rule-based results are recomputed on read
+    const w = a.status !== "analyzed" ? null : a.weekly?.mode === "ai" ? withV2(a, a.weekly, opp) : { ...weeklyRules(a, settings, opp), ...(a.weekly?.summaryLines.length ? { summaryLines: a.weekly.summaryLines } : {}) };
     const item = report.items[a.id];
     const auto = w?.primaryCategory ?? null;
     const ds = dateStatus(a);
@@ -69,6 +76,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
       competitors: a.competitors, competitorNotes: (w?.competitorChecks ?? []).filter((c) => !c.confirmed).map((c) => `${c.name}: ${c.note}`),
       competitorActivity: a.analysis?.competitorActivity ?? "",
       reportStatus: item?.status ?? "unreviewed", recommended: Boolean(item?.recommended), isDemo: a.isDemo, dupGroup: null,
+      detail: w?.detail ?? null, judgment: w?.judgment ?? null, summary4: w?.summary4 ?? [], summary4Basis: w?.summary4Basis ?? null,
+      order: item?.order ?? null, edits: item?.edits ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
       excerpt: a.excerpt, policyNote: w?.policy ? `${w.policy.kind === "law" ? "법령" : w.policy.kind === "enforcement" ? "시행" : w.policy.kind === "government_announcement" ? "정부 발표" : "기타"}${w.policy.effectiveDate ? ` · 시행일 ${w.policy.effectiveDate}` : ""}` : null,
     });
   }
@@ -104,7 +113,38 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     .map((o) => ({ id: o.id, company: o.company, projectName: o.projectName, country: o.country, score: o.score, priority: o.priority, articleId: o.articleIds.find((id) => rows.some((r) => r.id === id))!, inPeriod: true, isDemo: o.isDemo }))
     .sort((a, b) => b.score - a.score);
 
-  return { rows, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch };
+  // weekly curation: computed once per period and saved (recomputed on request via "AI 추천 다시 생성")
+  const target = Math.max(5, Math.min(30, settings.weekly.recommendCount || 12));
+  let curation = report.curation ?? null;
+  if (!report.v2) {
+    // one-time migration: release v1 automatic picks the user never touched (manual choices and edits are kept)
+    let released = 0;
+    for (const [id, it] of Object.entries(report.items)) {
+      if (it.recommended && it.status === "selected" && !it.edits) { report.items[id] = { ...it, status: "unreviewed", recommended: false }; released++; }
+    }
+    report.v2 = true;
+    curation = null; // recompute with the v2 rules
+    if (released) for (const r of rows) if (report.items[r.id]?.status === "unreviewed" && r.reportStatus === "selected") r.reportStatus = "unreviewed";
+    await saveReport(report);
+  }
+  if (!curation && rows.some((r) => r.analysis !== "pending")) {
+    curation = await computeCuration(p, rows, settings.weekly.rejectCount ?? 8, target, false);
+    report.curation = curation;
+    await saveReport(report);
+  }
+  return { rows, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch, curation: curation ?? emptyCuration(target), target };
+}
+
+export function emptyCuration(target: number): Curation {
+  return { generatedAt: "", target, includeUnverified: false, picks: [], rejects: [], needsCheck: [], excludedPrevious: 0, balance: { global: 0, domestic: 0, competitor: 0 } };
+}
+
+/** Run the curation for a period, excluding stories selected in the previous two weeks. */
+export async function computeCuration(p: Period, rows: WeeklyRow[], rejectCount: number, target: number, includeUnverified: boolean): Promise<Curation> {
+  const prev = await previousReports(p, 2);
+  const prevIds = [...new Set(prev.flatMap((r) => Object.entries(r.items).filter(([, it]) => it.status === "selected").map(([id]) => id)))];
+  const prevArts = await getArticles(prevIds);
+  return curate(rows, { target, rejectCount, includeUnverified, previous: prevArts.map((a) => ({ id: a.id, title: a.weekly?.titleKo ?? a.title })) });
 }
 
 /** Distinctive figures in a headline ("420억원", "$3.8 billion", "670명") used to spot the same story across outlets. */

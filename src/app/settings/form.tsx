@@ -115,18 +115,25 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
         </Card>
         <Card>
           <CardHeader><CardTitle>경쟁사 목록</CardTitle><Button size="sm" variant="outline" onClick={() => up("competitors", [...s.competitors, { name: "", enabled: true, aliases: [] }])}><Plus className="h-3 w-3" />추가</Button></CardHeader>
-          <CardContent className="overflow-x-auto"><div className="min-w-[460px] space-y-1.5">
+          <CardContent className="overflow-x-auto"><div className="min-w-[560px] space-y-1.5">
+            <div className="grid grid-cols-[auto_140px_1fr_96px_auto] gap-2 text-xs text-slate-500"><span>사용</span><span>경쟁사</span><span>검색 별칭</span><span title="물류자동화·제조물류 사업 기사일 때만 경쟁사로 판단">문맥 필요</span><span /></div>
             {s.competitors.map((c, i) => {
               const set = (patch: Partial<typeof c>) => up("competitors", s.competitors.map((x, k) => (k === i ? { ...x, ...patch } : x)));
               return (
-                <div key={i} className="grid grid-cols-[auto_140px_1fr_auto] items-center gap-2">
+                <div key={i} className="grid grid-cols-[auto_140px_1fr_96px_auto] items-center gap-2">
                   <input type="checkbox" checked={c.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
                   <Input value={c.name} onChange={(e) => set({ name: e.target.value })} />
                   <Input value={c.aliases.join(", ")} placeholder="검색 별칭" onChange={(e) => set({ aliases: splitList(e.target.value) })} />
+                  <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" checked={Boolean(c.requiresContext)} onChange={(e) => set({ requiresContext: e.target.checked })} />물류자동화</label>
                   <Button variant="ghost" size="sm" onClick={() => up("competitors", s.competitors.filter((_, k) => k !== i))}><Trash2 className="h-3.5 w-3.5" /></Button>
                 </div>
               );
             })}
+            <p className="pt-2 text-xs text-slate-500">&lsquo;물류자동화&rsquo;에 체크한 회사(LG CNS·포스코DX·삼성SDS·LX판토스 등)는 물류자동화·제조물류 사업 기사일 때만 경쟁사로 분류합니다. 회사명이 나왔다는 이유만으로 경쟁사로 보지 않습니다.</p>
+            <label className="block pt-2 text-sm">
+              <span className="text-xs font-semibold text-slate-600">물류부동산 개발사 (경쟁사 아님 — 투자·개발 주체로 분류)</span>
+              <Input value={(s.developers ?? []).join(", ")} onChange={(e) => up("developers", splitList(e.target.value))} />
+            </label>
           </div></CardContent>
         </Card>
       </div>
@@ -164,7 +171,9 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
           <div className="space-y-2 text-sm">
             <label className="flex items-center gap-2"><input type="checkbox" checked={s.weekly.googleNews} onChange={(e) => up("weekly", { ...s.weekly, googleNews: e.target.checked })} />Google News RSS 사용 (무료)</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={s.weekly.gdelt} onChange={(e) => up("weekly", { ...s.weekly, gdelt: e.target.checked })} />GDELT 사용 (무료, 글로벌)</label>
-            <label className="block">주간 추천 기사 수<Input type="number" value={s.weekly.recommendCount} onChange={(e) => up("weekly", { ...s.weekly, recommendCount: Number(e.target.value) })} /></label>
+            <label className="block">후보 탈락 표시 수 (5~10)<Input type="number" min={5} max={10} value={s.weekly.rejectCount ?? 8} onChange={(e) => up("weekly", { ...s.weekly, rejectCount: Number(e.target.value) })} /></label>
+            <label className="block">AI 분석 1회 최대 건수 (사용량 보호)<Input type="number" min={5} max={200} value={s.weekly.aiPerRun ?? 30} onChange={(e) => up("weekly", { ...s.weekly, aiPerRun: Number(e.target.value) })} /></label>
+            <label className="block">주간 추천 기사 수 (기본 12)<Input type="number" value={s.weekly.recommendCount} onChange={(e) => up("weekly", { ...s.weekly, recommendCount: Number(e.target.value) })} /></label>
             <label className="block">1회 최대 분석 기사 수 (AI 연결 시 비용 영향)<Input type="number" value={s.weekly.maxAnalyzePerRun} onChange={(e) => up("weekly", { ...s.weekly, maxAnalyzePerRun: Number(e.target.value) })} /></label>
           </div>
         </CardContent>

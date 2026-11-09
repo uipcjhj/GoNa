@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const { period } = await periodFromRequest(req);
   const view = await loadWeekly(period);
-  const data = buildExport(view.rows);
-  if (!data.industry.length) return Response.json({ error: "선정된 기사가 없습니다. 기사를 선정하거나 '보고서 생성'으로 추천을 받으세요." }, { status: 400 });
+  const data = buildExport(view.rows, view.curation);
+  if (!data.report.length) return Response.json({ error: "선정된 기사가 없습니다. 기사를 선정하거나 'AI 추천 다시 생성'을 눌러 추천을 받으세요." }, { status: 400 });
   const buf = await buildWeeklyWorkbook(data, `${period.startDate} ~ ${period.endDate}`);
   const name = `현대무벡스_주간업계동향_${period.startDate}_${period.endDate}.xlsx`;
   return new Response(new Uint8Array(buf), {

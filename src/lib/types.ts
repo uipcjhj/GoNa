@@ -147,6 +147,36 @@ export interface CompetitorCheck {
   note: string;
 }
 
+// ------------------------------------------------------------------ 주간 업계동향 실무 분류체계
+
+export type DetailGroup = "global" | "domestic" | "competitor" | "review"; // review = 확인 필요
+
+/** Hierarchical report category, e.g. { group: global, country: "폴란드", sub: "제조물류 투자" } → "글로벌시장(폴란드) / 제조물류 투자" */
+export interface DetailCategory {
+  group: DetailGroup;
+  country: string | null; // Korean country name, global only
+  sub: string; // 투자·확장 / 제조물류 투자 / … / Industry
+  label: string; // UI + Excel name
+}
+
+export type Level3 = "high" | "medium" | "low";
+export type SupplierStatus = "undecided" | "decided" | "unknown" | "order_unconfirmed"; // 미확정 / 확정 / 확인 불가 / 자동화 발주 여부 미확인
+
+/** Internal judgment items for weekly curation (facts vs inference kept apart via `basis`). */
+export interface WeeklyJudgment {
+  winPotential: Level3; // 현대무벡스 수주 가능성
+  isNewProject: boolean | null;
+  completed: boolean; // 이미 준공·오픈·가동
+  supplierStatus: SupplierStatus;
+  supplierNote: string; // e.g. "Dematic 공급 계약 (원문)" / "건설사 선정 ≠ 자동화 공급사"
+  orderRoom: "yes" | "no" | "unknown"; // 발주 여지
+  directRelevance: Level3; // 현대무벡스 사업영역 직접 연관성
+  competitorValue: Level3 | "none";
+  lowValueType: string | null; // 부동산 매입·임대 / 전시회 / R&D센터 / 실투자 없는 MOU / 제품 출시 / 시장 전망
+  basis: "body" | "title_only"; // what the judgment could rely on
+  automationMentioned: boolean;
+}
+
 export interface WeeklyAnalysis {
   mode: AnalysisMode; // ai | rules | demo
   analyzedAt: string;
@@ -163,13 +193,38 @@ export interface WeeklyAnalysis {
   competitorChecks: CompetitorCheck[];
   policy: { kind: "law" | "government_announcement" | "enforcement" | "other" | "none"; effectiveDate: string | null; note: string } | null;
   eventDate: string | null;
+  // v2 (실무 분류체계) — optional so older stored records stay valid; filled by rules on read when missing
+  detail?: DetailCategory;
+  judgment?: WeeklyJudgment;
+  summary4?: string[]; // 보고서용 정확히 4줄 (기호 없음)
+  summary4Basis?: "ai" | "rules_title" | "rules_excerpt"; // rules_* = 규칙 기반 (제목·발췌만 근거)
 }
 
 export interface ReportItem {
   status: ReportStatus;
-  category: WeeklyCategory | null; // 사용자가 지정한 보고서 기본 카테고리
+  category: WeeklyCategory | null; // 사용자가 지정한 보고서 기본 카테고리 (화면 필터)
   recommended: boolean;
   updatedAt: string;
+  order?: number; // 보고서 순서 (보고서 편집에서 드래그)
+  edits?: { titleKo?: string; detailLabel?: string; summary4?: string[] }; // 사용자 수정본 (원본 기사 데이터와 별도 저장)
+}
+
+export interface CurationEntry {
+  articleId: string;
+  rank: number;
+  reasons: string[]; // why it was recommended (shown to the user)
+  priority: number; // curation score
+}
+
+export interface Curation {
+  generatedAt: string;
+  target: number;
+  includeUnverified: boolean;
+  picks: CurationEntry[];
+  rejects: { articleId: string; reason: string; detail: string; monitoring: boolean }[];
+  needsCheck: { articleId: string; reason: string }[];
+  excludedPrevious: number; // stories already reported in previous weeks
+  balance: { global: number; domestic: number; competitor: number };
 }
 
 export interface WeeklyReport {
@@ -180,6 +235,8 @@ export interface WeeklyReport {
   end: string; // ISO (exclusive)
   items: Record<string, ReportItem>;
   recommendedAt: string | null;
+  curation?: Curation | null;
+  v2?: boolean; // v2 curation applied (old v1 auto-recommendations released once)
   updatedAt: string;
 }
 
@@ -361,7 +418,10 @@ export interface WeeklySettings {
   competitorQueriesKo: string[];
   googleNews: boolean;
   gdelt: boolean;
-  recommendCount: number; // 15~20
+  recommendCount: number; // 최종 추천 기사 수 (기본 12)
+  rejectCount?: number; // 후보 탈락 표시 수 (5~10)
+  aiPerRun?: number; // AI 분석 1회 최대 건수 (API 사용량 보호)
+  queriesVersion?: number;
   maxAnalyzePerRun: number;
 }
 
@@ -370,7 +430,9 @@ export interface Settings {
   industries: KeywordGroup[];
   signals: KeywordGroup[];
   customQueries: string[];
-  competitors: { name: string; enabled: boolean; aliases: string[] }[];
+  competitors: { name: string; enabled: boolean; aliases: string[]; requiresContext?: boolean; note?: string }[];
+  competitorsVersion?: number; // 2 = expanded list (AutoStore, TGW, Geek+, … + 국내 SI)
+  developers?: string[]; // 물류부동산 개발사 (경쟁사 아님 — 투자·개발 주체)
   rssFeeds: { name: string; url: string; enabled: boolean; scope?: "domestic" | "global"; lang?: "ko" | "en" }[];
   weekly: WeeklySettings;
   weights: ScoringWeights;
