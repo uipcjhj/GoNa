@@ -979,7 +979,7 @@ async function endingFixTests(label, device) {
   // 아이폰 상황 재현 — 오디오 관리자의 실제 '활성 배경음악 수'(소리 나는 <audio> + 엔딩 버퍼 + 합성)를 50ms 마다 기록
   const sample = (ms) => G((d) => new Promise((res) => { let mx = 0; const t0 = performance.now(); const id = setInterval(() => { mx = Math.max(mx, window.__sound.bgmDebug().active); if (performance.now() - t0 > d) { clearInterval(id); res(mx); } }, 50); }), ms);
   // ① play() 가 늦게 끝나는 사이 엔딩 곡으로 바뀜
-  await G(() => { const s = window.__sound; const el = s.bgmEl; s.stopMusic(); const orig = el.play; el.play = function () { el.play = orig; const p = orig.call(el); return new Promise((r) => setTimeout(() => r(p), 900)); }; s.startMusic('title'); s.playEndingTrack(30); });
+  await G(() => { const s = window.__sound; const el = s.bgmEl; s.stopMusic(); const orig = el.play; el.play = function () { el.play = orig; const p = orig.call(el); p.catch(() => {}); return new Promise((r) => setTimeout(() => r(p), 900)); }; s.startMusic('title'); s.playEndingTrack(30); });
   const slow = await sample(1800);
   // ② 백그라운드 → 복귀
   await G(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
