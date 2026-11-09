@@ -1,0 +1,160 @@
+{
+ "source": "art-src/ending/sprite-sheet-v2/source-6x.png (1168x880 x6 nearest)",
+ "frame_size": [
+  320,
+  384
+ ],
+ "pixel_scale": 4,
+ "anchor": "bottom-center (feet 8px above frame bottom)",
+ "characters": {
+  "gona": {
+   "idle": {
+    "frames": [
+     "frames/gona/idle_00.png",
+     "frames/gona/idle_01.png"
+    ],
+    "fps": 2.5
+   },
+   "walk": {
+    "frames": [
+     "frames/gona/walk_00.png",
+     "frames/gona/walk_01.png",
+     "frames/gona/walk_02.png",
+     "frames/gona/walk_03.png"
+    ],
+    "fps": 7
+   },
+   "run": {
+    "frames": [
+     "frames/gona/run_00.png",
+     "frames/gona/run_01.png",
+     "frames/gona/run_02.png",
+     "frames/gona/run_03.png",
+     "frames/gona/run_04.png"
+    ],
+    "fps": 10
+   },
+   "happy": {
+    "frames": [
+     "frames/gona/happy_00.png",
+     "frames/gona/happy_01.png",
+     "frames/gona/happy_02.png"
+    ],
+    "fps": 5
+   },
+   "open_arms": {
+    "frames": [
+     "frames/gona/open_arms_00.png",
+     "frames/gona/open_arms_01.png",
+     "frames/gona/open_arms_02.png"
+    ],
+    "fps": 5
+   },
+   "receive_kiss": {
+    "frames": [
+     "frames/gona/receive_kiss_00.png",
+     "frames/gona/receive_kiss_01.png",
+     "frames/gona/receive_kiss_02.png"
+    ],
+    "fps": 4
+   },
+   "tickle": {
+    "frames": [
+     "frames/gona/tickle_00.png",
+     "frames/gona/tickle_01.png",
+     "frames/gona/tickle_02.png"
+    ],
+    "fps": 6
+   }
+  },
+  "mom": {
+   "idle": {
+    "frames": [
+     "frames/mom/idle_00.png",
+     "frames/mom/idle_01.png"
+    ],
+    "fps": 2.5
+   },
+   "walk": {
+    "frames": [
+     "frames/mom/walk_00.png",
+     "frames/mom/walk_01.png",
+     "frames/mom/walk_02.png"
+    ],
+    "fps": 7
+   },
+   "happy": {
+    "frames": [
+     "frames/mom/happy_00.png",
+     "frames/mom/happy_01.png"
+    ],
+    "fps": 5
+   },
+   "wave": {
+    "frames": [
+     "frames/mom/wave_00.png"
+    ],
+    "fps": 5
+   },
+   "open_arms": {
+    "frames": [
+     "frames/mom/open_arms_00.png",
+     "frames/mom/open_arms_01.png"
+    ],
+    "fps": 5
+   },
+   "hug": {
+    "frames": [
+     "frames/mom/hug_00.png",
+     "frames/mom/hug_01.png",
+     "frames/mom/hug_02.png",
+     "frames/mom/hug_03.png"
+    ],
+    "fps": 4
+   },
+   "smile": {
+    "frames": [
+     "frames/mom/smile_00.png",
+     "frames/mom/smile_01.png"
+    ],
+    "fps": 2
+   }
+  },
+  "mom_hug": {
+   "mom_hug": {
+    "frames": [
+     "frames/mom_hug/mom_hug_00.png",
+     "frames/mom_hug/mom_hug_01.png",
+     "frames/mom_hug/mom_hug_02.png",
+     "frames/mom_hug/mom_hug_03.png",
+     "frames/mom_hug/mom_hug_04.png"
+    ],
+    "fps": 3
+   }
+  },
+  "grandma_kiss": {
+   "grandma_kiss": {
+    "frames": [
+     "frames/grandma_kiss/grandma_kiss_00.png",
+     "frames/grandma_kiss/grandma_kiss_01.png",
+     "frames/grandma_kiss/grandma_kiss_02.png",
+     "frames/grandma_kiss/grandma_kiss_03.png",
+     "frames/grandma_kiss/grandma_kiss_04.png"
+    ],
+    "fps": 3
+   }
+  },
+  "uncle_sniff": {
+   "uncle_sniff": {
+    "frames": [
+     "frames/uncle_sniff/uncle_sniff_00.png",
+     "frames/uncle_sniff/uncle_sniff_01.png",
+     "frames/uncle_sniff/uncle_sniff_02.png",
+     "frames/uncle_sniff/uncle_sniff_03.png",
+     "frames/uncle_sniff/uncle_sniff_04.png"
+    ],
+    "fps": 3
+   }
+  }
+ }
+}

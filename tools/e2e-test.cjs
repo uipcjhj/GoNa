@@ -844,8 +844,8 @@ async function endingArtTests(label, device) {
       const r = ov / ((a.x1 - a.x0) * (a.y1 - a.y0));
       if (r > worst) { worst = r; pair = fam[i].id + '/' + fam[j].id; }
     }
-    const g = e.gk.visible ? e.gk : e.gona;
-    return { gkey: g.texture.key, ganim: g.anims?.currentAnim?.key ?? '', t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView(g.getBounds() && { x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
+    const g = e.useSheet ? e.gk : e.gona;
+    return { sp: e.sp.visible ? e.sp.anims.currentAnim?.key ?? '' : '', gkey: g.texture.key, ganim: g.anims?.currentAnim?.key ?? '', t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView({ x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
   });
   const goto = async (sc, at) => {
     await G((t) => { const e = window.__gona.scene.getScene('Game').ending; if (e.t < t - 0.05) e.t = t - 0.05; }, SC[sc]);
@@ -857,20 +857,21 @@ async function endingArtTests(label, device) {
   check(`${label}: ending GONA from the ending sheet (not stretched)`, a.gkey === 'ech-gona' && a.gsx === a.gsy, JSON.stringify({ key: a.gkey, anim: a.ganim, s: [a.gsx, a.gsy] }));
   check(`${label}: ending scene 3 — all six family members fully on screen, faces apart`, a.allIn && a.faceOverlap < 0.12, JSON.stringify({ out: a.out, faceOverlap: a.faceOverlap, pair: a.pair, zoom: a.zoom }));
   await page.screenshot({ path: `${S}/${label}-s3.png` });
-  await goto(3, 36.8);
+  await goto(3, 33.0);
   const c = await snap();
   check(`${label}: ending scene 4 (GONA runs) — run frames playing, family all visible, GONA in frame`, c.allIn && c.gonaIn && c.gsx === c.gsy && c.ganim === 'ech-gona-run', JSON.stringify({ out: c.out, gona: c.gonaIn, anim: c.ganim }));
   await goto(4, 45.5);
   const d = await snap();
-  const momHug = d.fam.find((f) => f.id === 'mom');
-  check(`${label}: ending scene 5 (family hug) — mom hug frames + GONA held frames, everyone on screen`, d.allIn && Number.isInteger(d.zoom) && momHug.anim === 'ech-mom-hug' && d.ganim === 'ech-gona-held', JSON.stringify({ out: d.out, zoom: d.zoom, mom: momHug.anim, gona: d.ganim }));
-  await goto(5, 49.4);
-  const k = await snap();
-  check(`${label}: ending scene 6 — grandma walks over and plays the kiss frames`, k.fam.find((f) => f.id === 'halmeoni').anim === 'ech-halmeoni-kiss', JSON.stringify(k.fam.find((f) => f.id === 'halmeoni')));
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').ending.t >= 55.6, null, { timeout: 30000 });
-  const sn = await snap();
-  check(`${label}: ending scene 6 — uncle plays the sniff frames`, sn.fam.find((f) => f.id === 'samchon').anim === 'ech-samchon-sniff', JSON.stringify(sn.fam.find((f) => f.id === 'samchon')));
+  check(`${label}: ending scene 5 (mom hug) — two-person hug frames from the final sheet`, d.sp === 'esp-mom_hug' && Number.isInteger(d.zoom), JSON.stringify({ sp: d.sp, zoom: d.zoom }));
   await page.screenshot({ path: `${S}/${label}-s5.png` });
+  await goto(5, 49.6);
+  const k = await snap();
+  check(`${label}: ending scene 6 — grandma kiss contact frames`, k.sp === 'esp-grandma_kiss', JSON.stringify({ sp: k.sp }));
+  await page.screenshot({ path: `${S}/${label}-s6-kiss.png` });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').ending.t >= 56.2, null, { timeout: 30000 });
+  const sn = await snap();
+  check(`${label}: ending scene 6 — uncle sniff contact frames`, sn.sp === 'esp-uncle_sniff', JSON.stringify({ sp: sn.sp }));
+  await page.screenshot({ path: `${S}/${label}-s6-sniff.png` });
   await goto(7, 77.5);
   const f = await snap();
   check(`${label}: ending scene 8 (last family photo) — all six on screen, faces apart`, f.allIn && f.gonaIn && f.faceOverlap < 0.12, JSON.stringify({ out: f.out, faceOverlap: f.faceOverlap, pair: f.pair }));
