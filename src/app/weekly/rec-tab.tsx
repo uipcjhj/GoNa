@@ -4,7 +4,7 @@ import { ChevronDown, ChevronUp, CheckCheck, Info } from "lucide-react";
 import type { WeeklyRow } from "@/lib/weekly/view";
 import type { Curation, ReportStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { ArticleDetail, CategoryText, DateMeta, Markers, SourceButton, StatusButtons } from "./parts";
+import { ArticleDetail, CategoryText, DateMeta, Markers, SourceButton, StatusButtons, useReadOnly } from "./parts";
 
 export function importanceOf(priority: number) {
   return priority >= 85 ? { label: "중요도 높음", cls: "text-sky-700" } : priority >= 65 ? { label: "중요도 중간", cls: "text-slate-600" } : { label: "참고", cls: "text-slate-500" };
@@ -61,6 +61,7 @@ export function RecommendTab({ rows, curation, target, onSet, onSelectAll, onReg
 }) {
   const picks = curation.picks.map((p) => ({ p, r: rows.get(p.articleId) })).filter((x): x is { p: typeof x.p; r: WeeklyRow } => Boolean(x.r));
   const selectedPicks = picks.filter(({ r }) => r.reportStatus === "selected").length;
+  const readOnly = useReadOnly();
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-navy-900/50 px-4 py-3">
@@ -70,14 +71,14 @@ export function RecommendTab({ rows, curation, target, onSet, onSelectAll, onReg
           {curation.excludedPrevious > 0 && <><span className="mx-1.5 text-slate-300">|</span>지난 2주 보고 프로젝트 {curation.excludedPrevious}건 제외</>}
           {curation.needsCheck.length > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">확인 필요 {curation.needsCheck.length}건 별도 보관</span></>}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {!readOnly && <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-[13px] text-slate-500">
             <input type="checkbox" checked={curation.includeUnverified} disabled={busy} onChange={(e) => onRegenerate(e.target.checked)} />발행일 미확인 기사 포함
           </label>
           <button disabled={busy || !picks.length || selectedPicks === picks.length} onClick={onSelectAll} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-sm font-semibold text-brand-ink disabled:opacity-40">
             <CheckCheck className="h-4 w-4" />추천 {picks.length}건 모두 선정
           </button>
-        </div>
+        </div>}
       </div>
 
       {!picks.length && (

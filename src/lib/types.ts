@@ -206,7 +206,25 @@ export interface ReportItem {
   recommended: boolean;
   updatedAt: string;
   order?: number; // 보고서 순서 (보고서 편집에서 드래그)
-  edits?: { titleKo?: string; detailLabel?: string; summary4?: string[] }; // 사용자 수정본 (원본 기사 데이터와 별도 저장)
+  edits?: { titleKo?: string; detailLabel?: string; summary4?: string[]; caption?: string }; // 사용자 수정본 (원본 기사 데이터와 별도 저장)
+  image?: ReportImage | null; // PPT 기사 이미지 (출처·사용 조건 기록)
+}
+
+/** PPT article image. Never auto-inserted unless its source and usage basis are recorded; unclear rights → needs user approval. */
+export type ImageSourceKind = "article" | "press_release" | "official" | "upload";
+export interface ReportImage {
+  status: "candidate" | "approved" | "rejected";
+  source: ImageSourceKind;
+  imageUrl: string | null; // where the image file came from (null for uploads)
+  pageUrl: string | null; // page that published it (article / newsroom)
+  rights: string; // usage basis / caveat shown to the user and recorded in the PPT notes
+  caption: string; // 사진 설명 — from the publisher's own alt text / figure caption, or the user
+  captionBasis: "alt" | "figcaption" | "title" | "user" | "none";
+  assetId: string; // stored JPEG (cropped to the PPT image box)
+  width: number;
+  height: number;
+  fit: "cover" | "contain";
+  fetchedAt: string;
 }
 
 export interface CurationEntry {
@@ -237,6 +255,7 @@ export interface WeeklyReport {
   recommendedAt: string | null;
   curation?: Curation | null;
   v2?: boolean; // v2 curation applied (old v1 auto-recommendations released once)
+  pptMeta?: { vol?: number; coverDate?: string; weekTitle?: string }; // PPT 표지 Vol.·월/연도, 주차 제목 (사용자 수정값)
   updatedAt: string;
 }
 

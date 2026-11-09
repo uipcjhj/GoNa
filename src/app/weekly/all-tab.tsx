@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, Search, X } from "lucide-react
 import type { WeeklyRow } from "@/lib/weekly/view";
 import type { Curation, ReportStatus, WeeklyCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { ArticleDetail, CategoryText, Markers, STATUS_LABEL, SourceButton, StatusButtons } from "./parts";
+import { ArticleDetail, CategoryText, Markers, STATUS_LABEL, SourceButton, StatusButtons, useReadOnly } from "./parts";
 
 const PAGE = 25;
 const FILTERS: { key: "all" | WeeklyCategory | "review"; label: string }[] = [
@@ -50,6 +50,7 @@ export function DetailPanel({ r, curation, onClose, onSet, onRefresh }: { r: Wee
 }
 
 export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void }) {
+  const readOnly = useReadOnly();
   const [q, setQ] = useState("");
   const [f, setF] = useState<(typeof FILTERS)[number]["key"]>("all");
   const [status, setStatus] = useState("");
@@ -100,7 +101,7 @@ export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]
         </select>
       </div>
 
-      {checked.size > 0 && (
+      {!readOnly && checked.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sm">
           <span className="text-slate-700">{checked.size}건 선택</span>
           <button className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-brand-ink" onClick={() => { onSet([...checked], "selected"); setChecked(new Set()); }}>보고서 선정</button>
@@ -114,7 +115,7 @@ export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]
         <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-line text-left text-[13px] text-slate-500">
-              <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="이 페이지 전체 선택" checked={shown.length > 0 && shown.every((r) => checked.has(r.id))} onChange={(e) => setChecked((s) => { const n = new Set(s); shown.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} /></th>
+              {!readOnly && <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="이 페이지 전체 선택" checked={shown.length > 0 && shown.every((r) => checked.has(r.id))} onChange={(e) => setChecked((s) => { const n = new Set(s); shown.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} /></th>}
               <th className="w-52 px-3 py-3 font-medium">구분</th>
               <th className="w-24 px-3 py-3 font-medium">날짜</th>
               <th className="px-3 py-3 font-medium">제목</th>
@@ -126,7 +127,7 @@ export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]
           <tbody>
             {shown.map((r) => (
               <tr key={r.id} onClick={() => setOpenId(r.id)} className={cn("cursor-pointer border-b border-line/60 last:border-0 hover:bg-slate-50", r.reportStatus === "selected" && "bg-sky-50/60", r.reportStatus === "excluded" && "opacity-55")}>
-                <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label="선택" checked={checked.has(r.id)} onChange={(e) => setChecked((s) => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} /></td>
+                {!readOnly && <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label="선택" checked={checked.has(r.id)} onChange={(e) => setChecked((s) => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} /></td>}
                 <td className="px-3 py-3"><CategoryText r={r} className="line-clamp-2" /></td>
                 <td className={cn("whitespace-nowrap px-3 py-3 tabular", r.dateStatus === "verified" ? "text-slate-600" : "text-amber-700")}>{r.dateStatus === "verified" ? r.kstDate?.slice(5) : "미확인"}</td>
                 <td className="px-3 py-3">

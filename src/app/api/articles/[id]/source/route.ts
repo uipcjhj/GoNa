@@ -6,10 +6,13 @@ import { getArticle, saveArticles } from "@/lib/db/repo";
 import { verifyAndFetch, classifySource } from "@/lib/pipeline/verify";
 import { domainOf, isHttpUrl } from "@/lib/util/url";
 import { jaccard, normalizeTitle } from "@/lib/util/text";
+import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request, ctx: RouteContext<"/api/articles/[id]/source">) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const { id } = await ctx.params;
   const { url } = (await req.json().catch(() => ({}))) as { url?: string };
   if (!url || !isHttpUrl(url) || /news\.google\.com/.test(url)) return NextResponse.json({ error: "발행 매체의 원문 URL(https://…)을 입력하세요. Google News 주소는 사용할 수 없습니다." }, { status: 400 });

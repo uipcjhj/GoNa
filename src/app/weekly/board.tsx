@@ -2,30 +2,32 @@
 // 주간 업계동향 — curation workflow: 뉴스 수집 → AI 추천 → 사용자 검토 → 최종 선정 → Excel 출력
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Download, Loader2, MoreHorizontal, Newspaper, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Files, Loader2, MoreHorizontal, Newspaper, Presentation, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import type { Period } from "@/lib/weekly/period";
 import type { WeeklyView, WeeklyRow } from "@/lib/weekly/view";
 import type { ReportStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { postJson } from "./parts";
+import { ReadOnlyContext, postJson } from "./parts";
 import { RecommendTab } from "./rec-tab";
 import { AllTab } from "./all-tab";
 import { RejectsTab } from "./rejects-tab";
 import { EditorTab } from "./editor-tab";
+import { ExportTab } from "./export-tab";
 
-export type Tab = "rec" | "all" | "rejects" | "edit";
+export type Tab = "rec" | "all" | "rejects" | "edit" | "export";
 
 function periodQuery(p: Period): Record<string, string> {
   return p.key === "custom" && p.offset === 0 ? { p: "custom", start: p.startDate, end: p.endDate } : { w: String(p.offset) };
 }
 
-export function WeeklyBoard({ period, view, tab }: { period: Period; view: WeeklyView; tab: Tab }) {
+export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { period: Period; view: WeeklyView; tab: Tab; readOnly?: boolean }) {
+  const tab: Tab = readOnly && (tabIn === "edit" || tabIn === "export") ? "rec" : tabIn;
   const router = useRouter();
   const pq = periodQuery(period);
   const [overrides, setOverrides] = useState<Record<string, ReportStatus>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
-  const [menu, setMenu] = useState<"collect" | "more" | null>(null);
+  const [menu, setMenu] = useState<"collect" | "more" | "export" | null>(null);
   const [custom, setCustom] = useState({ open: period.key === "custom", start: period.startDate, end: period.endDate });
 
   const rows: WeeklyRow[] = useMemo(() => view.rows.map((r) => (overrides[r.id] ? { ...r, reportStatus: overrides[r.id] } : r)), [view.rows, overrides]);
@@ -75,16 +77,11 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
       refresh();
       return `추천 기사 ${d.selected}건을 보고서에 선정했습니다. '보고서 편집'에서 순서와 문구를 확인하세요.`;
     });
-  async function download() {
-    await act("excel", async () => {
-      const r = await fetch("/api/weekly/excel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pq) });
-      if (!r.ok) throw new Error((await r.json()).error ?? "다운로드 실패");
-      const blob = await r.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = decodeURIComponent((r.headers.get("Content-Disposition") ?? "").split("''")[1] ?? "주간업계동향.xlsx");
-      a.click();
-      URL.revokeObjectURL(a.href);
+  async function download(kind: "excel" | "pptx" | "both" | "analysis") {
+    await act(kind, async () => {
+      const files: ("excel" | "pptx" | "analysis")[] = kind === "both" ? ["excel", "pptx"] : [kind];
+      for (const f of files) await downloadReport(f, pq);
+      return kind === "both" ? "Excel과 PowerPoint 파일을 내려받았습니다." : undefined;
     });
   }
 
@@ -100,9 +97,11 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
     { key: "all", label: "전체 수집 기사", n: rows.length },
     { key: "rejects", label: "후보 탈락", n: view.curation.rejects.length },
     { key: "edit", label: "보고서 편집", n: selected },
-  ];
+    { key: "export", label: "내보내기·PPT 미리보기" },
+  ].filter((t) => !readOnly || (t.key !== "edit" && t.key !== "export")) as { key: Tab; label: string; n?: number }[];
 
   return (
+    <ReadOnlyContext.Provider value={readOnly}>
     <div className="mx-auto max-w-[1120px] space-y-6 pb-10">
       {/* header */}
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -130,6 +129,9 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
           </div>
         </div>
 
+        {readOnly ? (
+          <div className="rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] text-slate-500">읽기 전용 · 보고서 선정 <b className="text-slate-900">{selected}</b>건</div>
+        ) : (
         <div className="relative flex flex-wrap gap-2">
           <div className="relative">
             <button onClick={() => setMenu(menu === "collect" ? null : "collect")} disabled={!!busy} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-surface-2 px-3.5 text-sm text-slate-800 hover:border-sky-200 disabled:opacity-50">
@@ -146,9 +148,21 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
           <button onClick={() => regenerate()} disabled={!!busy} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-surface-2 px-3.5 text-sm text-slate-800 hover:border-sky-200 disabled:opacity-50">
             {busy === "curate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}AI 추천 다시 생성
           </button>
-          <button onClick={download} disabled={!!busy || !selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-brand-ink disabled:opacity-40">
-            {busy === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Excel 다운로드
-          </button>
+          <div className="relative">
+            <button onClick={() => setMenu(menu === "export" ? null : "export")} disabled={!!busy || !selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-brand-ink disabled:opacity-40">
+              {busy === "excel" || busy === "pptx" || busy === "both" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}보고서 내보내기<ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            {menu === "export" && (
+              <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
+                <div className="px-2.5 pb-1 pt-1.5 text-[13px] text-slate-500">보고서 선정 기사 <b className="text-sky-700">{selected}</b>건 · 회사 원본 양식</div>
+                <MenuItem icon={<FileSpreadsheet className="h-4 w-4" />} title="Excel 다운로드" desc="업계동향리스트 원본 양식 (선정 기사 + 후보 탈락 리스트)" onClick={() => download("excel")} />
+                <MenuItem icon={<Presentation className="h-4 w-4" />} title="PowerPoint 다운로드" desc="업계동향 PPT 원본 디자인 (표지·전체 기사 List·기사 본문)" onClick={() => download("pptx")} />
+                <MenuItem icon={<Files className="h-4 w-4" />} title="두 파일 모두 다운로드" desc="같은 선정 기사·순서·편집 문구로 Excel과 PPT를 함께 생성" onClick={() => download("both")} />
+                <MenuItem icon={<FileSpreadsheet className="h-4 w-4" />} title="분석용 Excel (3시트)" desc="주간 업계동향 · 후보 탈락 · 잠재 수주기회 시트 (기존 형식)" onClick={() => download("analysis")} />
+                <MenuItem title="PPT 미리보기·이미지 확인" desc="표지·목록·본문을 확인하고 이미지·Vol.·날짜를 조정" onClick={() => { setMenu(null); setTab("export"); }} />
+              </div>
+            )}
+          </div>
           <div className="relative">
             <button onClick={() => setMenu(menu === "more" ? null : "more")} aria-label="더보기" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-surface-2 text-slate-600 hover:border-sky-200"><MoreHorizontal className="h-4 w-4" /></button>
             {menu === "more" && (
@@ -159,10 +173,11 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
             )}
           </div>
         </div>
+        )}
       </header>
 
       {msg && <div role="status" className={cn("rounded-lg px-4 py-2.5 text-sm", msg.error ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-800")}>{msg.text}</div>}
-      {!view.ai && <p className="text-[13px] text-amber-700">AI 미연결 — 구분·판단·4줄 요약은 규칙 기반(제목·발췌 근거)입니다. 보고서 편집에서 문장을 검토하세요.</p>}
+      {!view.ai && !readOnly && <p className="text-[13px] text-amber-700">AI 미연결 — 구분·판단·4줄 요약은 규칙 기반(제목·발췌 근거)입니다. 보고서 편집에서 문장을 검토하세요.</p>}
 
       {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="요약 지표">
@@ -187,9 +202,26 @@ export function WeeklyBoard({ period, view, tab }: { period: Period; view: Weekl
       {tab === "rec" && <RecommendTab rows={byId} curation={view.curation} target={view.target} busy={!!busy} onSet={setStatus} onSelectAll={selectAll} onRegenerate={(inc) => regenerate(inc)} onRefresh={refresh} />}
       {tab === "all" && <AllTab rows={rows} curation={view.curation} onSet={setStatus} onRefresh={refresh} />}
       {tab === "rejects" && <RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} />}
-      {tab === "edit" && <EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} />}
+      {tab === "edit" && !readOnly && <EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} />}
+      {tab === "export" && !readOnly && <ExportTab pq={pq} selected={selected} onDownload={download} busy={busy} />}
     </div>
+    </ReadOnlyContext.Provider>
   );
+}
+
+/** POST → file download (Excel / PowerPoint). */
+export async function downloadReport(kind: "excel" | "pptx" | "analysis", pq: Record<string, string>) {
+  const url = kind === "pptx" ? "/api/weekly/pptx" : "/api/weekly/excel";
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "analysis" ? { ...pq, format: "analysis" } : pq) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "다운로드 실패");
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = decodeURIComponent((r.headers.get("Content-Disposition") ?? "").split("''")[1] ?? (kind === "pptx" ? "주간업계동향.pptx" : "주간업계동향.xlsx"));
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 function MenuItem({ title, desc, onClick, icon }: { title: string; desc: string; onClick: () => void; icon?: React.ReactNode }) {

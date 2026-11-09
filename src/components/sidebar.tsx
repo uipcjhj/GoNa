@@ -3,20 +3,42 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, Target, Newspaper, Swords, FileSpreadsheet, Settings, History, Radar, Menu, X, CalendarRange } from "lucide-react";
+import { LayoutDashboard, Target, Newspaper, Swords, FileSpreadsheet, Settings, History, Radar, Menu, X, CalendarRange, Eye, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SystemStatus } from "@/lib/status";
 
 export const NAV = [
-  { href: "/", label: "대시보드", desc: "수주기회 탐지 현황", icon: LayoutDashboard },
-  { href: "/opportunities", label: "수주기회", desc: "프로젝트 목록·상세", icon: Target },
-  { href: "/weekly", label: "주간 업계동향", desc: "주간 스크랩·보고서", icon: CalendarRange },
-  { href: "/news", label: "뉴스 피드", desc: "수집 기사 전체", icon: Newspaper },
-  { href: "/competitors", label: "경쟁사 동향", desc: "경쟁사 모니터링", icon: Swords },
-  { href: "/report", label: "수주기회 Excel", desc: "간편 엑셀 출력", icon: FileSpreadsheet },
-  { href: "/runs", label: "실행 기록", desc: "수집 작업 이력", icon: History },
-  { href: "/settings", label: "설정", desc: "키워드·가중치·수집", icon: Settings },
+  { href: "/", label: "대시보드", desc: "수주기회 탐지 현황", icon: LayoutDashboard, viewer: true },
+  { href: "/opportunities", label: "수주기회", desc: "프로젝트 목록·상세", icon: Target, viewer: true },
+  { href: "/weekly", label: "주간 업계동향", desc: "주간 스크랩·보고서", icon: CalendarRange, viewer: true },
+  { href: "/news", label: "뉴스 피드", desc: "수집 기사 전체", icon: Newspaper, viewer: true },
+  { href: "/competitors", label: "경쟁사 동향", desc: "경쟁사 모니터링", icon: Swords, viewer: true },
+  { href: "/report", label: "수주기회 Excel", desc: "간편 엑셀 출력", icon: FileSpreadsheet, viewer: false },
+  { href: "/runs", label: "실행 기록", desc: "수집 작업 이력", icon: History, viewer: false },
+  { href: "/settings", label: "설정", desc: "키워드·가중치·수집", icon: Settings, viewer: false },
 ];
+
+export type NavRole = "admin" | "viewer";
+const navFor = (role: NavRole) => NAV.filter((n) => role === "admin" || n.viewer);
+
+/** Read-only badge + logout (shown when password protection is on). */
+export function AccountBox({ role, auth }: { role: NavRole; auth: boolean }) {
+  if (!auth) return null;
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.replace("/login");
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-navy-900/70 p-3 text-xs text-slate-600">
+      {role === "viewer" ? (
+        <div className="flex items-start gap-2"><Eye className="mt-0.5 h-4 w-4 shrink-0 text-brand" /><span><b className="text-slate-900">읽기 전용 공유 모드</b><br />조회만 가능합니다. 수집·분석·편집 기능은 관리자만 사용할 수 있습니다.</span></div>
+      ) : (
+        <div className="text-slate-500">관리자로 로그인됨</div>
+      )}
+      <button type="button" onClick={logout} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-900"><LogOut className="h-3.5 w-3.5" /> 로그아웃</button>
+    </div>
+  );
+}
 
 const isActive = (path: string, href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
@@ -52,11 +74,11 @@ function StatusBox({ status }: { status: SystemStatus }) {
   );
 }
 
-function NavList({ onNavigate, large }: { onNavigate?: () => void; large?: boolean }) {
+function NavList({ onNavigate, large, role }: { onNavigate?: () => void; large?: boolean; role: NavRole }) {
   const path = usePathname();
   return (
     <nav className="space-y-1" aria-label="주 메뉴">
-      {NAV.map((n) => {
+      {navFor(role).map((n) => {
         const active = isActive(path, n.href);
         return (
           <Link
@@ -84,18 +106,18 @@ function NavList({ onNavigate, large }: { onNavigate?: () => void; large?: boole
 }
 
 /** Desktop sidebar (≥ lg). */
-export function Sidebar({ status }: { status: SystemStatus }) {
+export function Sidebar({ status, role }: { status: SystemStatus; role: NavRole }) {
   return (
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-navy-950/90 px-3 pb-6 lg:flex">
       <div className="flex h-14 items-center px-2"><Brand /></div>
-      <NavList />
-      <div className="mt-auto"><StatusBox status={status} /></div>
+      <NavList role={role} />
+      <div className="mt-auto space-y-3">{role === "admin" && <StatusBox status={status} />}<AccountBox role={role} auth={status.auth} /></div>
     </aside>
   );
 }
 
 /** Mobile/tablet hamburger (< lg): button in the top header + full-height drawer. */
-export function MobileNav({ status }: { status: SystemStatus }) {
+export function MobileNav({ status, role }: { status: SystemStatus; role: NavRole }) {
   const [open, setOpen] = useState(false);
   const path = usePathname();
   const current = NAV.find((n) => isActive(path, n.href));
@@ -136,8 +158,8 @@ export function MobileNav({ status }: { status: SystemStatus }) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <NavList large onNavigate={() => setOpen(false)} />
-            <div className="mt-auto"><StatusBox status={status} /></div>
+            <NavList large role={role} onNavigate={() => setOpen(false)} />
+            <div className="mt-auto space-y-3">{role === "admin" && <StatusBox status={status} />}<AccountBox role={role} auth={status.auth} /></div>
           </div>
         </div>,
         document.body, // rendered at the root: the blurred sticky header would otherwise clip a fixed overlay

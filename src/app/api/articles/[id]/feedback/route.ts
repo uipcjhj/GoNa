@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getArticle, saveArticles } from "@/lib/db/repo";
+import { requireAdmin } from "@/lib/session";
 
 export async function POST(req: Request, ctx: RouteContext<"/api/articles/[id]/feedback">) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const { id } = await ctx.params;
   const { value } = (await req.json().catch(() => ({}))) as { value?: "useful" | "not_useful" | null };
   const a = await getArticle(id);

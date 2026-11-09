@@ -18,7 +18,7 @@ export interface NewsItem {
 
 const PAGE = 60;
 
-export function NewsList({ items }: { items: NewsItem[] }) {
+export function NewsList({ items, readOnly = false }: { items: NewsItem[]; readOnly?: boolean }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [country, setCountry] = useState("");
@@ -70,7 +70,7 @@ export function NewsList({ items }: { items: NewsItem[] }) {
               {i.statusNote && <div className="mt-1 text-[11px] text-slate-400">{i.statusNote}</div>}
               {i.opportunityId && <Link href={`/opportunities/${i.opportunityId}`} className="mt-1 inline-block text-xs font-medium text-orange-700 hover:underline">→ 연결된 수주기회: {i.oppName}</Link>}
             </div>
-            <Feedback id={i.id} initial={i.feedback} />
+            {!readOnly && <Feedback id={i.id} initial={i.feedback} />}
           </article>
         ))}
         {!filtered.length && <div className="py-10 text-center text-sm text-slate-400">표시할 뉴스가 없습니다.</div>}

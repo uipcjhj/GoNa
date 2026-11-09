@@ -3,15 +3,20 @@ import { getSettings, saveSettings } from "@/lib/db/repo";
 import { mergeSettings } from "@/lib/config/defaults";
 import type { Settings } from "@/lib/types";
 import { planQueries } from "@/lib/news/queries";
+import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const settings = await getSettings();
   return NextResponse.json({ settings, queries: planQueries(settings) });
 }
 
 export async function PUT(req: Request) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const body = (await req.json().catch(() => null)) as Partial<Settings> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
   const cur = await getSettings();

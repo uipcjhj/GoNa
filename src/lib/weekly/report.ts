@@ -25,6 +25,22 @@ export async function saveReport(r: WeeklyReport): Promise<void> {
   await getStore().upsert("reports", [r]);
 }
 
+function mergeCaption(next: ReportItem["edits"] | null, cur: ReportItem["edits"] | undefined): ReportItem["edits"] | undefined {
+  const caption = next && "caption" in next ? next.caption : cur?.caption;
+  const rest = next ? Object.fromEntries(Object.entries(next).filter(([k]) => k !== "caption")) : {};
+  const out = { ...rest, ...(caption ? { caption } : {}) };
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Store / clear the PPT image of a report article. */
+export async function setItemImage(p: Period, articleId: string, image: ReportItem["image"]): Promise<WeeklyReport> {
+  const r = await getReport(p);
+  const cur: ReportItem = r.items[articleId] ?? { status: "unreviewed", category: null, recommended: false, updatedAt: "" };
+  r.items[articleId] = { ...cur, image: image ?? null, updatedAt: new Date().toISOString() };
+  await saveReport(r);
+  return r;
+}
+
 export async function setItem(p: Period, articleId: string, patch: { status?: ReportStatus; category?: WeeklyCategory | null; order?: number; edits?: ReportItem["edits"] | null }): Promise<WeeklyReport> {
   const r = await getReport(p);
   const cur: ReportItem = r.items[articleId] ?? { status: "unreviewed", category: null, recommended: false, updatedAt: "" };
@@ -33,7 +49,8 @@ export async function setItem(p: Period, articleId: string, patch: { status?: Re
     ...(patch.status ? { status: patch.status, recommended: false } : {}),
     ...(patch.category !== undefined ? { category: patch.category } : {}),
     ...(patch.order !== undefined ? { order: patch.order } : {}),
-    ...(patch.edits !== undefined ? { edits: patch.edits ?? undefined } : {}),
+    // the PPT photo caption is edited separately and survives title/summary edits or "restore original"
+    ...(patch.edits !== undefined ? { edits: mergeCaption(patch.edits, cur.edits) } : {}),
     updatedAt: new Date().toISOString(),
   };
   // newly selected items go to the end of the report order

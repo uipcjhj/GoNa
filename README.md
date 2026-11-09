@@ -59,7 +59,8 @@ HOT ≥ 80, WATCH 60~79, GENERAL < 60. 감점: 완공 프로젝트(−30), 과�
 | Anthropic Claude (AI 분석) | `ANTHROPIC_API_KEY` | **규칙 기반 분석**으로 동작 (화면에 "규칙 기반" 배지, 한국어 요약 없음) |
 | Supabase (DB) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | 로컬 파일 저장 (Vercel에서는 임시 저장 → 데이터 유실) |
 | 자동 수집 | `CRON_SECRET` | 수동 실행만 가능 |
-| 접속 비밀번호 | `APP_PASSWORD` | 누구나 접속 가능 |
+| 관리자 비밀번호 | `APP_PASSWORD` (또는 `APP_PASSWORD_HASH`) | 누구나 접속 가능 |
+| 공유용 읽기 전용 비밀번호 | `VIEWER_PASSWORD` (또는 `VIEWER_PASSWORD_HASH`) | 공유 계정 없음 |
 | GNews (선택) | `GNEWS_API_KEY` | 사용 안 함 |
 
 사이드바 하단과 Settings 상단에 현재 연결 상태가 표시됩니다. 비밀키는 서버 환경변수로만 사용되며 브라우저로 전송되지 않습니다.
@@ -118,3 +119,29 @@ npm run dev                   # http://localhost:3000
 - **Google News 링크**: 클릭하면 원문으로 이동하지만 원문 URL은 기계적으로 확인할 수 없어 "Google News 경유"로 표시합니다. 같은 기사가 발행 매체 RSS에도 있으면 직접 링크를 우선 사용합니다.
 - **AI 미연결 시**: 카테고리·관련도는 규칙 기반, 한국어 제목 번역과 4줄 요약은 생성하지 않습니다(국문 기사는 "원문 발췌"로 표시). `ANTHROPIC_API_KEY` 연결 시 기사 1건당 1회 호출로 수주기회 분석과 주간 업계동향 요약(§ … / ⇒ … 문체)을 함께 생성합니다.
 - **매일 수집 권장**: 전문지 RSS는 최근 기사만 제공하므로, 매일 수집해 두면 해당 주의 기사가 원문 링크·확인된 발행일과 함께 쌓입니다. Supabase 사용 시 `supabase/schema.sql`의 `reports` 테이블을 추가로 생성하세요.
+
+## 9. 팀원 공유 (비밀번호 보호 · 읽기 전용)
+
+| 계정 | 환경변수 | 할 수 있는 일 |
+|---|---|---|
+| 관리자 | `APP_PASSWORD` | 모든 기능 (수집·AI 분석·선정·편집·설정·Excel/PPT) |
+| 공유(읽기 전용) | `VIEWER_PASSWORD` | 대시보드·수주기회·주간 업계동향·뉴스 피드·경쟁사 동향 조회, 원문 링크 |
+
+- 공유 계정에는 수집·분석·삭제·수정·설정·선정/제외·작업 취소 버튼이 보이지 않고, 서버(`src/proxy.ts` + 각 API의 `requireAdmin`)에서도 403으로 차단됩니다.
+- 비밀번호는 환경변수에만 둡니다. 서버는 원문을 저장하지 않고 SHA-256 다이제스트(또는 `npm run hash-password`로 만든 PBKDF2 해시)로 비교합니다.
+- 세션 쿠키: `HttpOnly` · `Secure`(https) · `SameSite=Lax`, 역할·만료·HMAC 서명만 담김 (관리자 30일, 공유 14일). 다른 사이트에서 오는 POST는 Origin 검사로 차단, 로그인 실패 8회/10분 제한.
+- 비밀번호를 바꾸면 기존 세션은 모두 로그아웃됩니다.
+
+### GitHub Codespaces에서 공유하기
+1. Codespaces 터미널: `git pull origin claude/charming-maxwell-n3yywy` → `npm install`
+2. 비밀번호 설정 (코드에 쓰지 말 것): GitHub → Settings → Codespaces → Secrets 에 `APP_PASSWORD`, `VIEWER_PASSWORD` 추가 후 Codespace 재시작 — 또는 터미널에서 `export VIEWER_PASSWORD='...'`
+3. `npm run build && npm start` (또는 `npm run dev`)
+4. PORTS 탭 → 3000 → 우클릭 → Port Visibility → **Public** → 주소 복사해 팀원에게 전달 (공유 비밀번호는 별도 채널로)
+5. 공유 종료: 포트를 다시 Private로 바꾸거나 Codespace 중지 (무료 Codespaces는 비활성 시 자동 중지되므로 상시 공유용은 아님)
+
+## 10. 회사 양식 Excel · PowerPoint 자동 생성
+
+- 원본 템플릿: `templates/weekly-report.xlsx`(업계동향리스트), `templates/weekly-report.pptx`(업계동향 8페이지). 생성할 때마다 메모리에서 복사해 필요한 셀·텍스트·사진만 바꾸며 원본 파일은 수정하지 않습니다.
+- 주간 업계동향 → **보고서 내보내기**: Excel / PowerPoint / 두 파일 모두. **내보내기·PPT 미리보기** 탭에서 표지 Vol.·월/연도·주차 제목, 기사 순서, 이미지(자동 찾기·승인·업로드·맞춤), 사진 설명, 텍스트 길이 점검을 확인합니다.
+- 이미지: 원문 기사 대표 이미지·보도자료 이미지·사용자 업로드만 사용, 출처 URL·사용 근거 기록. 언론사 이미지는 사용자가 승인해야 PPT에 들어가며, 없으면 "[이미지 확인 필요]"로 표시합니다.
+- 실제 슬라이드 이미지 렌더링(선택): `sudo apt-get install -y libreoffice-impress poppler-utils`

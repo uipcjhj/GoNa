@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { periodFromRequest } from "@/lib/weekly/api";
 import { getReport, saveReport, setItem } from "@/lib/weekly/report";
 import type { ReportItem, ReportStatus, WeeklyCategory } from "@/lib/types";
+import { requireAdmin } from "@/lib/session";
 
 const STATUSES: ReportStatus[] = ["unreviewed", "selected", "excluded", "hold"];
 const CATS: WeeklyCategory[] = ["domestic", "global", "competitor", "policy", "tech", "opportunity"];
@@ -9,6 +10,8 @@ const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice
 
 /** 보고서 상태(선정/제외/보류), 순서, 사용자 수정본(제목·구분·4줄 요약) 저장. 원본 기사 데이터는 변경하지 않음. */
 export async function POST(req: Request) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const { period, body } = await periodFromRequest(req);
   // bulk re-order: { orders: [{ id, order }] }
   if (Array.isArray(body.orders)) {
@@ -32,6 +35,7 @@ export async function POST(req: Request) {
       ...(str(e.titleKo, 200) ? { titleKo: str(e.titleKo, 200) } : {}),
       ...(str(e.detailLabel, 80) ? { detailLabel: str(e.detailLabel, 80) } : {}),
       ...(lines && lines.some(Boolean) ? { summary4: [...lines, "", "", "", ""].slice(0, 4) } : {}),
+      ...(typeof e.caption === "string" ? { caption: e.caption.trim().slice(0, 80) } : {}),
     };
   }
   let report;

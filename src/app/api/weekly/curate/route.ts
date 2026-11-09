@@ -3,6 +3,7 @@ import { getSettings } from "@/lib/db/repo";
 import { periodFromRequest } from "@/lib/weekly/api";
 import { getReport, saveReport } from "@/lib/weekly/report";
 import { computeCuration, loadWeekly } from "@/lib/weekly/view";
+import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
  * action "select_picks": mark every current pick as 선정 (keeps items the user already excluded/held), ordered by rank.
  */
 export async function POST(req: Request) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const { period, body } = await periodFromRequest(req);
   const settings = await getSettings();
   const report = await getReport(period);

@@ -5,7 +5,7 @@
 // → Database Storage → Dashboard Update
 import "server-only";
 import { getStore } from "@/lib/db/store";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { getArticles, getJob, getSettings, listArticles, listJobs, listOpportunities, saveArticles, saveJob, saveOpportunities, saveSettings, getOpportunity } from "@/lib/db/repo";
 import { searchGdelt, RateLimitError } from "@/lib/news/gdelt";
 import { sleep } from "@/lib/util/http";
@@ -645,8 +645,11 @@ export function sliceBudgetMs(): number {
   return process.env.VERCEL ? 240_000 : 1_800_000;
 }
 
+const PROCESS_SECRET = randomBytes(24).toString("hex");
+/** Secret for internal job chaining. Never a fixed value: CRON_SECRET / SESSION_SECRET, else derived from the admin password, else per-process random. */
 export function internalSecret(): string {
-  return process.env.CRON_SECRET || process.env.APP_PASSWORD || "local-dev-secret";
+  const base = process.env.CRON_SECRET || process.env.SESSION_SECRET || process.env.APP_PASSWORD || process.env.APP_PASSWORD_HASH;
+  return base ? createHash("sha256").update(`gor-internal|${base}`).digest("hex") : PROCESS_SECRET;
 }
 
 /** Run a slice; if more work remains, chain to a fresh invocation (keeps going after the browser closes). */

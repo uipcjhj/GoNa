@@ -8,6 +8,7 @@ import { WorldMap } from "@/components/world-map";
 import { HBar, ScoreHistogram } from "@/components/charts";
 import { PriorityBadge, ScorePill, ModeBadge } from "@/components/badges";
 import { DemoBanner } from "@/components/demo-banner";
+import { isAdmin } from "@/lib/session";
 import { fmtDate, daysAgoIso } from "@/lib/utils";
 import { Flame, Eye, Sparkles, Swords, ShieldCheck, Info } from "lucide-react";
 
@@ -56,14 +57,15 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
     { label: "신규 검증 출처", sub: "링크 검증 완료 원문", value: verified.length, icon: ShieldCheck, color: "text-emerald-600", href: "/news" },
   ];
 
+  const admin = await isAdmin();
   return (
     <div className="space-y-5">
       <DemoBanner show={demoShown} />
-      {hiddenDemo > 0 && <div className="text-[11px] text-slate-400">DEMO 가상 프로젝트 {hiddenDemo}건은 숨김 상태이며 KPI·지도에 포함되지 않습니다 (설정 → DEMO 데이터 표시).</div>}
+      {admin && hiddenDemo > 0 && <div className="text-[11px] text-slate-400">DEMO 가상 프로젝트 {hiddenDemo}건은 숨김 상태이며 KPI·지도에 포함되지 않습니다 (설정 → DEMO 데이터 표시).</div>}
       {noRealData && (
         <Card className="border-sky-200 p-4 sm:p-5">
           <div className="text-base font-semibold text-slate-900">실제 데이터 없음</div>
-          <p className="mt-1 text-sm text-slate-500">최근 {range}일 동안 수집·분석된 실제 수주기회가 없습니다. 상단 <b className="text-sky-700">수주기회 탐색 → 빠른 테스트</b>를 누르면 약 1~2분 안에 실제 기사 최대 20건을 수집·분석합니다 (API 키 불필요).</p>
+          {admin && <p className="mt-1 text-sm text-slate-500">최근 {range}일 동안 수집·분석된 실제 수주기회가 없습니다. 상단 <b className="text-sky-700">수주기회 탐색 → 빠른 테스트</b>를 누르면 약 1~2분 안에 실제 기사 최대 20건을 수집·분석합니다 (API 키 불필요).</p>}
         </Card>
       )}
       {!aiConfigured() && rulesCount > 0 && <RulesNotice />}

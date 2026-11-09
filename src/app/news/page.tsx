@@ -1,5 +1,6 @@
 import { loadData } from "@/lib/data";
 import { NewsList, type NewsItem } from "./list";
+import { isAdmin } from "@/lib/session";
 import { DemoBanner } from "@/components/demo-banner";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function NewsPage() {
         <h1 className="text-xl font-bold text-slate-900">뉴스 피드</h1>
         <p className="text-sm text-slate-500">수집된 전체 뉴스 (최근 90일, 최신순). 수주기회로 분류되지 않은 일반 산업동향도 포함됩니다.</p>
       </div>
-      <NewsList items={items} />
+      <NewsList items={items} readOnly={!(await isAdmin())} />
     </div>
   );
 }

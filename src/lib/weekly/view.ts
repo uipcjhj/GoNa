@@ -22,7 +22,7 @@ export interface WeeklyRow {
   competitors: string[]; competitorNotes: string[]; competitorActivity: string;
   reportStatus: ReportStatus; recommended: boolean; isDemo: boolean; dupGroup: string | null; excerpt: string | null; policyNote: string | null;
   detail: DetailCategory | null; judgment: WeeklyJudgment | null; summary4: string[]; summary4Basis: WeeklyAnalysis["summary4Basis"] | null;
-  order: number | null; edits: ReportItem["edits"] | null; sourceDomain: string; publishedAtBasis: string; competitorChecks: { name: string; confirmed: boolean; note: string }[];
+  order: number | null; edits: ReportItem["edits"] | null; image: ReportItem["image"] | null; sourceDomain: string; publishedAtBasis: string; competitorChecks: { name: string; confirmed: boolean; note: string }[];
 }
 
 export interface WeeklyView {
@@ -77,7 +77,7 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
       competitorActivity: a.analysis?.competitorActivity ?? "",
       reportStatus: item?.status ?? "unreviewed", recommended: Boolean(item?.recommended), isDemo: a.isDemo, dupGroup: null,
       detail: w?.detail ?? null, judgment: w?.judgment ?? null, summary4: w?.summary4 ?? [], summary4Basis: w?.summary4Basis ?? null,
-      order: item?.order ?? null, edits: item?.edits ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
+      order: item?.order ?? null, edits: item?.edits ?? null, image: item?.image ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
       excerpt: a.excerpt, policyNote: w?.policy ? `${w.policy.kind === "law" ? "법령" : w.policy.kind === "enforcement" ? "시행" : w.policy.kind === "government_announcement" ? "정부 발표" : "기타"}${w.policy.effectiveDate ? ` · 시행일 ${w.policy.effectiveDate}` : ""}` : null,
     });
   }

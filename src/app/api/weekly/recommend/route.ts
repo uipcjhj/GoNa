@@ -3,11 +3,14 @@ import { getSettings } from "@/lib/db/repo";
 import { periodFromRequest } from "@/lib/weekly/api";
 import { getReport, saveReport } from "@/lib/weekly/report";
 import { loadWeekly, recommend } from "@/lib/weekly/view";
+import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** 보고서 후보 자동 추천: 사용자가 이미 선정/제외/보류한 기사는 변경하지 않음. */
 export async function POST(req: Request) {
+  const deny = await requireAdmin();
+  if (deny) return deny;
   const { period } = await periodFromRequest(req);
   const [view, settings] = await Promise.all([loadWeekly(period), getSettings()]);
   const target = Math.max(5, Math.min(40, settings.weekly.recommendCount));

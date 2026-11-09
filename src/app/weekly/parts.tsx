@@ -1,6 +1,6 @@
 "use client";
 // Shared building blocks for the 주간 업계동향 screens (cards, table detail panel, editor).
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { Check, ExternalLink, PauseCircle, CircleSlash, Loader2, Link2 } from "lucide-react";
 import { RELEVANCE_CRITERIA } from "@/lib/weekly/categories";
 import { LEVEL_LABEL, ORDER_ROOM_LABEL, SUPPLIER_LABEL } from "@/lib/weekly/taxonomy";
@@ -9,6 +9,9 @@ import type { ReportStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type PeriodQuery = Record<string, string>;
+/** true for the shared read-only viewer: every write control is hidden (and blocked server-side). */
+export const ReadOnlyContext = createContext(false);
+export const useReadOnly = () => useContext(ReadOnlyContext);
 export const STATUS_LABEL: Record<ReportStatus, string> = { unreviewed: "미검토", selected: "선정", excluded: "제외", hold: "보류" };
 
 export async function postJson(url: string, body: object) {
@@ -58,6 +61,8 @@ export function SourceButton({ r, compact }: { r: WeeklyRow; compact?: boolean }
 }
 
 export function StatusButtons({ r, onSet, size = "md" }: { r: WeeklyRow; onSet: (s: ReportStatus) => void; size?: "md" | "sm" }) {
+  const readOnly = useReadOnly();
+  if (readOnly) return r.reportStatus === "selected" ? <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">보고서 선정</span> : null;
   const sel = r.reportStatus === "selected";
   return (
     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -84,6 +89,7 @@ function Fact({ k, v, warn }: { k: string; v: React.ReactNode; warn?: boolean })
 
 /** Direct-URL verification for Google News items (only a real fetch marks the article as verified). */
 function DirectUrlForm({ r, onDone }: { r: WeeklyRow; onDone: () => void }) {
+  const readOnly = useReadOnly();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -101,6 +107,7 @@ function DirectUrlForm({ r, onDone }: { r: WeeklyRow; onDone: () => void }) {
       setBusy(false);
     }
   }
+  if (readOnly) return null;
   return (
     <form onSubmit={submit} className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-amber-800"><Link2 className="h-4 w-4" />발행 매체 원문 URL로 검증하기</div>
