@@ -14,8 +14,8 @@ import { containsAny, isUnknown } from "@/lib/util/text";
 import { computeScore } from "./scoring";
 import type { Analysis, ArticleCategory, HistoryEventType, ScoreBreakdown, Settings, SourceType } from "@/lib/types";
 
-export const aiConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY);
-export const aiModel = () => process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+export const aiConfigured = () => Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
+export const aiModel = () => process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || "gemini-2.5-flash-lite") : (process.env.ANTHROPIC_MODEL || "claude-opus-5-5");
 
 export interface AnalysisInput {
   title: string;
@@ -111,7 +111,7 @@ function pick<T extends string>(v: string, allowed: readonly T[], fallback: T): 
 }
 
 export async function analyzeWithAI(input: AnalysisInput, settings: Settings): Promise<{ analysis: Analysis; weekly: WeeklyAIRaw }> {
-  const client = new Anthropic({ maxRetries: 3, timeout: 120_000 });
+  const client = process.env.GEMINI_API_KEY ? null : new Anthropic({ maxRetries: 3, timeout: 120_000 });
   const lang = settings.analysisLanguage === "ko" ? "Korean (한국어)" : "English";
   const body = [
     `Today: ${new Date().toISOString().slice(0, 10)}`,
@@ -127,16 +127,52 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
     input.text ? input.text.slice(0, 8000) : "(Body text unavailable — only title/description could be read. Mark flag_insufficient_evidence=true unless the title alone clearly states a concrete facility project.)",
   ].join("\n");
 
-  const res = await client.messages.parse({
-    model: aiModel(),
-    max_tokens: 16000,
-    system: SYSTEM,
-    messages: [{ role: "user", content: body }],
-    output_config: { effort: "low", format: zodOutputFormat(AnalysisSchema) },
-  });
-  if (res.stop_reason === "refusal") throw new Error("AI declined to analyse this article (refusal)");
-  const o = res.parsed_output;
-  if (!o) throw new Error(`AI response could not be parsed (stop_reason=${res.stop_reason})`);
+  let o: z.infer<typeof AnalysisSchema>;
+  if (process.env.GEMINI_API_KEY) {
+    // Gemini Developer API, free-tier compatible. No billing upgrade or paid fallback.
+    // Do not pass the secret in a URL, log it, or expose it to client components.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 40_000);
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModel())}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+          signal: controller.signal,
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM + "\\nReturn exactly one valid JSON object. All keys defined by the requested schema must be present; no markdown or prose outside JSON." }] },
+            contents: [{ role: "user", parts: [{ text: body + "\\n\\nReturn a JSON object with ALL of these required fields and their documented types. Do not add fields:\\n" + JSON.stringify(z.toJSONSchema(AnalysisSchema)) }] }],
+            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.1 },
+          }),
+        }
+      );
+      if (!response.ok) {
+        // Free-tier exhaustion is a clean error; never silently switch to a paid provider.
+        const reason = response.status === 429 ? "Gemini 무료 API 사용량 또는 호출 속도 제한 초과" :
+          response.status === 403 ? "Gemini API 접근 권한 또는 무료 등급 설정 확인 필요" :
+          `Gemini API HTTP ${response.status}`;
+        throw new Error(reason);
+      }
+      const json = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      const raw = json.candidates?.[0]?.content?.parts?.map(p => p.text ?? "").join("") ?? "";
+      if (!raw) throw new Error("Gemini returned an empty response");
+      o = AnalysisSchema.parse(JSON.parse(raw));
+    } finally {
+      clearTimeout(timeout);
+    }
+  } else {
+    const res = await client!.messages.parse({
+      model: aiModel(),
+      max_tokens: 16000,
+      system: SYSTEM,
+      messages: [{ role: "user", content: body }],
+      output_config: { effort: "low", format: zodOutputFormat(AnalysisSchema) },
+    });
+    if (res.stop_reason === "refusal") throw new Error("AI declined to analyse this article (refusal)");
+    if (!res.parsed_output) throw new Error(`AI response could not be parsed (stop_reason=${res.stop_reason})`);
+    o = res.parsed_output;
+  }
 
   const clamp = (v: number, max: number) => Math.max(0, Math.min(max, Math.round(v)));
   const breakdown: ScoreBreakdown = {
