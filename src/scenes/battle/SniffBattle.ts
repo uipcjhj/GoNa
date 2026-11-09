@@ -17,6 +17,7 @@ import { BossBattle, type Hostile } from './BossBattle';
 import type { BattleHost } from './types';
 
 type Attack = 'clouds' | 'inhale' | 'bomb' | 'puddles' | 'storm';
+export type AimSpot = 'head' | 'forehead' | 'nose' | 'chin' | 'belly';
 interface PigNose {
   s: Phaser.GameObjects.Sprite;
   on: boolean;
@@ -38,8 +39,6 @@ export class SniffBattle extends BossBattle {
   private inhalePower = 1;
   /** 마지막 필살기 뒤 공격 수 (최종 분노에서 4번째마다 필살기 다시) */
   private sinceStorm = 0;
-  /** (검증용) 약점 명중 횟수 */
-  weakHits = 0;
   /** 돼지코 (재사용, 최대 5개) */
   private pigNoses: PigNose[] = [];
   private aura: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -127,14 +126,139 @@ export class SniffBattle extends BossBattle {
     this.after(0.7 + n * 0.45 + 0.3, () => this.endAttack(1.5));
   }
 
+  /**
+   * 강력한 흡입: 코를 크게 부풀리며 숨을 들이마심 → 방패 버튼이 '버티기!' 로 바뀌고 연타로 버팀
+   *   게이지: 누를 때마다 오르고(한 번 누름 = 한 번, 길게 눌러도 한 번), 안 누르면 내려감 (시간 기준 — 프레임 속도와 무관)
+   *   게이지가 낮을수록 고나가 코 쪽으로 끌려감 · 가득 차면 성공(튕겨 나와 착지) · 바닥나거나 시간이 끝나면 실패(끌려가 피해)
+   *   난이도: 처음(쉬움) · 1차 분노(보통) · 2차 분노부터(조금 어려움) — 한 손가락으로 초당 4~5번이면 충분
+   */
   private inhale(): void {
-    this.warn(0.5);
-    this.after(0.55, () => {
-      this.inhaling = this.rage >= 1 ? 2.8 : 2.3;
-      this.inhalePower = this.rage >= 1 ? 1.4 : 1;
-      this.inhaleSnd = 0;
+    this.warn(0.6);
+    this.setPose(2, 1.2);
+    // 예고 배너는 게이지가 나오기 전에만 (같은 자리에 겹쳐 보이지 않게)
+    this.banner({ top: '💨 강력한 흡입!', name: '버티기 준비!', ms: 650, tone: 'boss' });
+    // 코를 크게 부풀림
+    this.host.scene.tweens.add({ targets: this.boss, scaleX: 1.14, scaleY: 1.1, duration: 600, ease: 'Sine.Out' });
+    this.after(0.65, () => this.startResist());
+  }
+
+  private resist: { gauge: number; left: number; gain: number; drain: number; lastTap: number; taps: number; wind: number } | null = null;
+  private pullHold = 0;
+  private fastRelease = false;
+  /** (검증용) 버티기 결과 기록 */
+  readonly resistLog: ('success' | 'fail')[] = [];
+
+  get resistActive(): boolean {
+    return !!this.resist;
+  }
+
+  qteHud(): { kind: 'aim' } | { kind: 'resist'; gauge: number; left: number } | null {
+    if (this.resist) return { kind: 'resist', gauge: this.resist.gauge, left: this.resist.left };
+    if (this.aimActive) return { kind: 'aim' };
+    return null;
+  }
+
+  /** 난이도별 [누를 때 오르는 양, 초당 내려가는 양, 제한 시간] */
+  private static readonly RESIST_TIERS: [number, number, number][] = [
+    [0.12, 0.16, 5.2],
+    [0.105, 0.21, 5.0],
+    [0.1, 0.26, 5.0],
+  ];
+
+  startResist(tier = this.rage >= 2 ? 2 : this.rage >= 1 ? 1 : 0): void {
+    const [gain, drain, time] = SniffBattle.RESIST_TIERS[tier];
+    this.resist = { gauge: 0.42, left: time, gain, drain, lastTap: -1, taps: 0, wind: 0 };
+    this.inhaling = time + 0.5;
+    this.inhalePower = 1.6;
+    this.inhaleSnd = 0;
+    this.host.setResisting(true);
+    this.host.scene.tweens.add({ targets: this.boss, scaleX: 1.18, scaleY: 1.12, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+  }
+
+  /** 버티기 버튼 한 번 (같은 손가락·여러 손가락으로 아주 빠르게 겹친 누름은 하나로 — 0.06초 간격 제한) */
+  resistTap(): void {
+    const r = this.resist;
+    if (!r) return;
+    if (this.time - r.lastTap < 0.06) return;
+    r.lastTap = this.time;
+    r.taps++;
+    r.gauge = Math.min(1, r.gauge + r.gain);
+    this.host.sparkle(1, this.host.basePlayerX + this.host.pull - 6, this.host.groundY - 2);
+    // 끝까지 채운 그 순간 성공 (다음 프레임의 감소보다 먼저 판정)
+    if (r.gauge >= 1) this.endResist(true);
+  }
+
+  private updateResist(dt: number): void {
+    const r = this.resist;
+    if (!r) return;
+    const host = this.host;
+    r.left -= dt;
+    r.gauge = Math.max(0, r.gauge - r.drain * dt);
+    // 끌려가는 정도: 게이지가 낮을수록 코 쪽으로 (순간이동이 아니라 따라가며 미끄러짐)
+    const maxPull = Math.max(0, this.bx - this.fw * 0.5 - host.basePlayerX - 6);
+    const want = maxPull * (1 - r.gauge) * 0.85;
+    host.pull += (want - host.pull) * Math.min(1, dt * 3);
+    // 바람: 공기 줄기 · 꽃잎·나뭇잎 · 바닥 먼지가 코로 빨려 듦
+    r.wind -= dt;
+    if (r.wind <= 0) {
+      r.wind = perf.low ? 0.09 : 0.05;
+      const m = this.spotPos('nose');
+      const scene = host.scene;
+      const kind = Math.random();
+      const sx = Math.max(4, m.x - 30 - Math.random() * 120);
+      const sy = kind < 0.35 ? host.groundY - 1 - Math.random() * 3 : m.y - 30 + Math.random() * 60;
+      const p = this.fx(
+        kind < 0.45
+          ? scene.add.rectangle(sx, sy, 7, 1, 0xffffff, 0.55)
+          : scene.add.image(sx, sy, 'boss-dot').setTint(kind < 0.65 ? 0xd8c8b0 : kind < 0.82 ? 0x9cd860 : 0xffb3cf),
+      ).setDepth(10.8);
+      scene.tweens.add({ targets: p, x: m.x - 2, y: m.y, alpha: 0.15, duration: 360 + Math.random() * 160, ease: 'Quad.In', onComplete: () => p.destroy() });
+    }
+    if (r.gauge >= 1) this.endResist(true);
+    else if (r.gauge <= 0 || r.left <= 0) this.endResist(false);
+  }
+
+  private endResist(ok: boolean): void {
+    const r = this.resist;
+    if (!r) return;
+    this.resist = null;
+    this.inhaling = 0;
+    const host = this.host;
+    const scene = host.scene;
+    host.setResisting(false);
+    scene.tweens.killTweensOf(this.boss);
+    this.boss.setScale(1);
+    this.resistLog.push(ok ? 'success' : 'fail');
+    if (ok) {
+      // 성공: 바람이 끊기고 고나가 뒤로 튕겨 나와 착지 · 킁카괴물 당황
+      this.fastRelease = true;
+      this.setPose(4, 1.0);
+      scene.tweens.add({ targets: this.boss, x: this.boss.x + 3, duration: 60, yoyo: true, repeat: 3 });
+      this.floatText('성공!', host.basePlayerX + host.pull, host.groundY - 40, '#b8ff7a');
+      sound.catch();
+      sound.evolveDone();
+      this.after(0.2, () => this.endAttack(1.4));
+      return;
+    }
+    // 실패: 코 앞까지 빠르게 끌려감 → 쾅 (피해) → 튕겨 나옴 (피격 무적은 기존 체력 규칙대로)
+    const maxPull = Math.max(0, this.bx - this.fw * 0.5 - host.basePlayerX - 6);
+    this.pullHold = 0.6;
+    scene.tweens.add({
+      targets: host,
+      pull: maxPull,
+      duration: 260,
+      ease: 'Quad.In',
+      onComplete: () => {
+        if (this.mode !== 'fight' && this.mode !== 'cutscene') return;
+        host.hurtPlayer(DAMAGE.sniffInhale, 'sniff-inhale');
+        scene.cameras.main.shake(220, 0.012);
+        this.shockwave(host.basePlayerX + host.pull + 6, host.groundY - 18, false);
+        this.fastRelease = true;
+        this.pullHold = 0;
+      },
     });
-    this.after(0.55 + (this.rage >= 1 ? 2.8 : 2.3) + 0.2, () => this.endAttack(1.2));
+    this.floatText('빨려 들어갔어요!', host.basePlayerX + host.pull, host.groundY - 40, '#ff9f9f');
+    this.after(0.6, () => this.endAttack(1.4));
   }
 
   protected onUpdate(dt: number): void {
@@ -146,11 +270,8 @@ export class SniffBattle extends BossBattle {
       h.sprite.setFrame(Math.floor(this.time / 0.08) % 2 ? 1 : 2);
       if (h.x < 10) this.noseCrash(h);
     }
-    // 과녁은 코를 따라감
-    if (this.target?.active) {
-      const m = this.nose();
-      this.target.setPosition(Math.round(m.x), Math.round(m.y)).setFrame(Math.floor(this.time / 0.15) % 2);
-    }
+    this.updateAim(dt);
+    if (this.resist) this.updateResist(dt);
     if (this.inhaling > 0) {
       this.inhaling -= dt;
       this.inhaleSnd -= dt;
@@ -158,10 +279,12 @@ export class SniffBattle extends BossBattle {
         this.inhaleSnd = 0.9;
         sound.inhale();
       }
-      // 끌어당김: 땅에 있으면 세게, 점프 중엔 약하게
-      const s = (host.playerGrounded() ? 30 : 9) * this.inhalePower * (this.rage >= 2 ? 1.15 : 1);
-      const maxPull = this.bx - this.fw * 0.5 - host.basePlayerX;
-      host.pull = Math.min(maxPull, host.pull + s * dt);
+      // 끌어당김: 땅에 있으면 세게, 점프 중엔 약하게 (버티기 흡입은 버티기 게이지가 끌려가는 정도를 정함)
+      if (!this.resist) {
+        const s = (host.playerGrounded() ? 30 : 9) * this.inhalePower * (this.rage >= 2 ? 1.15 : 1);
+        const maxPull = this.bx - this.fw * 0.5 - host.basePlayerX;
+        host.pull = Math.min(maxPull, host.pull + s * dt);
+      }
       // 빨려 들어가는 냄새 알갱이 (보이기만)
       if (Math.random() < dt * 14 * this.inhalePower) {
         const m = this.nose();
@@ -170,31 +293,42 @@ export class SniffBattle extends BossBattle {
         const p = this.fx(host.scene.add.image(m.x - 40 - Math.random() * reach, m.y - 30 + Math.random() * 50, 'boss-dot').setDepth(10.8));
         host.scene.tweens.add({ targets: p, x: m.x, y: m.y, alpha: 0.2, duration: 420, ease: 'Quad.In', onComplete: () => p.destroy() });
       }
-    } else if (host.pull > 0) {
-      host.pull = Math.max(0, host.pull - 70 * dt);
+    } else if (host.pull > 0 && !this.resist && this.pullHold <= 0) {
+      host.pull = Math.max(0, host.pull - (this.fastRelease ? 160 : 70) * dt);
+      if (host.pull <= 0) this.fastRelease = false;
     }
+    if (this.pullHold > 0) this.pullHold -= dt;
   }
 
-  /** 약점(과녁) 때 코를 맞히면 2배 + 코가 찌그러지고 밀려남 · 흡입 중 코를 맞혀도 2배 */
+  /** 조준한 자리에 부메랑이 맞음: 코면 약점 명중 ×2 (코가 찌그러지고 밀려남), 다른 자리면 보통 피해 · 흡입 중 콧구멍 직격도 2배 */
   protected weakMul(x?: number, y?: number): number {
-    if (this.weakOpen && x !== undefined && y !== undefined) {
-      const m = this.nose();
-      if ((x - m.x) ** 2 + (y - m.y) ** 2 < 15 * 15) {
+    const a = this.aim;
+    if (a?.locked && x !== undefined && y !== undefined) {
+      const spot = a.locked;
+      const scene = this.host.scene;
+      this.closeAim(false);
+      if (spot === 'nose') {
+        const m = this.spotPos('nose');
         this.weakHits++;
-        const scene = this.host.scene;
+        this.aimLog.push({ spot, mul: 2 });
         this.floatText('약점 명중! ×2', m.x, m.y - 16, '#ffe14a');
         sound.puff();
         haptics.play('specialHit');
-        this.setPose(4, 0.6); // 눈 찡그림
-        scene.tweens.add({ targets: this.boss, scaleX: 1.18, scaleY: 0.84, duration: 90, yoyo: true, ease: 'Quad.Out' });
-        this.moveTo(Math.min(this.host.W - this.fw / 2 - 2, this.bx + 8), 0, 0.25, 4);
-        this.host.sparkle(10, m.x, m.y);
-        if (this.target?.active) this.target.setFrame(1);
+        this.setPose(4, 0.7); // 눈 찡그림
+        // 코가 찌그러짐 (가로로 납작) → 뒤로 밀려남
+        scene.tweens.add({ targets: this.boss, scaleX: 1.22, scaleY: 0.8, duration: 90, yoyo: true, ease: 'Quad.Out' });
+        this.moveTo(Math.min(this.host.W - this.fw / 2 - 2, this.bx + 10), 0, 0.25, 4);
+        this.host.sparkle(12, m.x, m.y);
+        this.shockwave(m.x, m.y, true);
+        scene.cameras.main.shake(140, 0.008);
         return 2;
       }
+      this.aimLog.push({ spot, mul: 1 });
+      const label: Record<AimSpot, string> = { head: '머리', forehead: '이마', chin: '턱', belly: '배', nose: '코' };
+      this.floatText(`${label[spot]}에 맞았어요 (보통 피해)`, this.bx, this.host.groundY - this.balt - this.fh - 8, '#ffffff');
       return 1;
     }
-    if (this.inhaling <= 0) return super.weakMul();
+    if (this.inhaling <= 0 || this.resist) return super.weakMul();
     this.inhaling = 0;
     this.setPose(2, 0.8);
     this.floatText('콧구멍 직격!', this.bx, this.host.groundY - this.fh - 6, '#fff3a0');
@@ -372,35 +506,152 @@ export class SniffBattle extends BossBattle {
     return t;
   }
 
-  // ───────────────────────── 코 약점 (필살기 뒤 지쳤을 때) ─────────────────────────
+  // ───────────────────────── 코 약점: 움직이는 과녁 (필살기 뒤 지쳤을 때) ─────────────────────────
+  //   과녁 하나가 머리·이마·턱·코·배를 오가며(보스가 움직이면 같이 움직임) 처음엔 천천히, 갈수록 빠르게.
+  //   공격 버튼이 '조준!' 으로 바뀌고, 누른 순간의 과녁 자리로 부메랑이 날아감 → 코면 약점 명중 ×2, 다른 곳이면 보통 피해.
 
-  private weakOpen = false;
+  /** 몸의 다섯 자리 (보스 그림 48x46 기준 좌표 — 실제 그림의 머리 꼭대기·이마·코·턱·배) */
+  private static readonly SPOTS: Record<AimSpot, [number, number]> = {
+    head: [28, 7],
+    forehead: [24, 14],
+    nose: [11, 30],
+    chin: [21, 40],
+    belly: [34, 34],
+  };
+  private aim: {
+    cur: AimSpot;
+    from: AimSpot;
+    phase: 'dwell' | 'move';
+    t: number;
+    dwell: number;
+    move: number;
+    elapsed: number;
+    total: number;
+    sinceNose: number;
+    locked: AimSpot | null;
+    lockedLeft: number;
+  } | null = null;
   private target: Phaser.GameObjects.Sprite | null = null;
+  /** (검증용) 약점 명중 수 · 조준 결과 기록 */
+  weakHits = 0;
+  readonly aimLog: { spot: AimSpot; mul: number }[] = [];
 
-  /** 코 중앙에 황금 과녁 — 그동안 부메랑이 코를 노리고, 코에 맞으면 2배 */
-  private openWeakPoint(sec: number): void {
-    const scene = this.host.scene;
-    this.weakOpen = true;
-    const m = this.nose();
-    this.target?.destroy();
-    this.target = this.fx(scene.add.sprite(m.x, m.y, 'sp-target', 0).setDepth(12.5).setScale(0.4));
-    scene.tweens.add({ targets: this.target, scale: 1.3, duration: 260, ease: 'Back.Out' });
-    this.floatText('코가 약점! 지금 공격!', m.x, m.y - 20, '#ffe14a');
-    sound.warn();
-    this.after(sec, () => this.closeWeakPoint());
+  /** 몸의 한 자리 (지금 보스 위치 기준, 화면 좌표) */
+  spotPos(id: AimSpot): { x: number; y: number } {
+    const [fx, fy] = SniffBattle.SPOTS[id];
+    const left = this.bx - this.fw / 2;
+    const top = this.host.groundY - this.balt - this.fh;
+    return { x: left + (fx / 48) * this.fw, y: top + (fy / 46) * this.fh };
   }
 
-  private closeWeakPoint(): void {
-    this.weakOpen = false;
-    if (this.target?.active) {
-      const t = this.target;
-      this.host.scene.tweens.add({ targets: t, alpha: 0, scale: 0.4, duration: 200, onComplete: () => t.destroy() });
+  /** 지금 과녁이 있는 화면 위치 (움직이는 중이면 두 자리 사이) */
+  aimPos(): { x: number; y: number } | null {
+    const a = this.aim;
+    if (!a) return null;
+    if (a.locked) return this.spotPos(a.locked);
+    if (a.phase === 'dwell') return this.spotPos(a.cur);
+    const p = Math.min(1, a.t / a.move);
+    const e = p * p * (3 - 2 * p);
+    const s0 = this.spotPos(a.from);
+    const s1 = this.spotPos(a.cur);
+    return { x: s0.x + (s1.x - s0.x) * e, y: s0.y + (s1.y - s0.y) * e };
+  }
+
+  get aimActive(): boolean {
+    return !!this.aim && !this.aim.locked;
+  }
+
+  startAim(sec: number): void {
+    const scene = this.host.scene;
+    this.closeAim(true);
+    this.aim = { cur: 'head', from: 'head', phase: 'dwell', t: 0, dwell: 0.62, move: 0.17, elapsed: 0, total: sec, sinceNose: 1, locked: null, lockedLeft: 0 };
+    const p = this.spotPos('head');
+    this.target = this.fx(scene.add.sprite(p.x, p.y, 'sp-target', 0).setDepth(12.5).setScale(0.4));
+    scene.tweens.add({ targets: this.target, scale: 1.1, duration: 240, ease: 'Back.Out' });
+    this.floatText('과녁이 코에 오면 조준!', this.bx - this.fw * 0.2, this.host.groundY - this.balt - this.fh - 10, '#ffe14a');
+    sound.warn();
+  }
+
+  /** '조준!' — 누른 순간의 과녁 자리로 확정 (터치가 조금 늦거나 빨라도 코 근처면 코로 인정) */
+  lockAim(): AimSpot | null {
+    const a = this.aim;
+    if (!a || a.locked) return null;
+    let spot: AimSpot = a.cur;
+    const GRACE = 0.1;
+    if (a.phase === 'move') {
+      // 움직이는 중: 가까운 쪽 / 코에 막 도착하려는 순간 · 막 떠난 순간이면 코
+      if (a.cur === 'nose' && a.move - a.t < GRACE) spot = 'nose';
+      else if (a.from === 'nose' && a.t < GRACE) spot = 'nose';
+      else spot = a.t / a.move < 0.5 ? a.from : a.cur;
     }
+    a.locked = spot;
+    a.lockedLeft = 2.4; // 부메랑이 날아가 맞을 시간
+    if (this.target?.active) {
+      this.target.setTint(spot === 'nose' ? 0xffd54a : 0xffffff);
+      this.host.scene.tweens.add({ targets: this.target, scale: 1.5, duration: 90, yoyo: true });
+    }
+    return spot;
+  }
+
+  private closeAim(silent = false, text = ''): void {
+    this.aim = null;
+    const t = this.target;
     this.target = null;
+    if (t?.active) {
+      if (silent) t.destroy();
+      else this.host.scene.tweens.add({ targets: t, alpha: 0, scale: 0.4, duration: 220, onComplete: () => t.destroy() });
+    }
+    if (text) this.floatText(text, this.bx, this.host.groundY - this.balt - this.fh - 8, '#fff3a0');
+  }
+
+  private nextSpot(a: NonNullable<SniffBattle['aim']>): AimSpot {
+    const all: AimSpot[] = ['head', 'forehead', 'nose', 'chin', 'belly'];
+    if (a.sinceNose >= 2 && a.cur !== 'nose') return 'nose';
+    const others = all.filter((x) => x !== a.cur);
+    return others[Math.floor(Math.random() * others.length)];
+  }
+
+  private updateAim(dt: number): void {
+    const a = this.aim;
+    if (!a) return;
+    if (a.locked) {
+      a.lockedLeft -= dt;
+      if (a.lockedLeft <= 0) this.closeAim(false);
+    } else {
+      a.elapsed += dt;
+      a.t += dt;
+      // 갈수록 빨라짐: 머무는 시간 0.62s → 0.3s, 옮겨 가는 시간 0.17s → 0.11s
+      const k = Math.min(1, a.elapsed / a.total);
+      if (a.phase === 'dwell' && a.t >= a.dwell) {
+        a.from = a.cur;
+        a.cur = this.nextSpot(a);
+        a.sinceNose = a.cur === 'nose' ? 0 : a.sinceNose + 1;
+        a.phase = 'move';
+        a.t = 0;
+        a.move = 0.17 - 0.06 * k;
+      } else if (a.phase === 'move' && a.t >= a.move) {
+        a.phase = 'dwell';
+        a.t = 0;
+        a.dwell = 0.62 - 0.32 * k + (Math.random() - 0.5) * 0.08;
+      }
+      if (a.elapsed >= a.total) {
+        this.closeAim(false, '기회를 놓쳤어요');
+        return;
+      }
+    }
+    const p = this.aimPos();
+    if (p && this.target?.active) {
+      this.target.setPosition(Math.round(p.x), Math.round(p.y));
+      if (!a.locked) {
+        // 코에 머무는 순간만 황금빛
+        const onNose = a.phase === 'dwell' && a.cur === 'nose';
+        this.target.setFrame(onNose ? 1 : 0).setTint(onNose ? 0xffd54a : 0xffffff).setScale(onNose ? 1.25 : 1.05);
+      }
+    }
   }
 
   aimPoint(): { x: number; y: number } | null {
-    return this.weakOpen ? this.nose() : null;
+    return this.aim?.locked ? this.spotPos(this.aim.locked) : null;
   }
 
   /** 매 프레임: 돼지코 킁킁 (수축·팽창) · 고나 쪽으로 고개 돌림 · '킁!' 글자 */
@@ -588,9 +839,10 @@ export class SniffBattle extends BossBattle {
     this.after(lastArrive + 0.45, () => {
       this.allNosesOut(variant === 3);
       this.specialShown();
-      const sec = variant === 3 ? 3.2 : 2.6;
+      // 지친 동안 움직이는 과녁 — 과녁이 코에 왔을 때 '조준!' (공격 버튼)
+      const sec = variant === 3 ? 5.4 : 5.0;
       this.stun(sec, 1, variant === 3 ? '킁카괴물이 재채기하다 기절했어요!' : '킁카괴물이 어질어질!');
-      this.openWeakPoint(sec);
+      this.startAim(sec - 0.3);
     });
   }
 
@@ -671,6 +923,11 @@ export class SniffBattle extends BossBattle {
 
   protected onInterrupt(): void {
     this.inhaling = 0;
+    if (this.resist) {
+      this.resist = null;
+      this.host.setResisting(false);
+      this.host.scene.tweens.killTweensOf(this.boss);
+    }
     this.boss.setScale(1);
     this.allNosesOut();
   }
@@ -679,8 +936,12 @@ export class SniffBattle extends BossBattle {
     this.aura?.destroy();
     this.aura = null;
     this.inhaling = 0;
-    this.weakOpen = false;
-    this.target = null;
+    this.closeAim(true);
+    if (this.resist) {
+      this.resist = null;
+      this.host.setResisting(false);
+    }
+    this.pullHold = 0;
     for (const n of this.pigNoses) {
       this.host.scene.tweens.killTweensOf(n.s);
       n.s.destroy();

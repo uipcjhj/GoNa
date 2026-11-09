@@ -92,6 +92,8 @@ export interface CombatHud {
   player: { hearts: number; maxHearts: number; hp: number; maxHp: number } | null;
   /** 점수 (화면 위 왼쪽) */
   score: number;
+  /** 잠깐 바뀌는 버튼: 'aim' = 공격 버튼이 '조준!' · 'resist' = 방패 버튼이 '버티기!' (+ 버티기 게이지 0~1) */
+  qte?: { kind: 'aim' } | { kind: 'resist'; gauge: number; left: number } | null;
   /** 성장 게이지 (보스전 중엔 null) */
   growth: { ratio: number; level: number; levels: number; final: boolean } | null;
 }

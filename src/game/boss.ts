@@ -107,4 +107,6 @@ export const DAMAGE = {
   sniffCloud: 25,
   sniffBlast: 35,
   sniffPuddle: 20,
+  /** 강력한 흡입 — 버티기 실패 */
+  sniffInhale: 30,
 };

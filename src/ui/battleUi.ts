@@ -48,6 +48,8 @@ export class BattleUi {
   private bossPhase: HTMLSpanElement;
   private bossHp: HTMLDivElement;
   private banner: HTMLDivElement;
+  private resistBox: HTMLDivElement;
+  private resistFill: HTMLDivElement;
   private bannerTimer = 0;
   private lastHp = -1;
   private lastPlayerHp = -1;
@@ -112,9 +114,16 @@ export class BattleUi {
     this.top.append(this.me, this.bossBar);
 
     this.banner = el('div', 'battle-banner hidden');
+    // 버티기 게이지 (킁카괴물 강력한 흡입 때만)
+    this.resistBox = el('div', 'resist-box hidden');
+    this.resistBox.append(el('p', 'resist-title', '💨 강력한 흡입!'), el('p', 'resist-hint', '버티기 버튼을 연타해서 흡입을 막아!'));
+    const rt = el('div', 'resist-track');
+    this.resistFill = el('div', 'resist-fill');
+    rt.append(this.resistFill, el('span', 'resist-goal'));
+    this.resistBox.append(rt);
     // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
     this.scoreEl = el('div', 'hud-score hidden', '점수 0');
-    root.append(this.scoreEl, this.top, this.banner, this.pad);
+    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.pad);
 
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
@@ -191,13 +200,24 @@ export class BattleUi {
     this.shieldBtn.classList.toggle('off', off || h.shield !== 'ready');
     this.shieldBtn.classList.toggle('active', h.shield === 'active');
     this.setStyle(this.shieldCool, 'height', h.shield === 'cool' ? `${Math.round(h.shieldCool * 100)}%` : '0%');
-    this.setText(this.shieldLabel, h.shield === 'active' ? '막는 중!' : h.shield === 'cool' ? '준비 중' : '방패');
+    const resist = h.qte?.kind === 'resist' ? h.qte : null;
+    const aim = h.qte?.kind === 'aim';
+    this.setText(this.shieldLabel, resist ? '버티기!' : h.shield === 'active' ? '막는 중!' : h.shield === 'cool' ? '준비 중' : '방패');
+    this.shieldBtn.classList.toggle('qte', !!resist);
+    if (resist) this.shieldBtn.classList.remove('off');
+    this.resistBox.classList.toggle('hidden', !resist);
+    if (resist) {
+      this.setStyle(this.resistFill, 'width', `${Math.round(resist.gauge * 100)}%`);
+      this.resistFill.classList.toggle('low', resist.gauge < 0.25);
+    }
     // 공격: 잠김(각성 전) / 준비 / 돌아오는 중(쿨타임)
     this.atk.classList.toggle('off', off || h.attack !== 'ready');
     this.atk.classList.toggle('locked', h.attack === 'locked');
     this.atk.classList.toggle('out', h.attack === 'out');
     this.setStyle(this.atkCool, 'height', h.attack === 'out' ? `${Math.round(h.cooldown * 100)}%` : '0%');
-    this.setText(this.atkLabel, h.attack === 'locked' ? '각성 전' : h.attack === 'out' ? '돌아오는 중' : '공격');
+    this.setText(this.atkLabel, aim ? '조준!' : h.attack === 'locked' ? '각성 전' : h.attack === 'out' ? '돌아오는 중' : '공격');
+    this.atk.classList.toggle('aim', aim);
+    if (aim) this.atk.classList.remove('off');
     // 필살
     this.setStyle(this.spFill, 'height', `${Math.round(h.special * 100)}%`);
     this.sp.classList.toggle('ready', h.specialReady && !off);

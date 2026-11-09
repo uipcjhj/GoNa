@@ -19,10 +19,10 @@ export const TEST_ITEMS: [string, string][] = [
   ['stage4', '5. 고나 4단계 지면 정렬'],
   ['kiss-boss', '6. 뽀뽀괴물 보스전'],
   ['sniff-boss', '7. 킁카괴물 보스전'],
-  ['kiss-talk', '8. 뽀뽀괴물 최종 대사'],
-  ['sniff-talk', '9. 킁카괴물 최종 대사'],
+  ['kiss-talk', '8. 뽀뽀괴물 대사 UI 테스트'],
+  ['sniff-talk', '9. 킁카괴물 대사 UI 테스트'],
   ['sniff-nose', '10. 킁카괴물 돼지코 필살기 (①②③)'],
-  ['sniff-weakpoint', '11. 킁카괴물 코 약점 공격'],
+  ['sniff-weakpoint', '11. 킁카괴물 코 약점 명중 테스트 (자동 조준)'],
   ['glasses-dash', '12. 화학과안경잽이 돌진'],
   ['farter-dash', '13. 방구할배 돌진'],
   ['hurt', '14. 고나 피격 애니메이션 (4단계)'],
@@ -36,6 +36,11 @@ export const TEST_ITEMS: [string, string][] = [
   ['gona-hitfx', '22. 고나 피격 효과 (움찔·빨간 번쩍·흔들림)'],
   ['ending-image', '23. 엔딩 가족사진(원본 캐릭터) 바로 보기'],
   ['ending-credits', '24. 엔딩 타이틀·크레딧·마지막 문구'],
+  ['kiss-special', '25. 뽀뽀괴물 고나 필살기 컷인 테스트'],
+  ['sniff-aim', '26. 킁카괴물 움직이는 과녁 테스트 (직접 조준)'],
+  ['sniff-inhale', '27. 킁카괴물 흡입 공격 테스트 (직접 버티기)'],
+  ['resist-success', '28. 버티기 QTE 성공 테스트 (자동 연타)'],
+  ['resist-fail', '29. 버티기 QTE 실패 테스트 (안 누름)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -72,9 +77,13 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
   parent.append(back);
   const info = el('div', 'tm-info hidden');
   parent.append(info);
+  let sayTimer = 0;
   const say = (t: string): void => {
     info.textContent = t;
     info.classList.remove('hidden');
+    // 안내는 잠깐만 (대사창·버튼을 가리지 않게)
+    clearTimeout(sayTimer);
+    sayTimer = window.setTimeout(() => info.classList.add('hidden'), 4500);
   };
   const g = (): Any => game.scene.getScene('Game');
   const waitFight = (fn: () => void): void => {
@@ -114,11 +123,16 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'kiss-talk':
     case 'sniff-talk':
     case 'sniff-nose':
-    case 'sniff-weakpoint': {
+    case 'sniff-weakpoint':
+    case 'kiss-special':
+    case 'sniff-aim':
+    case 'sniff-inhale':
+    case 'resist-success':
+    case 'resist-fail': {
       const boss = id.startsWith('kiss') ? 'kiss' : 'sniff';
       sc.debugSetStage(boss === 'kiss' ? 1 : 3);
       sc.boomerangAwake = true;
-      if (id !== 'kiss-boss' && id !== 'sniff-boss') sc.debugGod();
+      if (id !== 'kiss-boss' && id !== 'sniff-boss' && id !== 'resist-fail') sc.debugGod();
       sc.debugStartBoss(boss);
       if (id.endsWith('-talk')) {
         waitFight(() => {
@@ -139,20 +153,63 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
           b.hp = Math.round(b.def.maxHp * 0.12);
         });
         say('돼지코 필살기 ①②③ 이 차례로 나와요 (고나 무적) · 빨간 화살표를 보면 점프');
-      } else if (id === 'sniff-weakpoint') {
+      } else if (id === 'sniff-weakpoint' || id === 'sniff-aim') {
+        // 지친 상태 + 움직이는 과녁을 반복 (자동 조준: 과녁이 코에 머무는 순간 '조준!')
+        const auto = id === 'sniff-weakpoint';
         waitFight(() => {
           const open = (): void => {
             const b = g().battle;
             if (!b || b.mode !== 'fight') return;
             b.ai = [];
             b.busy = true;
-            b.stun(4, 1, '킁카괴물이 어질어질!');
-            b.openWeakPoint(4);
+            b.hp = Math.max(b.hp, Math.round(b.def.maxHp * 0.6));
+            b.stun(6, 1, '킁카괴물이 어질어질!');
+            b.startAim(5.6);
           };
           open();
-          window.setInterval(open, 6500);
+          window.setInterval(open, 8000);
+          if (auto) {
+            window.setInterval(() => {
+              const b = g().battle;
+              const a = b?.aim;
+              if (a && !a.locked && a.phase === 'dwell' && a.cur === 'nose' && a.t > 0.12) bus.emit(EV.attack);
+            }, 50);
+          }
         });
-        say('황금 과녁이 보이면 공격 버튼! 코에 맞으면 ×2 (반복)');
+        say(auto ? '과녁이 코에 머무는 순간 자동으로 조준 → 부메랑이 코에 명중 ×2 (반복)' : "과녁이 머리·이마·코·턱·배를 오가요 · 코에서 황금빛일 때 '조준!' (공격 버튼)");
+      } else if (id === 'kiss-special') {
+        // 필살기 게이지를 채워 바로 '초특급 꼬불머리 팡팡!' (얼굴 컷인) — 9초마다 반복
+        waitFight(() => {
+          const go = (): void => {
+            const b = g().battle;
+            if (!b || b.mode !== 'fight') return;
+            b.hp = Math.max(b.hp, Math.round(b.def.maxHp * 0.8));
+            b.special = 1;
+            bus.emit(EV.special);
+          };
+          window.setTimeout(go, 600);
+          window.setInterval(go, 9000);
+        });
+        say('필살기 얼굴 컷인 (9초마다) — 얼굴·머리카락·후드가 잘리지 않는지 확인');
+      } else if (id === 'sniff-inhale' || id === 'resist-success' || id === 'resist-fail') {
+        // 강력한 흡입 + 버티기 QTE 반복 (성공 테스트 = 초당 약 5번 자동 연타, 실패 테스트 = 안 누름)
+        waitFight(() => {
+          const go = (): void => {
+            const b = g().battle;
+            if (!b || b.mode !== 'fight') return;
+            const s2 = g();
+            s2.hearts = 3;
+            s2.hp = 100;
+            b.ai = [];
+            b.busy = true;
+            b.hp = Math.max(b.hp, Math.round(b.def.maxHp * 0.6));
+            b.inhale();
+          };
+          window.setTimeout(go, 400);
+          window.setInterval(go, 9000);
+          if (id === 'resist-success') window.setInterval(() => g().battle?.resistActive && bus.emit(EV.shield), 200);
+        });
+        say(id === 'sniff-inhale' ? "흡입이 오면 '버티기!' (방패 버튼) 연타 — 9초마다 반복" : id === 'resist-success' ? '자동으로 초당 5번 연타 → 버티기 성공' : '누르지 않음 → 끌려가서 피해 (실패)');
       } else say(boss === 'kiss' ? '뽀뽀괴물 보스전 (필살기 ①②③ · 마지막 대사)' : '킁카괴물 보스전 (돼지코 돌진 · 코 약점)');
       break;
     }

@@ -32,6 +32,8 @@ export interface BattleHost {
   onShieldBlock(x: number, y: number): void;
   /** 흡입: 기본 x 에서 오른쪽으로 끌려간 거리 */
   pull: number;
+  /** 흡입에 버티는 중 (발 구르기·흔들림) */
+  setResisting(on: boolean): void;
   spawnSnack(kind: SnackKind, alt: number): void;
   addScore(points: number, x: number, y: number): void;
   sparkle(n: number, x: number, y: number): void;

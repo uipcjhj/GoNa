@@ -426,6 +426,27 @@ export abstract class BossBattle {
     return null;
   }
 
+  /** 움직이는 과녁 조준 중 (공격 버튼 = '조준!') — 킁카괴물만 */
+  get aimActive(): boolean {
+    return false;
+  }
+
+  lockAim(): unknown {
+    return null;
+  }
+
+  /** 강력한 흡입 버티기 중 (방패 버튼 = '버티기!') — 킁카괴물만 */
+  get resistActive(): boolean {
+    return false;
+  }
+
+  resistTap(): void {}
+
+  /** 화면 버튼 표시용: 조준 / 버티기 게이지 */
+  qteHud(): { kind: 'aim' } | { kind: 'resist'; gauge: number; left: number } | null {
+    return null;
+  }
+
   protected weakMul(_x?: number, _y?: number): number {
     return this.stunT > 0 ? this.stunMul : 1;
   }
@@ -681,6 +702,9 @@ export abstract class BossBattle {
     return this.special >= 1 && this.mode === 'fight' && !this.bossSpecialOn;
   }
 
+  /** (검증용) 필살기 얼굴 컷인 그림 */
+  cutInFace: Phaser.GameObjects.Image | null = null;
+
   /** 보스 필살기 진행 중 (그동안 고나 필살기는 잠시 못 씀 — 보스 필살기가 끊겨 처음부터 되풀이되지 않게) */
   protected bossSpecialOn = false;
 
@@ -713,8 +737,15 @@ export abstract class BossBattle {
     this.host.setSpecialLook('serious');
     this.banner({ top: '고나 필살기!', name: '초특급 꼬불머리 팡팡!', desc: 'Super Curly Boom!', ms: 1500, tone: 'special' });
     // ── 얼굴 컷인 (화면 위쪽 띠가 휙 들어왔다 나감)
-    const bandH = Math.max(40, Math.round(H * 0.2));
-    const bandY = Math.round(H * 0.38);
+    //   고나 그림을 자르지 않고 통째로(머리카락·후드·얼굴·볼 모두) — 배율은 화면 높이·폭에 맞춰 자동,
+    //   띠 높이 = 그림 높이 + 여백, 띠는 항상 화면 안 (화면 흔들림이 있어도 얼굴이 가장자리에 붙지 않게 6px 여백)
+    const st = this.host.seriousTexture();
+    const fr = scene.textures.getFrame(st, 0);
+    const fw = fr.cutWidth;
+    const fh = fr.cutHeight;
+    const k = Math.max(2, Math.min(5, Math.floor((H * 0.3 - 12) / fh), Math.floor((W * 0.42) / fw)));
+    const bandH = fh * k + 12;
+    const bandY = Math.round(Phaser.Math.Clamp(H * 0.38, bandH / 2 + 6, H - bandH / 2 - 6));
     const cut = this.fx(scene.add.container(-W, 0).setDepth(15));
     cut.add(scene.add.rectangle(0, bandY - bandH / 2, W, bandH, 0x1d1640, 0.92).setOrigin(0, 0));
     cut.add(scene.add.rectangle(0, bandY - bandH / 2, W, 2, GOLD).setOrigin(0, 0));
@@ -725,14 +756,9 @@ export abstract class BossBattle {
       lines.push(ln);
       cut.add(ln);
     }
-    const st = this.host.seriousTexture();
-    const fr = scene.textures.getFrame(st, 0);
-    const cropH = Math.round(fr.cutHeight * 0.62);
-    const k = Math.max(2, Math.floor((bandH - 6) / cropH));
-    const face = scene.add.image(Math.round(W * 0.06), bandY + bandH / 2 - 3, st, 0).setOrigin(0, 1).setScale(k);
-    face.setCrop(0, 0, fr.cutWidth, cropH);
-    face.y = Math.round(bandY - bandH / 2 + 3 + cropH * k);
+    const face = scene.add.image(Math.round(Math.max(6, W * 0.06)), Math.round(bandY - bandH / 2 + 6), st, 0).setOrigin(0, 0).setScale(k);
     cut.add(face);
+    this.cutInFace = face;
     scene.tweens.add({ targets: cut, x: 0, duration: 170, ease: 'Quad.Out' });
     scene.tweens.add({ targets: lines, x: '-=40', duration: 900 });
     // ── 황금·연두 기운이 고나 주위로 피어오름

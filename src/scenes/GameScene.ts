@@ -177,6 +177,8 @@ export class GameScene extends Phaser.Scene {
   private moodLeaves: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   /** 아파! 표정: 이 시각까지 hurt-<단계> 프레임 · 맞은 시각 · 뒤로 밀림(표시만) */
   private hurtUntil = 0;
+  /** 킁카괴물 흡입에 버티는 중 (발을 빠르게 구름 · 바람에 흔들림) */
+  private resisting = false;
   private hurtAt = 0;
   private hurtKick = 0;
   /** 표정 연출: 이 시각까지 exprFrame 을 보여줌 (-1 = 없음) */
@@ -524,8 +526,10 @@ export class GameScene extends Phaser.Scene {
 
   private handleTap(): void {
     if (this.state === 'ready') this.startGame();
-    else if (this.state === 'playing') this.pressJump();
-    else if (this.state === 'paused') this.resumeGame();
+    else if (this.state === 'playing') {
+      // 흡입에 버티는 중엔 화면 터치로 점프하지 않음 (버티기 버튼 연타가 점프로 새지 않게)
+      if (!this.battle?.resistActive) this.pressJump();
+    } else if (this.state === 'paused') this.resumeGame();
   }
 
   private startGame(): void {
@@ -641,7 +645,8 @@ export class GameScene extends Phaser.Scene {
     // 필살기 슬로모션: 세상(땅·고나·투사체)만 느리게, 연출 타이머는 그대로
     const ts = this.battle?.timeScale ?? 1;
     const dt = rawDt * ts;
-    if (this.player.anims.timeScale !== ts) this.player.anims.timeScale = ts;
+    const animTs = this.resisting ? ts * 2.6 : ts; // 버티기: 발을 빠르게 구름
+    if (this.player.anims.timeScale !== animTs) this.player.anims.timeScale = animTs;
     if (this.state === 'evolving') {
       // 진화 연출 중: 세상은 멈추고 연출만 진행
       this.updateEvolution(dt, time);
@@ -1464,6 +1469,11 @@ export class GameScene extends Phaser.Scene {
   /** 방패 버튼: 고나 앞에 1초 동안 반투명 방패 */
   private raiseShield(): void {
     if (!this.battle || this.state !== 'playing' || this.battle.frozen || this.battle.mode === 'victory') return;
+    // 강력한 흡입 중: 방패 버튼 = '버티기!' (한 번 누를 때마다 한 번)
+    if (this.battle.resistActive) {
+      this.battle.resistTap();
+      return;
+    }
     if (this.time.now < this.shieldReadyAt) return;
     this.shieldUntil = this.time.now + SHIELD.activeMs;
     this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
@@ -1872,6 +1882,9 @@ export class GameScene extends Phaser.Scene {
       playerHead: () => this.headPos(),
       playerGrounded: () => this.grounded,
       hurtPlayer: (d, src) => this.hurtBattle(d, src),
+      setResisting: (on) => {
+        this.resisting = on;
+      },
       shieldRect: () => this.shieldRect(),
       onShieldBlock: (x, y) => {
         sound.catch();
@@ -1937,6 +1950,10 @@ export class GameScene extends Phaser.Scene {
 
   private throwHair(): void {
     if (this.state !== 'playing' || !this.canThrow || this.battle?.frozen || this.battle?.mode === 'victory') return;
+    // 흡입에 버티는 중엔 공격 안 함 (버티기 버튼과 겹치지 않게)
+    if (this.battle?.resistActive) return;
+    // 움직이는 과녁: 공격 버튼 = '조준!' — 누른 순간 과녁 자리로 확정하고 그곳으로 부메랑 발사
+    if (this.battle?.aimActive) this.battle.lockAim();
     if (this.boomerang.isOut) {
       // 돌아오기 직전에 누른 것은 기억 (돌아오자마자 발사)
       this.attackBufferUntil = this.time.now + 250;
@@ -2268,6 +2285,7 @@ export class GameScene extends Phaser.Scene {
       boss: b && b.mode !== 'done' ? b.hud() : null,
       score: this.score,
       player: showPlayer ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
+      qte: b ? b.qteHud() : null,
       growth: showPlayer && !b ? { ratio: Math.round(this.growth.ratio * 40) / 40, level: this.growth.stageIndex + 1, levels: GROWTH_STAGES.length, final: this.growth.isFinal } : null,
     };
     // 하트·HP·성장 게이지는 화면 UI(왼쪽 위 패널)로 — 캔버스 하트·게이지는 쓰지 않음 (점수와 겹치던 '단계 칸' 제거)
@@ -2277,7 +2295,7 @@ export class GameScene extends Phaser.Scene {
       this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
       this.gaugeGfx.setVisible(wantPhaser);
     }
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}`;
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${hud.qte ? (hud.qte.kind === 'resist' ? `r${Math.round(hud.qte.gauge * 50)}` : 'aim') : '-'}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);

@@ -66,7 +66,7 @@ async function play(run) {
         state: g.state, grounded: g.grounded, jumps: g.jumpsUsed, alt: g.alt, px: g.playerX, gy: g.groundY, speed: g.speed,
         hearts: g.hearts, hp: g.hp, out: g.boomerang.isOut, canThrow: g.canThrow, pull: g.pull, stage: g.growth.stageIndex,
         shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
-        b: bt && { mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
+        b: bt && { qte: bt.resistActive ? 'resist' : bt.aimActive ? (bt.aim?.cur === 'nose' && bt.aim?.phase === 'dwell' ? 'nose' : 'aim') : null, mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
           hs: bt.hostiles.filter((h) => !h.dead && !h.hitPlayer).map((h) => ({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, ay: h.ay, c: h.shape === 'circle', r: h.r, w: h.w, h: h.h, g: h.onGround, wave: !!h.wave })) },
       };
     });
@@ -85,6 +85,12 @@ async function play(run) {
     }
     if (s.b.frozen || s.b.mode !== 'fight' || s.state !== 'playing') { prevBx = s.b.bx; await page.waitForTimeout(REACT); continue; }
 
+    // 흡입 버티기: 한 손가락 연타 (반응 간격마다 한 번) / 움직이는 과녁: 코에 올 때만 조준
+    if (s.b.qte === 'resist') { await tapXY(...(await center('.bt-shield'))); stats.mash = (stats.mash ?? 0) + 1; await page.waitForTimeout(Math.max(REACT, 120)); continue; }
+    if (s.b.qte === 'nose' || s.b.qte === 'aim') {
+      if (s.b.qte === 'nose') { await tapXY(...(await center('.bt-attack'))); stats.aims = (stats.aims ?? 0) + 1; }
+      await page.waitForTimeout(REACT); continue;
+    }
     const x0 = s.px - 5.5, x1 = s.px + 5.5, head = s.gy - 19 - 2, feet = s.gy;
     // 다가오는 위협: 이대로면 서 있는 고나와 부딪히는지 (반응 시간 동안 예측)
     let threat = null;
@@ -133,6 +139,8 @@ async function play(run) {
   stats.damage = logs.dmg.join(' ') || '없음';
   stats.attacksSeen = logs.atk.join(',');
   await b.close();
+  const q = await page.evaluate(() => { const bt = window.__gona.scene.getScene('Game').battle; return bt ? { resist: (bt.resistLog ?? []).join(','), aim: (bt.aimLog ?? []).map((a) => a.spot + 'x' + a.mul).join(',') } : null; });
+  stats.qte = q;
   return { run, result, sec: Math.round(stats.ms / 1000), heartsLeft: last.hearts, ...stats, fps: perf.fps, p95: perf.p95, errs: errs.length };
 }
 
