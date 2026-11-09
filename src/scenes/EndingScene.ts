@@ -2,13 +2,11 @@
  * 가족 엔딩 컷신 — 8장면 (약 2분) → 타이틀 → 크레딧 → 마지막 문구 → 검은 화면
  *
  * 그림 원칙
- *   - 가족 여섯 명: 사용자가 준 확정 디자인 시트에서 그대로 잘라 낸 원본 그림(art-src/ending/fam-<id>.png,
- *     tools/extract_family_sheet.py)을 그림 자체의 도트 격자 절반(3px) 칸으로 다시 샘플링한 도트 그림
- *     (public/assets/ending/fam-<id>-px.png, tools/pixelize_family.py — 새로 그리거나 고쳐 그리지 않음).
- *     원본 도트 한 칸 = 고나 도트 한 칸 크기(반 칸 = 0.5) 로 표시 → 배경·고나와 같은 또렷한 도트 (부드러운 축소 없음).
- *     (도트 한 칸 그대로 줄이면 입·눈·안경이 뭉개져 반 칸을 씀 — 비교: art-src/ending/family-pixel-compare.png)
- *     움직임은 위치 이동(다가가기·몸을 기울여 다가붙기)과 작은 들썩임만 — 회전·찌그러뜨리기·모핑 없음.
- *   - 고나: 게임에 있는 성장 1~4단계 원본 스프라이트(눈 깜빡·꼬물·기기·달리기·걷기, 웃는 얼굴) 그대로.
+ *   - 고나·가족 여섯 명: 최종 확정 엔딩 캐릭터 스프라이트 시트(art-src/ending/sprite-sheet/ending-characters-sheet.webp)에서
+ *     tools/extract_ending_sprites.py 로 동작별 프레임을 투명 PNG 로 떼어 낸 것 그대로 (새로 그리거나 고쳐 그리지 않음).
+ *     인물마다 독립 스프라이트 — 기본·걷기·달리기·기쁨·말하기·손 흔들기·포옹·뽀뽀·킁카 프레임 애니메이션을 장면마다 따로 움직임.
+ *     시트 1px = 배경 1도트 (모두 같은 배율 1 · nearest · 가로세로 같은 배율). 좌우 반전(고나를 바라보게)만 함.
+ *   - 장면 01·02(아기·성장 회상)의 고나: 게임 성장 1~4단계 원본 스프라이트 그대로. 장면 03부터: 시트의 고나.
  *   - 배경: 해 질 녘 보랏빛 버섯마을(엔딩 배경) + 은은한 가로등 불빛·꽃잎·반딧불·별빛.
  * 내레이션: 자막(한 글자씩)으로만 — 문장은 사용자가 준 그대로. 자막이 나오는 동안 엔딩 곡을 살짝 낮춤.
  * 음악: 엔딩 전용 오리지널 곡 bgm-ending.mp3 (tools/compose_ending_bgm.cjs) 한 곡이 장면 전환과 상관없이 이어짐.
@@ -18,6 +16,7 @@ import { bus, EV } from '../events';
 import { sound } from '../audio';
 import { perf } from '../perf';
 import { GAME_BG } from '../config';
+import { ENDING_SPRITES, ENDING_FX, type EndingCharId } from './endingSprites';
 
 export const ENDING_FAMILY = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji'] as const;
 export type FamId = (typeof ENDING_FAMILY)[number];
@@ -43,8 +42,9 @@ export const ENDING_BLACK_AT = 116.5;
 /** (예전 이름 호환) 마지막 화면 버튼이 나오는 때 */
 export const ENDING_THE_END_AT = ENDING_BLACK_AT + 3.5;
 
-/** 반 도트 그림(원본 도트 1칸 = 2px) → 원본 도트 1칸이 고나 도트 1칸과 같은 크기로 */
-const FAM_SCALE = 0.5;
+/** 시트의 하트·킁카 물결·반짝이 등 공통 이펙트 */
+const FX_KEY = (n: string): string => `efx-${n}`;
+const CH_KEY = (id: EndingCharId): string => `ech-${id}`;
 
 interface Layout {
   bg: string;
@@ -52,9 +52,12 @@ interface Layout {
   H: number;
   c: number;
   lamps: [number, number][];
-  /** 가족이 서는 곳 (가운데 기준 x, 줄 0 앞·2 뒤) — 단체 사진.
-   *  앞줄 셋 · 뒷줄 셋을 반 칸씩 엇갈리게, 뒷줄은 얼굴이 앞사람 머리 위로 다 보이게 올려 세움 (얼굴끼리 겹치지 않음) */
-  photo: Record<FamId, [number, 0 | 1 | 2]>;
+  /** 가족이 서는 곳 (가운데 기준 x, 줄 0 앞·1 뒤) — 단체 사진. 얼굴끼리 겹치지 않게:
+   *  세로 = 앞줄(이모·엄마·할머니) + 고나, 뒷줄(아빠·삼촌·할아버지)은 얼굴이 앞사람 머리 위로 다 보이게 올려 세움
+   *  가로 = 한 줄 (아무도 겹치지 않음). 엄마는 고나 바로 오른쪽 (포옹) */
+  photo: Record<FamId, [number, 0 | 1]>;
+  /** 단체 사진에서 고나 자리 */
+  gonaX: number;
 }
 
 const LAYOUTS: Record<'land' | 'port', Layout> = {
@@ -64,7 +67,8 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 180,
     c: 160,
     lamps: [[94, 41], [237, 41]],
-    photo: { imo: [-34, 0], mom: [12, 0], halmeoni: [58, 0], dad: [-58, 2], samchon: [-11, 2], halabeoji: [35, 2] },
+    photo: { halabeoji: [-120, 0], dad: [-83, 0], imo: [-46, 0], mom: [26, 0], halmeoni: [64, 0], samchon: [102, 0] },
+    gonaX: -10,
   },
   port: {
     bg: 'end-bgB-port',
@@ -72,15 +76,22 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 320,
     c: 92,
     lamps: [[15, 116], [163, 116]],
-    photo: { imo: [-28, 0], mom: [10, 0], halmeoni: [48, 0], dad: [-48, 2], samchon: [-9, 2], halabeoji: [29, 2] },
+    photo: { imo: [-60, 0], mom: [12, 0], halmeoni: [50, 0], dad: [-42, 1], samchon: [-4, 1], halabeoji: [34, 1] },
+    gonaX: -22,
   },
 };
-const ROW_DY = [0, -11, -21];
-const ROW_DEPTH = [160, 130, 100];
+const ROW_DY = [0, -24];
+const ROW_DEPTH = [160, 120];
+/** 동작별 초당 프레임 · 반복 (-1 = 계속, 0 = 한 번 하고 마지막 프레임에 멈춤) */
+const ACT_RATE: Record<string, [number, number]> = {
+  idle: [2.2, -1], walk: [7, -1], run: [11, -1], happy: [5, -1], talk: [5, -1], wave: [5, -1], clap: [6, -1],
+  hug: [5, 0], kiss: [3.5, 0], sniff: [6, -1], wow: [7, 0], held: [4, 0], sit: [2, -1],
+};
 
 interface Member {
   id: FamId;
-  s: Phaser.GameObjects.Image;
+  s: Phaser.GameObjects.Sprite;
+  act: string;
   x: number;
   y: number;
   row: 0 | 1 | 2;
@@ -88,6 +99,24 @@ interface Member {
   bob: number;
   phase: number;
   lean: { x: number; y: number };
+}
+
+/** 엔딩 캐릭터 띠·이펙트 불러오기 (이미 있으면 건너뜀) — 최종 보스전 때 GameScene 이 미리, 아니면 엔딩 preload 에서 */
+export function queueEndingArt(scene: Phaser.Scene): number {
+  let n = 0;
+  for (const id of Object.keys(ENDING_SPRITES) as EndingCharId[]) {
+    const key = CH_KEY(id);
+    if (scene.textures.exists(key)) continue;
+    const t = ENDING_SPRITES[id];
+    scene.load.spritesheet(key, `assets/ending/chars/${id}.png`, { frameWidth: t.w, frameHeight: t.h });
+    n++;
+  }
+  for (const f of ENDING_FX) {
+    if (scene.textures.exists(FX_KEY(f))) continue;
+    scene.load.image(FX_KEY(f), `assets/ending/chars/fx-${f}.png`);
+    n++;
+  }
+  return n;
 }
 
 type Cue = { at: number; fn: () => void; done?: boolean };
@@ -110,6 +139,10 @@ export class EndingScene extends Phaser.Scene {
   private gF = 230;
   private gNear = 260;
   private gona!: Phaser.GameObjects.Sprite;
+  /** 장면 03부터의 고나 (엔딩 시트) */
+  private gk!: Phaser.GameObjects.Sprite;
+  private useSheet = false;
+  private gAct = '';
   gx = 0;
   gy = 0;
   private gStage: GonaStage = 'newborn';
@@ -127,7 +160,7 @@ export class EndingScene extends Phaser.Scene {
 
   preload(): void {
     // 보통은 최종 보스전 때 미리 받아 둠 (GameScene.preloadEndingArt) — 바로 엔딩으로 온 경우만 여기서
-    for (const id of ENDING_FAMILY) if (!this.textures.exists(`fam-${id}`)) this.load.image(`fam-${id}`, `assets/ending/fam-${id}-px.png`);
+    queueEndingArt(this);
   }
 
   create(): void {
@@ -158,14 +191,18 @@ export class EndingScene extends Phaser.Scene {
     // 따뜻한 살구빛 (깨달음 장면) · 장면 전환용 어둡게
     this.glow = this.add.rectangle(0, 0, L.W, L.H, 0xffb886, 1).setOrigin(0, 0).setDepth(300).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
     this.dim = this.add.rectangle(0, 0, L.W, L.H, 0x140a20, 1).setOrigin(0, 0).setDepth(310).setAlpha(0);
-    // 가족 (처음엔 숨김 — SCENE 03 에서 길 끝에 나타남)
+    this.makeAnims();
+    // 가족 (처음엔 숨김 — SCENE 03 에서 길 끝에 나타남) — 인물마다 독립 스프라이트
     for (const id of ENDING_FAMILY) {
       const [dx, row] = L.photo[id];
       const x = L.c + dx;
       const y = this.gF + ROW_DY[row];
-      const s = this.add.image(x, y, `fam-${id}`).setOrigin(0.5, 1).setScale(FAM_SCALE).setDepth(ROW_DEPTH[row]).setVisible(false);
-      this.family.push({ id, s, x, y, row, bob: 0, phase: Math.random() * 6, lean: { x: 0, y: 0 } });
+      const s = this.add.sprite(x, y, CH_KEY(id), 0).setOrigin(0.5, 1).setDepth(ROW_DEPTH[row]).setVisible(false);
+      const f: Member = { id, s, act: '', x, y, row, bob: 0, phase: Math.random() * 6, lean: { x: 0, y: 0 } };
+      this.family.push(f);
+      this.act(f, 'idle');
     }
+    this.gk = this.add.sprite(0, 0, CH_KEY('gona'), 0).setOrigin(0.5, 1).setDepth(180).setVisible(false);
     // 고나 (1단계부터)
     this.gx = L.c;
     this.gy = this.gNear;
@@ -296,11 +333,6 @@ export class EndingScene extends Phaser.Scene {
     return this.family.find((f) => f.id === id)!;
   }
 
-  /** 몸을 기울여 다가붙기 (위치만 살짝 — 그림은 그대로) */
-  private lean(id: FamId, dx: number, dy: number, ms = 600): void {
-    this.tweens.add({ targets: this.m(id).lean, x: dx, y: dy, duration: ms, ease: 'Sine.InOut' });
-  }
-
   private line(i: number): void {
     const l = ENDING_LINES[i];
     const next = ENDING_LINES[i + 1]?.at ?? ENDING_TITLE_AT - 1;
@@ -312,6 +344,49 @@ export class EndingScene extends Phaser.Scene {
     if (next - readEnd > 1.2) this.at(readEnd, () => sound.duckEnding(false));
   }
 
+  /** 시트 프레임 → 동작 애니메이션 (게임 전체에서 한 번만) */
+  private makeAnims(): void {
+    for (const id of Object.keys(ENDING_SPRITES) as EndingCharId[]) {
+      const anims = ENDING_SPRITES[id].anims as Record<string, readonly number[]>;
+      for (const [act, frames] of Object.entries(anims)) {
+        const key = `${CH_KEY(id)}-${act}`;
+        if (this.anims.exists(key) || !this.textures.exists(CH_KEY(id))) continue;
+        const [rate, repeat] = ACT_RATE[act] ?? [5, -1];
+        this.anims.create({ key, frames: this.anims.generateFrameNumbers(CH_KEY(id), { frames: [...frames] }), frameRate: rate, repeat });
+      }
+    }
+  }
+
+  /** 가족 한 사람의 동작 바꾸기 (같은 동작이면 그대로 이어 감) */
+  private act(f: Member, act: string): void {
+    if (f.act === act) return;
+    f.act = act;
+    const key = `${CH_KEY(f.id)}-${act}`;
+    if (this.anims.exists(key)) f.s.play({ key, startFrame: 0 });
+  }
+
+  private acts(map: Partial<Record<FamId, string>>): void {
+    for (const [id, a] of Object.entries(map)) this.act(this.m(id as FamId), a as string);
+  }
+
+  /** 걸어서 자리 옮기기 (걷기 프레임 → 도착하면 다음 동작) */
+  private walkTo(id: FamId, x: number, y: number, ms: number, then = 'idle'): void {
+    const f = this.m(id);
+    this.tweens.killTweensOf(f);
+    this.act(f, 'walk');
+    this.tweens.add({ targets: f, x, y, duration: ms, ease: 'Sine.InOut', onComplete: () => this.act(f, then) });
+  }
+
+  /** 시트 이펙트 (하트·킁카 물결·반짝이) 를 잠깐 띄움 */
+  private fx(name: string, x: number, y: number, rise = 10, ms = 1300, delay = 0, scale = 1): void {
+    const key = FX_KEY(name);
+    if (!this.textures.exists(key)) return;
+    const im = this.add.image(Math.round(x), Math.round(y), key).setDepth(500).setAlpha(0).setScale(scale);
+    this.tweens.add({ targets: im, alpha: 1, duration: 160, delay });
+    this.tweens.add({ targets: im, y: y - rise, duration: ms, delay, ease: 'Sine.Out' });
+    this.tweens.add({ targets: im, alpha: 0, duration: 380, delay: delay + ms - 380, onComplete: () => im.destroy() });
+  }
+
   private setStage(st: GonaStage): void {
     this.gStage = st;
     const key = st === 'walker' ? 'dino' : `dino-stage-${st}`;
@@ -321,17 +396,25 @@ export class EndingScene extends Phaser.Scene {
   private buildCues(): void {
     const L = this.L;
     const Z0 = this.Z0;
-    // 클로즈업 배율 (모두 정수): 뽀뽀·킁카 둘만 가까이 = 약 1.6배 · 가족 모두가 다 보이는 가까운 단체 = 한 단계 위 · 고나 얼굴 = 약 2.2배
+    // 클로즈업 배율 (모두 정수): 뽀뽀·킁카 둘만 가까이 = 약 1.6배 · 고나 얼굴 = 약 2.2배
     const ZC = Math.max(Z0 + 1, Math.round(Z0 * 1.6));
-    const ZG = Z0 + 1;
     const ZF = Math.max(ZC + 1, Math.round(Z0 * 2.2));
-    // 안긴 고나: 엄마 얼굴이 고나 머리 위로 다 보이는 높이
-    const HELD_Y = 12;
-    // 엄마 자리 (단체 사진 기준) — 안기기·뽀뽀·킁카 위치의 기준
-    const MX = L.c + L.photo.mom[0];
-    // SCENE 03·04: 가족이 길 끝에 모여 있을 때의 배치 (조금 좁게, 고나가 보는 쪽으로)
-    const near = { k: this.portrait ? 0.9 : 0.92, off: this.portrait ? 12 : 40 };
-    const momNear = L.c + L.photo.mom[0] * near.k + near.off;
+    // 단체 사진 자리 · 화면 가운데(가족 전체의 가운데)
+    const GX = L.c + L.gonaX;
+    const GY = this.gF + 3;
+    const CX = L.c + (this.portrait ? -4 : -9);
+    const P = (id: FamId): [number, number] => [L.c + L.photo[id][0], this.gF + ROW_DY[L.photo[id][1]]];
+    const home = (id: FamId, ms: number, then = 'happy'): void => {
+      const [x, y] = P(id);
+      this.walkTo(id, x, y, ms, then);
+      const f = this.m(id);
+      this.time.delayedCall(ms, () => f.s.setDepth(ROW_DEPTH[f.row]));
+    };
+    const front = (id: FamId, x: number, ms: number, then: string): void => {
+      const f = this.m(id);
+      f.s.setDepth(175); // 고나(180) 바로 뒤, 다른 가족 앞
+      this.walkTo(id, x, this.gF, ms, then);
+    };
     const [s1, s2, s3, s4, s5, s6, s7, s8] = ENDING_SCENES;
     // 엔딩 곡: 보통은 최종 보스전 때 미리 해독해 둠. 아니면 지금 해독(최대 2.5초 기다림) → 안 되면 파일로 재생
     this.at(0, () => {
@@ -365,150 +448,117 @@ export class EndingScene extends Phaser.Scene {
       }, 700);
     });
 
-    // ── SCENE 03 기다리고 있던 얼굴들: 고나(4단계) 뒤에서 → 길 끝의 가족
+    // ── SCENE 03 기다리고 있던 얼굴들: 고나 뒤에서 → 카메라가 물러나며 길 끝에서 기다리는 가족 여섯 명 → 고나가 고개를 들고 깜짝
     this.at(s3, () => {
       this.sceneNo = 3;
       this.softCut(() => {
         this.clearMemories();
         this.dim.setAlpha(0);
-        this.setStage('bigbaby');
-        this.gx = this.portrait ? L.c - 58 : L.c - 110;
+        this.useSheet = true;
+        this.gx = this.portrait ? L.c - 62 : L.c - 110;
         this.gy = this.gNear;
         this.gMode = 'idle';
-        // 가족은 길 끝(조금 멀리)에 줄지어 서지 않고 모여서 기다림
         for (const f of this.family) {
-          const [dx, row] = L.photo[f.id];
-          f.x = L.c + dx * near.k + near.off;
-          f.y = this.gF + ROW_DY[row];
-          // 카메라가 고나 뒤에서 물러나며 보여 줄 때 나타남 (처음엔 화면 위쪽에 머리가 잘려 보이지 않게)
-          f.s.setVisible(true).setAlpha(0);
-          f.bob = 0.6;
+          this.tweens.killTweensOf(f);
+          [f.x, f.y] = P(f.id);
+          f.s.setDepth(ROW_DEPTH[f.row]).setVisible(true).setAlpha(0);
+          f.bob = 0;
+          this.act(f, 'idle');
         }
         this.frame(this.gx + 14, this.gNear, Z0 * 2, 0);
       }, 700);
     });
     this.at(s3 + 1.6, () => {
-      this.frame(L.c + (this.portrait ? 0 : 10), this.gNear, Z0, 4.5);
+      this.frame(CX, this.gNear, Z0, 4.5);
       this.tweens.add({ targets: this.family.map((f) => f.s), alpha: 1, duration: 1600, delay: 900, ease: 'Sine.Out' });
     });
     this.at(s3 + 4.2, () => {
       this.gMode = 'wow';
       this.hop(2);
+      this.fx('joy', this.gx + 2, this.gy - 40, 4, 1100);
     });
+    this.at(s3 + 4.8, () => this.acts({ imo: 'wave', samchon: 'wave', mom: 'clap', dad: 'wave', halmeoni: 'happy', halabeoji: 'wave' }));
     this.at(s3 + 6.0, () => (this.gMode = 'happy'));
 
-    // ── SCENE 04 달려가는 고나: 4단계 고나가 신나게 달려감 · 발밑 먼지 · 가족은 웃으며 맞이
+    // ── SCENE 04 달려가는 고나: 달리기 프레임으로 가족에게 · 발밑 먼지 · 가족은 기뻐하며 맞이
     this.at(s4, () => {
       this.sceneNo = 4;
       this.gMode = 'run';
-      for (const f of this.family) f.bob = 1;
-      const tx = momNear - (this.portrait ? 6 : 10);
-      this.tweens.add({ targets: this, gx: tx, gy: this.gF + 1, duration: (s5 - s4 - 0.3) * 1000, ease: 'Sine.InOut', onComplete: () => (this.gMode = 'happy') });
-      this.frame(L.c, this.gF, Z0, 2);
+      this.tweens.killTweensOf(this);
+      this.tweens.add({ targets: this, gx: GX, gy: GY, duration: (s5 - s4 - 0.4) * 1000, ease: 'Sine.InOut', onComplete: () => (this.gMode = 'happy') });
+      this.acts({ imo: 'happy', samchon: 'happy', dad: 'happy', halabeoji: 'happy' });
+      this.frame(CX, this.gF, Z0, 2);
     });
 
-    // ── SCENE 05 가족의 품: 엄마가 안아 줌 · 모두 둘러섬
+    // ── SCENE 05 가족의 품: 엄마가 걸어와 고나를 꼭 안음 · 다른 가족도 두 팔 벌려 · 하트
     this.at(s5, () => {
       this.sceneNo = 5;
-      for (const f of this.family) {
-        const [dx, row] = L.photo[f.id];
-        this.tweens.add({ targets: f, x: L.c + dx, y: this.gF + ROW_DY[row], duration: 1400, ease: 'Sine.InOut' });
-        f.bob = 0.4;
-      }
-      // 고나가 엄마 품으로 (엄마 바로 앞에 폭 안김 — 엄마 얼굴은 고나 머리 위로 보임)
-      this.gMode = 'held';
-      this.tweens.killTweensOf(this); // 달려가던 이동이 남아 있으면 멈추고 엄마 품으로
-      this.tweens.add({ targets: this, gx: MX + 1, gy: this.gF + HELD_Y, duration: 1200, ease: 'Sine.Out' });
-      this.lean('mom', 0, 2, 1200);
-      // 가족 모두가 안아 주는 장면 → 여섯 명이 다 들어오는 가까운 단체 구도
-      this.frame(L.c + 2, this.gF + HELD_Y + 2, ZG, 2.4);
+      this.tweens.killTweensOf(this);
+      this.tweens.add({ targets: this, gx: GX, gy: GY, duration: 300 });
+      this.gMode = 'happy';
+      this.walkTo('mom', GX + 17, this.gF, 900, 'hug');
+      this.acts({ imo: 'hug', dad: 'hug', halmeoni: 'hug', halabeoji: 'hug', samchon: 'happy' });
+      this.frame(CX, this.gF, Z0, 1.5);
     });
-    this.at(s5 + 2.6, () => this.heart(MX - 8, this.gF - 52));
-    this.at(s5 + 5.2, () => this.heart(MX + 10, this.gF - 56));
+    this.at(s5 + 0.9, () => (this.gMode = 'held'));
+    this.at(s5 + 2.4, () => this.fx('heart', GX + 8, GY - 52, 10, 1600));
+    this.at(s5 + 5.2, () => this.fx('hearts', GX + 14, GY - 56, 10, 1600));
 
-    // ── SCENE 06 뽀뽀와 킁카: ① 할머니가 볼에 쪽 → ② 안경 삼촌이 머리에 킁카
+    // ── SCENE 06 뽀뽀와 킁카: ① 할머니가 걸어와 볼에 쪽 ② 삼촌이 와서 머리에 킁킁 (천천히 가까이)
     this.at(s6, () => {
       this.sceneNo = 6;
-      this.softCut(() => {
-        const h = this.m('halmeoni');
-        this.tweens.killTweensOf(h); // 앞 장면의 '모여 서기' 이동이 남아 있어도 이 자리에 고정
-        h.x = MX + 31;
-        h.y = this.gF;
-        h.row = 0;
-        h.s.setDepth(190);
-        h.bob = 0;
-        // 볼뽀뽀: 엄마가 고나를 살짝 들어 올려 할머니 얼굴 높이로
-        this.gy = this.gF - 6;
-        this.frame(MX + 14, this.gF, ZC, 0);
-      });
+      this.gMode = 'happy';
+      this.walkTo('mom', GX + 52, this.gF, 900, 'happy');
+      front('halmeoni', GX + 16, 1100, 'idle');
+      this.frame(GX + 10, this.gF, ZC, 2.2);
     });
-    this.at(s6 + 1.2, () => this.lean('halmeoni', -6, 3, 900));
-    this.at(s6 + 2.2, () => {
+    this.at(s6 + 1.4, () => this.act(this.m('halmeoni'), 'kiss'));
+    this.at(s6 + 2.3, () => {
       sound.smooch();
-      this.float('쪽', this.gx + 12, this.gy - 40, '#ffb3cf');
-      this.heart(this.gx + 18, this.gy - 46, 0.8);
+      // 하트는 할머니 얼굴과 고나 볼 사이 낮게 (다른 가족 얼굴을 가리지 않게)
+      this.float('쪽', this.gx + 20, this.gy - 44, '#ffb3cf');
+      this.fx('heart', this.gx + 15, this.gy - 26, 14, 1500, 0, 0.5);
       this.wiggle = 0.8;
     });
-    this.at(s6 + 4.0, () => this.lean('halmeoni', 0, 0, 900));
+    this.at(s6 + 4.4, () => home('halmeoni', 1000, 'happy'));
     this.at(s6 + 6.3, () => {
-      this.softCut(() => {
-        const h = this.m('halmeoni');
-        const [hx, hrow] = L.photo.halmeoni;
-        h.x = L.c + hx;
-        h.y = this.gF + ROW_DY[hrow];
-        h.row = hrow;
-        h.s.setDepth(ROW_DEPTH[hrow]);
-        h.bob = 0.4;
-        const s = this.m('samchon');
-        this.tweens.killTweensOf(s);
-        s.x = MX - 26;
-        s.y = this.gF + 2;
-        s.row = 0;
-        s.s.setDepth(165); // 엄마(160) 앞, 안긴 고나(170) 뒤 — 고나 머리 뒤에서 킁킁
-        s.bob = 0;
-        this.frame(MX - 10, this.gF, ZC, 0);
-      });
+      this.walkTo('mom', GX + 46, this.gF, 700, 'happy');
+      front('samchon', GX + 16, 1000, 'sniff');
     });
-    this.at(s6 + 7.6, () => this.lean('samchon', 6, 4, 900));
-    this.at(s6 + 8.6, () => {
+    this.at(s6 + 7.8, () => {
       sound.inhale();
-      this.float('킁킁', this.gx - 14, this.gy - 52, '#e8f4c0');
+      this.float('킁킁', this.gx - 12, this.gy - 46, '#e8f4c0');
+      this.fx('sniff', this.gx + 4, this.gy - 30, 6, 1400);
       this.wiggle = 1.4;
-      this.gMode = 'held';
     });
-    this.at(s6 + 10.4, () => this.lean('samchon', 0, 0, 900));
+    this.at(s6 + 9.4, () => this.fx('sniff', this.gx + 4, this.gy - 32, 6, 1400));
+    this.at(s6 + 10.8, () => home('samchon', 1000, 'happy'));
 
-    // ── SCENE 07 고나의 깨달음: 안긴 고나 얼굴을 천천히 가까이 · 눈 감고 편안한 웃음 · 노을빛
+    // ── SCENE 07 고나의 깨달음: 엄마 품에 다시 폭 · 고나 얼굴을 천천히 가까이 · 노을빛
     this.at(s7, () => {
       this.sceneNo = 7;
-      this.softCut(() => {
-        const s = this.m('samchon');
-        const [sx, srow] = L.photo.samchon;
-        s.x = L.c + sx;
-        s.y = this.gF + ROW_DY[srow];
-        s.row = srow;
-        s.s.setDepth(ROW_DEPTH[srow]);
-        s.bob = 0.4;
-        this.frame(this.gx, this.gF - 8, ZC, 0);
-      }, 800);
+      this.walkTo('mom', GX + 17, this.gF, 900, 'hug');
+      this.gMode = 'held';
     });
     this.at(s7 + 0.6, () => {
-      this.shot(this.gx, this.gy - 26, ZF, 5.2);
+      this.shot(GX + 6, GY - 26, ZF, 5.2);
       this.tweens.add({ targets: this.glow, alpha: 0.16, duration: 2400, ease: 'Sine.InOut' });
     });
 
-    // ── SCENE 08 마지막 가족사진: 고나를 가운데로 모두 함께 · 아주 천천히 멀어짐 → 어두워지며 타이틀로
+    // ── SCENE 08 마지막 가족사진: 모두 제자리에서 활짝 · 고나는 가운데 앞 · 아주 천천히 멀어짐 → 어두워지며 타이틀로
     this.at(s8, () => {
       this.sceneNo = 8;
       this.tweens.add({ targets: this.glow, alpha: 0.06, duration: 3000 });
-      for (const f of this.family) f.bob = 0.5;
-      // 단체 사진: 고나는 엄마 앞 가운데 (모두의 얼굴이 보이게)
-      this.tweens.add({ targets: this, gy: this.gF + HELD_Y, duration: 1400, ease: 'Sine.InOut' });
-      this.frame(L.c + 2, this.gF + HELD_Y + 2, ZG, 1.6);
+      for (const f of this.family) if (f.id !== 'mom') home(f.id, 600, 'happy');
+      home('mom', 900, 'happy');
+      this.gMode = 'happy';
+      this.frame(CX, this.gF, ZC, 1.6);
     });
-    this.at(s8 + 2.0, () => this.frame(L.c + 2, this.gF + HELD_Y + 2, Z0, ENDING_TITLE_AT - s8 - 2.4));
-    this.at(s8 + 4.0, () => this.heart(L.c - 30, this.gF - 70, 0.8));
-    this.at(s8 + 6.5, () => this.heart(L.c + 28, this.gF - 74, 0.8));
+    this.at(s8 + 1.8, () => this.acts({ imo: 'wave', dad: 'wave', halabeoji: 'wave', samchon: 'wave', mom: 'clap', halmeoni: 'happy' }));
+    this.at(s8 + 2.0, () => this.frame(CX, this.gF, Z0, ENDING_TITLE_AT - s8 - 2.4));
+    this.at(s8 + 4.0, () => this.fx('heart', GX - 20, GY - 70, 10, 1600));
+    this.at(s8 + 6.5, () => this.fx('flower', GX + 30, GY - 74, 10, 1600));
+    this.at(s8 + 8.0, () => this.fx('star', GX + 4, GY - 48, 8, 1400));
     this.at(ENDING_TITLE_AT - 2.2, () => this.tweens.add({ targets: this.dim, alpha: 0.42, duration: 2600, ease: 'Sine.InOut' }));
 
     // ── 타이틀 · 크레딧 · 마지막 문구 (글자는 화면 위 DOM — ui/endingUi.ts) → 검은 화면
@@ -553,7 +603,7 @@ export class EndingScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
     const frameR = this.add.rectangle(cx, cy, cw + 4 / z * 3, ch + 4 / z * 3, 0xf6e4c0, 1).setDepth(320).setAlpha(0);
     objs.push(frameR);
-    // 게임 속 배경(숲길): 부드럽게 줄이지 않고 배경 도트 1칸 = 반 칸(0.5)으로 그대로 — 가족 도트와 같은 밀도.
+    // 게임 속 배경(숲길): 부드럽게 줄이지 않고 배경 도트 1칸 = 반 칸(0.5)으로 그대로 (흐린 축소 없음).
     // 카드 땅 높이에 게임 땅 줄(GAME_BG.groundRow)이 오도록 맞추고 옆으로 흘려 보냄
     const groundY = cy + ch * 0.36;
     if (this.textures.exists('bg-image')) {
@@ -622,11 +672,6 @@ export class EndingScene extends Phaser.Scene {
     this.tweens.add({ targets: this, gy: this.gy - px, duration: 140, yoyo: true, ease: 'Sine.Out' });
   }
 
-  private heart(x: number, y: number, scale = 1): void {
-    const h = this.add.image(x, y, 'end-heart').setDepth(500).setScale(scale).setAlpha(0.9);
-    this.tweens.add({ targets: h, y: y - 10, alpha: 0, duration: 1600, ease: 'Sine.Out', onComplete: () => h.destroy() });
-  }
-
   private float(text: string, x: number, y: number, color: string): void {
     const key = `end-ft:${color}:${text}`;
     if (!this.textures.exists(key)) {
@@ -668,12 +713,34 @@ export class EndingScene extends Phaser.Scene {
     for (const f of this.family) {
       if (revealed && f.s.visible && f.s.alpha < 1) f.s.setAlpha(Math.min(1, f.s.alpha + dt * 1.5));
       const b = f.bob ? Math.round(Math.sin((this.t + f.phase) * 3.2) * f.bob) : 0;
-      f.s.setPosition(Math.round(f.x + f.lean.x), Math.round(f.y + f.lean.y - Math.max(0, b)));
+      const nx = Math.round(f.x + f.lean.x);
+      // 바라보는 쪽: 걸을 때는 가는 쪽, 서 있을 때는 고나 쪽 (시트 그림은 오른쪽을 봄 → 왼쪽은 좌우 반전만)
+      if (f.act === 'walk') {
+        if (nx !== Math.round(f.s.x)) f.s.setFlipX(nx < f.s.x);
+      } else if (this.useSheet) f.s.setFlipX(f.x > this.gx + 2);
+      f.s.setPosition(nx, Math.round(f.y + f.lean.y - Math.max(0, b)));
     }
   }
 
   private updateGona(dt: number): void {
     const g = this.gona;
+    if (this.useSheet) {
+      // 장면 03부터: 엔딩 시트의 고나 — 동작별 프레임 애니메이션
+      if (g.visible) g.setVisible(false);
+      const k = this.gk;
+      if (!k.visible) k.setVisible(true);
+      const act = this.gMode === 'hide' ? '' : this.gMode === 'look' ? 'idle' : this.gMode;
+      if (act && act !== this.gAct) {
+        this.gAct = act;
+        const key = `${CH_KEY('gona')}-${act}`;
+        if (this.anims.exists(key)) k.play({ key, startFrame: 0 });
+      }
+      k.setVisible(this.gMode !== 'hide');
+      if (this.gMode === 'run' && Math.random() < dt * 10) this.dust.emitParticleAt(this.gx - 10, this.gy - 1);
+      const wig = this.wiggle > 0 ? Math.round(Math.sin(this.t * 30)) : 0;
+      k.setPosition(Math.round(this.gx + wig), Math.round(this.gy));
+      return;
+    }
     if (this.gMode === 'hide') {
       if (g.visible) g.setVisible(false);
       return;

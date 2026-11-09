@@ -458,8 +458,8 @@ async function bossTests(label, device) {
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
-  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); const ids = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji']; return { e: window.__gona.scene.getScene('Game').debugEnding(), fam: sc.children.list.filter((o) => /^fam-/.test(o.texture?.key || '')).map((o) => o.texture.key).sort().join(','), famOk: ids.every((id) => sc.textures.exists('fam-' + id)), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), gona: sc.children.list.some((o) => /^dino-stage-newborn$/.test(o.texture?.key || '')) }; });
-  check(`${label}: final boss win → ending (own bg, 6 original family cutouts loaded, baby GONA sprite, game hidden)`, en.e?.state === 'ending' && en.famOk && en.fam === 'fam-dad,fam-halabeoji,fam-halmeoni,fam-imo,fam-mom,fam-samchon' && en.bg && en.gameHidden && en.gona, JSON.stringify(en));
+  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); const ids = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji']; return { e: window.__gona.scene.getScene('Game').debugEnding(), fam: sc.children.list.filter((o) => /^ech-(?!gona)/.test(o.texture?.key || '')).map((o) => o.texture.key).sort().join(','), famOk: ids.every((id) => sc.textures.exists('ech-' + id)) && sc.textures.exists('ech-gona'), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), gona: sc.children.list.some((o) => /^dino-stage-newborn$/.test(o.texture?.key || '')) }; });
+  check(`${label}: final boss win → ending (own bg, 6 family sprite strips from the ending sheet loaded, baby GONA sprite, game hidden)`, en.e?.state === 'ending' && en.famOk && en.fam === 'ech-dad,ech-halabeoji,ech-halmeoni,ech-imo,ech-mom,ech-samchon' && en.bg && en.gameHidden && en.gona, JSON.stringify(en));
   await page.waitForTimeout(2500);
   const music = await G(() => ({ mode: window.__sound.endingMode, want: window.__sound.wantMusic }));
   check(`${label}: ending music started (one track, buffer or file fallback)`, music.mode === 'buffer' || (music.mode === 'file' && music.want === 'ending'), JSON.stringify(music));
@@ -832,10 +832,11 @@ async function endingArtTests(label, device) {
   const SC = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3];
   const snap = () => G(() => {
     const e = window.__gona.scene.getScene('Game').ending; const v = e.cameras.main.worldView;
-    const fam = e.family.map((f) => { const bb = f.s.getBounds(); return { id: f.id, key: f.s.texture.key, tw: f.s.frame.width, sx: f.s.scaleX, sy: f.s.scaleY, x0: bb.x, x1: bb.right, y0: bb.y, y1: bb.bottom, vis: f.s.visible && f.s.alpha > 0.5 }; });
+    const fam = e.family.map((f) => { const bb = f.s.getBounds(); return { id: f.id, key: f.s.texture.key, tw: f.s.frame.width, sx: f.s.scaleX, sy: f.s.scaleY, anim: f.s.anims.currentAnim?.key ?? '', playing: f.s.anims.isPlaying, frame: f.s.frame.name, x0: bb.x, x1: bb.right, y0: bb.y, y1: bb.bottom, vis: f.s.visible && f.s.alpha > 0.5 }; });
     const inView = (o) => o.x0 >= v.x - 0.5 && o.x1 <= v.right + 0.5 && o.y0 >= v.y - 0.5 && o.y1 <= v.bottom + 0.5;
     // 얼굴 = 그림 위쪽 머리 부분(머리카락 아래 ~ 턱), 양옆 20% 안쪽
-    const face = (o) => ({ x0: o.x0 + (o.x1 - o.x0) * 0.2, x1: o.x1 - (o.x1 - o.x0) * 0.2, y0: o.y0 + 6, y1: o.y0 + 27 });
+    // 얼굴 = 칸(cell) 위쪽 머리 부분, 양옆 25% 안쪽 (칸에는 투명 여백이 조금 있음)
+    const face = (o) => ({ x0: o.x0 + (o.x1 - o.x0) * 0.25, x1: o.x1 - (o.x1 - o.x0) * 0.25, y0: o.y0 + 8, y1: o.y0 + 30 });
     let worst = 0; let pair = '';
     for (let i = 0; i < fam.length; i++) for (let j = i + 1; j < fam.length; j++) {
       const a = face(fam[i]), c = face(fam[j]);
@@ -843,8 +844,8 @@ async function endingArtTests(label, device) {
       const r = ov / ((a.x1 - a.x0) * (a.y1 - a.y0));
       if (r > worst) { worst = r; pair = fam[i].id + '/' + fam[j].id; }
     }
-    const g = e.gona;
-    return { t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView(g.getBounds() && { x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
+    const g = e.gk.visible ? e.gk : e.gona;
+    return { gkey: g.texture.key, ganim: g.anims?.currentAnim?.key ?? '', t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView(g.getBounds() && { x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
   });
   const goto = async (sc, at) => {
     await G((t) => { const e = window.__gona.scene.getScene('Game').ending; if (e.t < t - 0.05) e.t = t - 0.05; }, SC[sc]);
@@ -852,15 +853,23 @@ async function endingArtTests(label, device) {
   };
   await goto(2, 30.0);
   const a = await snap();
-  check(`${label}: ending family drawn as pixel sprites (half-dot, uniform 0.5 scale)`, a.fam.every((f) => f.key.startsWith('fam-') && f.tw < 100 && f.sx === 0.5 && f.sy === 0.5), JSON.stringify(a.fam.map((f) => [f.id, f.tw, f.sx, f.sy])));
+  check(`${label}: ending family = independent sprites from the ending sheet (1:1 scale, frame animation playing)`, a.fam.every((f) => f.key === 'ech-' + f.id && Math.abs(f.sx) === 1 && f.sy === 1 && f.playing && f.anim.startsWith('ech-' + f.id + '-')), JSON.stringify(a.fam.map((f) => [f.id, f.anim, f.sx, f.sy, f.playing])));
+  check(`${label}: ending GONA from the ending sheet (not stretched)`, a.gkey === 'ech-gona' && a.gsx === a.gsy, JSON.stringify({ key: a.gkey, anim: a.ganim, s: [a.gsx, a.gsy] }));
   check(`${label}: ending scene 3 — all six family members fully on screen, faces apart`, a.allIn && a.faceOverlap < 0.12, JSON.stringify({ out: a.out, faceOverlap: a.faceOverlap, pair: a.pair, zoom: a.zoom }));
   await page.screenshot({ path: `${S}/${label}-s3.png` });
   await goto(3, 36.8);
   const c = await snap();
-  check(`${label}: ending scene 4 (GONA runs) — family all visible, GONA in frame, GONA not stretched`, c.allIn && c.gonaIn && c.gsx === c.gsy, JSON.stringify({ out: c.out, gona: c.gonaIn, gs: [c.gsx, c.gsy] }));
+  check(`${label}: ending scene 4 (GONA runs) — run frames playing, family all visible, GONA in frame`, c.allIn && c.gonaIn && c.gsx === c.gsy && c.ganim === 'ech-gona-run', JSON.stringify({ out: c.out, gona: c.gonaIn, anim: c.ganim }));
   await goto(4, 45.5);
   const d = await snap();
-  check(`${label}: ending scene 5 (family hug) — everyone in the closer group shot`, d.allIn && Number.isInteger(d.zoom), JSON.stringify({ out: d.out, zoom: d.zoom }));
+  const momHug = d.fam.find((f) => f.id === 'mom');
+  check(`${label}: ending scene 5 (family hug) — mom hug frames + GONA held frames, everyone on screen`, d.allIn && Number.isInteger(d.zoom) && momHug.anim === 'ech-mom-hug' && d.ganim === 'ech-gona-held', JSON.stringify({ out: d.out, zoom: d.zoom, mom: momHug.anim, gona: d.ganim }));
+  await goto(5, 49.4);
+  const k = await snap();
+  check(`${label}: ending scene 6 — grandma walks over and plays the kiss frames`, k.fam.find((f) => f.id === 'halmeoni').anim === 'ech-halmeoni-kiss', JSON.stringify(k.fam.find((f) => f.id === 'halmeoni')));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').ending.t >= 55.6, null, { timeout: 30000 });
+  const sn = await snap();
+  check(`${label}: ending scene 6 — uncle plays the sniff frames`, sn.fam.find((f) => f.id === 'samchon').anim === 'ech-samchon-sniff', JSON.stringify(sn.fam.find((f) => f.id === 'samchon')));
   await page.screenshot({ path: `${S}/${label}-s5.png` });
   await goto(7, 77.5);
   const f = await snap();

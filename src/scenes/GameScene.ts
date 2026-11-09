@@ -17,7 +17,7 @@ import { CLOUD_FRAME, dizzyStar, FLASK_FRAME, flaskSheet, fartCloudSheet, monste
 import { boomerangStats } from '../game/weapons';
 import { hurtFace } from '../art/hurtFace';
 import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
-import { ENDING_FAMILY, type EndingScene } from './EndingScene';
+import { queueEndingArt, type EndingScene } from './EndingScene';
 import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, targetSheet, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
@@ -2059,16 +2059,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.growth.isFinal) this.startEvolution();
   }
 
-  /** 엔딩에 쓰는 가족 그림을 미리 불러 둠 (이미 있으면 아무것도 안 함) */
+  /** 엔딩에 쓰는 캐릭터 스프라이트(고나·가족 여섯 명)·이펙트를 미리 불러 둠 (이미 있으면 아무것도 안 함) */
   private preloadEndingArt(): void {
-    let added = 0;
-    for (const id of ENDING_FAMILY) {
-      const key = `fam-${id}`;
-      if (this.textures.exists(key)) continue;
-      this.load.image(key, `assets/ending/fam-${id}-px.png`);
-      added++;
-    }
-    if (added) this.load.start();
+    if (queueEndingArt(this)) this.load.start();
   }
 
   private startBoss(id: BossId): void {

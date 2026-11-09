@@ -4,7 +4,7 @@
   - 배경(크림색 종이)과 발밑 풀밭·꽃만 투명하게 (바깥 테두리에서부터 채우기 — 짙은 외곽선 안쪽은 건드리지 않음)
   - 반짝이 선·하트·이름표처럼 떨어진 조각은 버림 (가장 큰 덩어리 = 인물만 남김)
   - 남은 픽셀의 색은 원본 그대로 (알파만 0/255)
-출력: art-src/ending/fam-<id>.png (→ tools/pixelize_family.py 로 게임용 도트 fam-<id>-px.png)  (id: imo, samchon, mom, dad, halmeoni, halabeoji)
+출력: art-src/ending/fam-<id>.png (예전 엔딩 원본 · 지금 엔딩은 tools/extract_ending_sprites.py 의 캐릭터 시트 사용)  (id: imo, samchon, mom, dad, halmeoni, halabeoji)
 실행: python3 tools/extract_family_sheet.py
 """
 import os
