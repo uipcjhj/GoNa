@@ -166,12 +166,19 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 
 게임 화면과 별개인 컷신 (`src/scenes/EndingScene.ts`, 씬 키 `EndingCine`) + 마지막 화면 글자 (`src/ui/endingUi.ts`). 킁카괴물의 마지막 대사·퇴장 뒤 게임 화면·HUD·버튼을 모두 숨기고 약 2분.
 
-- **가족 여섯 명 = 확정 디자인 시트 원본 그대로**: `art-src/ending/family-sheet/family-cast-concept-sheet.png` 에서 `python3 tools/extract_family_sheet.py` 로 잘라 냄 (종이 배경·발밑 풀밭·반짝이·하트·이름표만 지우고 인물 픽셀은 그대로) → `public/assets/ending/fam-{imo,samchon,mom,dad,halmeoni,halabeoji}.png`
-  - 원본 그림의 도트 1칸(6px)이 고나 도트 1칸과 같도록 1/6 배율로 표시, 카메라 배율은 정수(가까이 볼 때 정확히 2배·3배)
+- **가족 여섯 명 = 확정 디자인 시트 원본 그대로**: `art-src/ending/family-sheet/family-cast-concept-sheet.png` 에서 `python3 tools/extract_family_sheet.py` 로 잘라 냄 (종이 배경·발밑 풀밭·반짝이·하트·이름표만 지우고 인물 픽셀은 그대로) → `art-src/ending/fam-{imo,samchon,mom,dad,halmeoni,halabeoji}.png`
+  - **게임 도트로 맞춤** (`python3 tools/pixelize_family.py` → `public/assets/ending/fam-<id>-px.png`): 원본은 외곽선만 약 6px 도트 계단이고 안쪽은 매끈한 그림이라, 1/6 로 줄여 그리면 가족만 고해상도로 보여 배경·고나와 어긋났음. 그림 자체를 3px(원본 도트의 반) 칸으로 다시 샘플링 — 진한 선(외곽선·눈·안경)과 입 색을 우선 보존, 인물마다 40색으로 정리. 새로 그리거나 모양을 고치지 않음
+    - 원본 도트 1칸(6px) 크기로 그대로 줄이면 입·눈·안경이 뭉개져서(얼굴 변형) 반 칸을 씀 → 가족 도트 = 고나 도트의 절반 크기, 모두 nearest(부드러운 확대 없음)
+    - 비교: `art-src/ending/family-pixel-compare.png` (원본 · 도트), `art-src/ending/compare/` (엔딩 변경 전·후 세로·가로 캡처, 도트 밀도 확대)
+  - 배율 0.5 균일 표시 · 카메라 배율은 정수(넓게 = 화면에 꽉 차는 배율, 가족 모두 가까이 = +1, 뽀뽀·킁카 = 약 1.6배, 고나 얼굴 = 약 2.2배)
+  - **배치**: 앞줄 셋(이모·엄마·할머니) · 뒷줄 셋(아빠·삼촌·할아버지)을 반 칸씩 엇갈리게, 뒷줄은 얼굴이 앞사람 머리 위로 다 보이게 올려 세움. 가족을 발견·달려가기·가족의 품·마지막 가족사진 장면에서는 여섯 명이 모두 화면 안 (자동 테스트로 확인), 뽀뽀·킁카·고나 얼굴 클로즈업만 의도적으로 가까이
+  - 안긴 고나는 엄마 얼굴을 가리지 않는 높이 · 빨리 감기(장면 건너뛰기)를 해도 지난 장면 연출이 다음 장면 배치를 덮어쓰지 않음
+  - 고나 비율: 엔딩·게임 모두 가로세로 같은 배율(1:1)로 그림. 4단계 그림(48x45, 꼬리·등 지느러미 포함)은 성장 컨셉 시트 그림과 가로세로 비율이 같음 (늘어난 곳 없음)
   - 움직임은 위치 이동(다가가기·몸을 기울여 다가붙기)과 작은 들썩임만 — 회전·찌그러뜨리기·모핑·다시 그리기 없음. 원본에 없는 포즈(팔로 감싸 안기 등)는 만들지 않음
 - **고나 = 게임의 성장 1~4단계 원본 스프라이트** (아기 꼬물·깜빡 / 기기 / 걷기·달리기 / 자이언트 걷기 · 같은 그림에서 눈·입만 바꾼 웃는 얼굴·놀란 얼굴)
-- **배경**: 해 질 녘 보랏빛 버섯마을 + 은은한 가로등 불빛 · 꽃잎(최대 14개) · 반딧불(최대 11개) · 별빛 6개
-- **내레이션** = 타이핑 자막(문장 그대로, 음성 없음). 자막이 나오는 동안 엔딩 곡을 살짝 낮춤
+- **배경**: 해 질 녘 보랏빛 버섯마을(조금 더 차분한 빈티지 색) + 은은한 가로등 불빛 · 꽃잎(최대 14개) · 반딧불(최대 11개) · 별빛 6개
+- **내레이션** = 타이핑 자막(문장 그대로, 음성 없음). 자막이 나오는 동안 엔딩 곡을 살짝 낮춤. 엔딩 자막 상자는 도트 창 모양(계단 모서리 · 단색 테두리, 흐린 그림자 없음)
+- **회상 카드(장면 02)**: 게임 숲길 배경을 부드럽게 줄이지 않고 배경 도트 1칸 = 반 칸으로 그대로 (가족 도트와 같은 밀도)
 
 | 장면 | 시간 | 연출 | 내레이션 |
 |---|---|---|---|
@@ -199,8 +206,8 @@ npm run build:single  # dist-single/index.html 한 파일짜리 빌드 (어디�
 
 | 파일 | 규격 | 만드는 법 |
 |---|---|---|
-| `bgB-land.png` / `bgB-port.png` | 320x180 / 180x320, 48색 | 원본 `art-src/ending/bgB-*-original.png` (인물 없는 배경) → `python3 tools/build_ending_bg.py` |
-| `fam-<id>.png` (6장) | 원본 크기 그대로 (약 206~253 x 332~357, 투명 배경) | `python3 tools/extract_family_sheet.py` — 확정 디자인 시트에서 잘라 냄 |
+| `bgB-land.png` / `bgB-port.png` | 320x180 / 180x320, 44색 · 차분한 빈티지 색보정(채도 ×0.9, 그림자 보라·밝은 곳 크림으로 살짝) | 원본 `art-src/ending/bgB-*-original.png` (인물 없는 배경) → `python3 tools/build_ending_bg.py` |
+| `fam-<id>-px.png` (6장) | 반 도트 그림 69~84 x 111~119 (투명 배경) | `python3 tools/extract_family_sheet.py` (확정 디자인 시트 → `art-src/ending/fam-<id>.png`) → `python3 tools/pixelize_family.py` |
 
 ## 개발용 기능 테스트 메뉴
 

@@ -435,6 +435,8 @@ async function bossTests(label, device) {
   }
   check(`${label}: sniff inhale pulls GONA`, pull > 5, `pull ${pull.toFixed(1)} (장판은 1차 분노부터)`);
   await page.screenshot({ path: `${S}/boss-${label}-sniff.png` });
+  // 흡입 버티기(QTE) 중에는 공격이 막혀 있으므로 끝날 때까지 기다림 (버티기 연타는 qte 묶음에서 따로 검사)
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').battle?.resistActive, null, { timeout: 12000 }).catch(() => {});
   const shp = (await battle()).hp;
   await page.waitForFunction(() => !window.__gona.scene.getScene('Game').debugCombat().out, null, { timeout: 4000 }).catch(() => {});
   await page.keyboard.press('KeyX');
@@ -818,10 +820,62 @@ async function qteTests(label, device) {
   await b.close();
 }
 
+/** 엔딩 그림: 가족 도트 그림(반 도트 · 균일 배율) · 고나 비율 · 단체 장면에서 여섯 명 모두 화면 안 · 얼굴끼리 겹치지 않음 */
+async function endingArtTests(label, device) {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  const G = (f, a) => page.evaluate(f, a);
+  await page.goto(URL + '?test=family-ending');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
+  const SC = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3];
+  const snap = () => G(() => {
+    const e = window.__gona.scene.getScene('Game').ending; const v = e.cameras.main.worldView;
+    const fam = e.family.map((f) => { const bb = f.s.getBounds(); return { id: f.id, key: f.s.texture.key, tw: f.s.frame.width, sx: f.s.scaleX, sy: f.s.scaleY, x0: bb.x, x1: bb.right, y0: bb.y, y1: bb.bottom, vis: f.s.visible && f.s.alpha > 0.5 }; });
+    const inView = (o) => o.x0 >= v.x - 0.5 && o.x1 <= v.right + 0.5 && o.y0 >= v.y - 0.5 && o.y1 <= v.bottom + 0.5;
+    // 얼굴 = 그림 위쪽 머리 부분(머리카락 아래 ~ 턱), 양옆 20% 안쪽
+    const face = (o) => ({ x0: o.x0 + (o.x1 - o.x0) * 0.2, x1: o.x1 - (o.x1 - o.x0) * 0.2, y0: o.y0 + 6, y1: o.y0 + 27 });
+    let worst = 0; let pair = '';
+    for (let i = 0; i < fam.length; i++) for (let j = i + 1; j < fam.length; j++) {
+      const a = face(fam[i]), c = face(fam[j]);
+      const ov = Math.max(0, Math.min(a.x1, c.x1) - Math.max(a.x0, c.x0)) * Math.max(0, Math.min(a.y1, c.y1) - Math.max(a.y0, c.y0));
+      const r = ov / ((a.x1 - a.x0) * (a.y1 - a.y0));
+      if (r > worst) { worst = r; pair = fam[i].id + '/' + fam[j].id; }
+    }
+    const g = e.gona;
+    return { t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView(g.getBounds() && { x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
+  });
+  const goto = async (sc, at) => {
+    await G((t) => { const e = window.__gona.scene.getScene('Game').ending; if (e.t < t - 0.05) e.t = t - 0.05; }, SC[sc]);
+    await page.waitForFunction((t) => window.__gona.scene.getScene('Game').ending.t >= t, at, { timeout: 30000 });
+  };
+  await goto(2, 30.0);
+  const a = await snap();
+  check(`${label}: ending family drawn as pixel sprites (half-dot, uniform 0.5 scale)`, a.fam.every((f) => f.key.startsWith('fam-') && f.tw < 100 && f.sx === 0.5 && f.sy === 0.5), JSON.stringify(a.fam.map((f) => [f.id, f.tw, f.sx, f.sy])));
+  check(`${label}: ending scene 3 — all six family members fully on screen, faces apart`, a.allIn && a.faceOverlap < 0.12, JSON.stringify({ out: a.out, faceOverlap: a.faceOverlap, pair: a.pair, zoom: a.zoom }));
+  await page.screenshot({ path: `${S}/${label}-s3.png` });
+  await goto(3, 36.8);
+  const c = await snap();
+  check(`${label}: ending scene 4 (GONA runs) — family all visible, GONA in frame, GONA not stretched`, c.allIn && c.gonaIn && c.gsx === c.gsy, JSON.stringify({ out: c.out, gona: c.gonaIn, gs: [c.gsx, c.gsy] }));
+  await goto(4, 45.5);
+  const d = await snap();
+  check(`${label}: ending scene 5 (family hug) — everyone in the closer group shot`, d.allIn && Number.isInteger(d.zoom), JSON.stringify({ out: d.out, zoom: d.zoom }));
+  await page.screenshot({ path: `${S}/${label}-s5.png` });
+  await goto(7, 77.5);
+  const f = await snap();
+  check(`${label}: ending scene 8 (last family photo) — all six on screen, faces apart`, f.allIn && f.gonaIn && f.faceOverlap < 0.12, JSON.stringify({ out: f.out, faceOverlap: f.faceOverlap, pair: f.pair }));
+  await page.screenshot({ path: `${S}/${label}-s8.png` });
+  check(`${label}: no page errors (ending art)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.some((o) => n.startsWith(o));
+  if (want('endart-port')) await endingArtTests('endart-port', devices['iPhone 13']);
+  if (want('endart-land')) await endingArtTests('endart-land', devices['iPhone 13 landscape']);
   if (want('qte-port')) await qteTests('qte-port', devices['iPhone 13']);
   if (want('qte-land')) await qteTests('qte-land', devices['iPhone 13 landscape']);
   if (want('feat-se')) await featureTests('feat-se', devices['iPhone SE']);

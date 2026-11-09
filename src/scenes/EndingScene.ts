@@ -2,10 +2,12 @@
  * 가족 엔딩 컷신 — 8장면 (약 2분) → 타이틀 → 크레딧 → 마지막 문구 → 검은 화면
  *
  * 그림 원칙
- *   - 가족 여섯 명: 사용자가 준 확정 디자인 시트에서 그대로 잘라 낸 원본 그림(public/assets/ending/fam-<id>.png,
- *     tools/extract_family_sheet.py — 배경만 투명하게, 인물 픽셀은 그대로). 새로 그리거나 고쳐 그리지 않음.
+ *   - 가족 여섯 명: 사용자가 준 확정 디자인 시트에서 그대로 잘라 낸 원본 그림(art-src/ending/fam-<id>.png,
+ *     tools/extract_family_sheet.py)을 그림 자체의 도트 격자 절반(3px) 칸으로 다시 샘플링한 도트 그림
+ *     (public/assets/ending/fam-<id>-px.png, tools/pixelize_family.py — 새로 그리거나 고쳐 그리지 않음).
+ *     원본 도트 한 칸 = 고나 도트 한 칸 크기(반 칸 = 0.5) 로 표시 → 배경·고나와 같은 또렷한 도트 (부드러운 축소 없음).
+ *     (도트 한 칸 그대로 줄이면 입·눈·안경이 뭉개져 반 칸을 씀 — 비교: art-src/ending/family-pixel-compare.png)
  *     움직임은 위치 이동(다가가기·몸을 기울여 다가붙기)과 작은 들썩임만 — 회전·찌그러뜨리기·모핑 없음.
- *     원본 그림의 도트 1칸(6px)이 고나의 도트 1칸과 같은 크기가 되도록 1/6 배율로 표시 (카메라 배율은 정수).
  *   - 고나: 게임에 있는 성장 1~4단계 원본 스프라이트(눈 깜빡·꼬물·기기·달리기·걷기, 웃는 얼굴) 그대로.
  *   - 배경: 해 질 녘 보랏빛 버섯마을(엔딩 배경) + 은은한 가로등 불빛·꽃잎·반딧불·별빛.
  * 내레이션: 자막(한 글자씩)으로만 — 문장은 사용자가 준 그대로. 자막이 나오는 동안 엔딩 곡을 살짝 낮춤.
@@ -15,6 +17,7 @@ import Phaser from 'phaser';
 import { bus, EV } from '../events';
 import { sound } from '../audio';
 import { perf } from '../perf';
+import { GAME_BG } from '../config';
 
 export const ENDING_FAMILY = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji'] as const;
 export type FamId = (typeof ENDING_FAMILY)[number];
@@ -40,8 +43,8 @@ export const ENDING_BLACK_AT = 116.5;
 /** (예전 이름 호환) 마지막 화면 버튼이 나오는 때 */
 export const ENDING_THE_END_AT = ENDING_BLACK_AT + 3.5;
 
-/** 원본 그림 도트 1칸 = 6px → 고나와 같은 크기로 */
-const FAM_SCALE = 1 / 6;
+/** 반 도트 그림(원본 도트 1칸 = 2px) → 원본 도트 1칸이 고나 도트 1칸과 같은 크기로 */
+const FAM_SCALE = 0.5;
 
 interface Layout {
   bg: string;
@@ -49,7 +52,8 @@ interface Layout {
   H: number;
   c: number;
   lamps: [number, number][];
-  /** 가족이 서는 곳 (가운데 기준 x, 줄 0 앞·1 가운데·2 뒤) — 단체 사진 */
+  /** 가족이 서는 곳 (가운데 기준 x, 줄 0 앞·2 뒤) — 단체 사진.
+   *  앞줄 셋 · 뒷줄 셋을 반 칸씩 엇갈리게, 뒷줄은 얼굴이 앞사람 머리 위로 다 보이게 올려 세움 (얼굴끼리 겹치지 않음) */
   photo: Record<FamId, [number, 0 | 1 | 2]>;
 }
 
@@ -60,7 +64,7 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 180,
     c: 160,
     lamps: [[94, 41], [237, 41]],
-    photo: { mom: [0, 0], imo: [-44, 0], halmeoni: [44, 0], dad: [-24, 2], samchon: [24, 2], halabeoji: [66, 1] },
+    photo: { imo: [-34, 0], mom: [12, 0], halmeoni: [58, 0], dad: [-58, 2], samchon: [-11, 2], halabeoji: [35, 2] },
   },
   port: {
     bg: 'end-bgB-port',
@@ -68,10 +72,10 @@ const LAYOUTS: Record<'land' | 'port', Layout> = {
     H: 320,
     c: 92,
     lamps: [[15, 116], [163, 116]],
-    photo: { mom: [0, 0], imo: [-40, 1], halmeoni: [40, 1], dad: [-22, 2], samchon: [22, 2], halabeoji: [52, 2] },
+    photo: { imo: [-28, 0], mom: [10, 0], halmeoni: [48, 0], dad: [-48, 2], samchon: [-9, 2], halabeoji: [29, 2] },
   },
 };
-const ROW_DY = [0, -8, -16];
+const ROW_DY = [0, -11, -21];
 const ROW_DEPTH = [160, 130, 100];
 
 interface Member {
@@ -97,6 +101,8 @@ export class EndingScene extends Phaser.Scene {
   holdAt = Infinity;
   readonly family: Member[] = [];
   private cues: Cue[] = [];
+  /** 지금 실행 중인 cue 가 예정보다 몇 초 늦었는지 (빨리 감기 판별) */
+  private cueLate = 0;
   private L!: Layout;
   private portrait = false;
   private Z0 = 6;
@@ -121,7 +127,7 @@ export class EndingScene extends Phaser.Scene {
 
   preload(): void {
     // 보통은 최종 보스전 때 미리 받아 둠 (GameScene.preloadEndingArt) — 바로 엔딩으로 온 경우만 여기서
-    for (const id of ENDING_FAMILY) if (!this.textures.exists(`fam-${id}`)) this.load.image(`fam-${id}`, `assets/ending/fam-${id}.png`);
+    for (const id of ENDING_FAMILY) if (!this.textures.exists(`fam-${id}`)) this.load.image(`fam-${id}`, `assets/ending/fam-${id}-px.png`);
   }
 
   create(): void {
@@ -237,7 +243,7 @@ export class EndingScene extends Phaser.Scene {
   private frame(x: number, ground: number, z: number, dur: number): void {
     const vh = this.scale.height / z;
     // 화면 높이 중 땅이 놓일 위치 — 가로 화면은 자막이 위에 있어, 가까이 볼 때는 발을 화면 맨 아래로 (얼굴이 자막에 가리지 않게)
-    const at = this.portrait ? 0.7 : z >= this.Z0 * 2 ? 0.99 : 0.9;
+    const at = this.portrait ? 0.7 : z > this.Z0 ? 0.99 : 0.9;
     const cy = ground - vh * at + vh / 2;
     this.shot(x, cy, z, dur);
   }
@@ -249,17 +255,25 @@ export class EndingScene extends Phaser.Scene {
     const vh = this.scale.height / z;
     const cx = Phaser.Math.Clamp(x, vw / 2, L.W - vw / 2);
     const cy = Phaser.Math.Clamp(y, vh / 2, L.H - vh / 2);
+    // 앞 장면의 카메라 이동이 아직 진행 중이어도 새 구도가 항상 이김 (force)
     if (dur <= 0) {
+      cam.zoomEffect.reset();
+      cam.panEffect.reset();
       cam.setZoom(z);
       cam.centerOn(cx, cy);
       return;
     }
-    if (cam.zoom !== z) cam.zoomTo(z, dur * 1000, 'Sine.easeInOut');
-    cam.pan(cx, cy, dur * 1000, 'Sine.easeInOut');
+    if (cam.zoom !== z || cam.zoomEffect.isRunning) cam.zoomTo(z, dur * 1000, 'Sine.easeInOut', true);
+    cam.pan(cx, cy, dur * 1000, 'Sine.easeInOut', true);
   }
 
   /** 부드러운 장면 전환: 잠깐 어두워졌다가 밝아지며 바뀜 */
   private softCut(fn: () => void, ms = 520): void {
+    // 빨리 감기(시간 건너뛰기)로 늦게 불린 장면 전환은 어둡게 하지 않고 바로 바꿈 → 뒤 장면의 배치를 덮어쓰지 않음
+    if (this.cueLate > 0.3) {
+      fn();
+      return;
+    }
     this.tweens.add({
       targets: this.dim,
       alpha: 1,
@@ -307,6 +321,17 @@ export class EndingScene extends Phaser.Scene {
   private buildCues(): void {
     const L = this.L;
     const Z0 = this.Z0;
+    // 클로즈업 배율 (모두 정수): 뽀뽀·킁카 둘만 가까이 = 약 1.6배 · 가족 모두가 다 보이는 가까운 단체 = 한 단계 위 · 고나 얼굴 = 약 2.2배
+    const ZC = Math.max(Z0 + 1, Math.round(Z0 * 1.6));
+    const ZG = Z0 + 1;
+    const ZF = Math.max(ZC + 1, Math.round(Z0 * 2.2));
+    // 안긴 고나: 엄마 얼굴이 고나 머리 위로 다 보이는 높이
+    const HELD_Y = 12;
+    // 엄마 자리 (단체 사진 기준) — 안기기·뽀뽀·킁카 위치의 기준
+    const MX = L.c + L.photo.mom[0];
+    // SCENE 03·04: 가족이 길 끝에 모여 있을 때의 배치 (조금 좁게, 고나가 보는 쪽으로)
+    const near = { k: this.portrait ? 0.9 : 0.92, off: this.portrait ? 12 : 40 };
+    const momNear = L.c + L.photo.mom[0] * near.k + near.off;
     const [s1, s2, s3, s4, s5, s6, s7, s8] = ENDING_SCENES;
     // 엔딩 곡: 보통은 최종 보스전 때 미리 해독해 둠. 아니면 지금 해독(최대 2.5초 기다림) → 안 되면 파일로 재생
     this.at(0, () => {
@@ -347,13 +372,13 @@ export class EndingScene extends Phaser.Scene {
         this.clearMemories();
         this.dim.setAlpha(0);
         this.setStage('bigbaby');
-        this.gx = this.portrait ? L.c - 52 : L.c - 110;
+        this.gx = this.portrait ? L.c - 58 : L.c - 110;
         this.gy = this.gNear;
         this.gMode = 'idle';
         // 가족은 길 끝(조금 멀리)에 줄지어 서지 않고 모여서 기다림
         for (const f of this.family) {
           const [dx, row] = L.photo[f.id];
-          f.x = L.c + dx * 0.92 + (this.portrait ? 8 : 40);
+          f.x = L.c + dx * near.k + near.off;
           f.y = this.gF + ROW_DY[row];
           // 카메라가 고나 뒤에서 물러나며 보여 줄 때 나타남 (처음엔 화면 위쪽에 머리가 잘려 보이지 않게)
           f.s.setVisible(true).setAlpha(0);
@@ -377,7 +402,7 @@ export class EndingScene extends Phaser.Scene {
       this.sceneNo = 4;
       this.gMode = 'run';
       for (const f of this.family) f.bob = 1;
-      const tx = L.c + (this.portrait ? 4 : 30);
+      const tx = momNear - (this.portrait ? 6 : 10);
       this.tweens.add({ targets: this, gx: tx, gy: this.gF + 1, duration: (s5 - s4 - 0.3) * 1000, ease: 'Sine.InOut', onComplete: () => (this.gMode = 'happy') });
       this.frame(L.c, this.gF, Z0, 2);
     });
@@ -392,26 +417,29 @@ export class EndingScene extends Phaser.Scene {
       }
       // 고나가 엄마 품으로 (엄마 바로 앞에 폭 안김 — 엄마 얼굴은 고나 머리 위로 보임)
       this.gMode = 'held';
-      this.tweens.add({ targets: this, gx: L.c + 1, gy: this.gF + 6, duration: 1200, ease: 'Sine.Out' });
+      this.tweens.killTweensOf(this); // 달려가던 이동이 남아 있으면 멈추고 엄마 품으로
+      this.tweens.add({ targets: this, gx: MX + 1, gy: this.gF + HELD_Y, duration: 1200, ease: 'Sine.Out' });
       this.lean('mom', 0, 2, 1200);
-      this.frame(L.c, this.gF, Z0 * 2, 2.4);
+      // 가족 모두가 안아 주는 장면 → 여섯 명이 다 들어오는 가까운 단체 구도
+      this.frame(L.c + 2, this.gF + HELD_Y + 2, ZG, 2.4);
     });
-    this.at(s5 + 2.6, () => this.heart(L.c - 8, this.gF - 52));
-    this.at(s5 + 5.2, () => this.heart(L.c + 10, this.gF - 56));
+    this.at(s5 + 2.6, () => this.heart(MX - 8, this.gF - 52));
+    this.at(s5 + 5.2, () => this.heart(MX + 10, this.gF - 56));
 
     // ── SCENE 06 뽀뽀와 킁카: ① 할머니가 볼에 쪽 → ② 안경 삼촌이 머리에 킁카
     this.at(s6, () => {
       this.sceneNo = 6;
       this.softCut(() => {
         const h = this.m('halmeoni');
-        h.x = L.c + 31;
+        this.tweens.killTweensOf(h); // 앞 장면의 '모여 서기' 이동이 남아 있어도 이 자리에 고정
+        h.x = MX + 31;
         h.y = this.gF;
         h.row = 0;
         h.s.setDepth(190);
         h.bob = 0;
         // 볼뽀뽀: 엄마가 고나를 살짝 들어 올려 할머니 얼굴 높이로
         this.gy = this.gF - 6;
-        this.frame(L.c + 14, this.gF, Z0 * 2, 0);
+        this.frame(MX + 14, this.gF, ZC, 0);
       });
     });
     this.at(s6 + 1.2, () => this.lean('halmeoni', -6, 3, 900));
@@ -432,12 +460,13 @@ export class EndingScene extends Phaser.Scene {
         h.s.setDepth(ROW_DEPTH[hrow]);
         h.bob = 0.4;
         const s = this.m('samchon');
-        s.x = L.c - 26;
+        this.tweens.killTweensOf(s);
+        s.x = MX - 26;
         s.y = this.gF + 2;
         s.row = 0;
         s.s.setDepth(165); // 엄마(160) 앞, 안긴 고나(170) 뒤 — 고나 머리 뒤에서 킁킁
         s.bob = 0;
-        this.frame(L.c - 10, this.gF, Z0 * 2, 0);
+        this.frame(MX - 10, this.gF, ZC, 0);
       });
     });
     this.at(s6 + 7.6, () => this.lean('samchon', 6, 4, 900));
@@ -460,11 +489,11 @@ export class EndingScene extends Phaser.Scene {
         s.row = srow;
         s.s.setDepth(ROW_DEPTH[srow]);
         s.bob = 0.4;
-        this.frame(this.gx, this.gF - 8, Z0 * 2, 0);
+        this.frame(this.gx, this.gF - 8, ZC, 0);
       }, 800);
     });
     this.at(s7 + 0.6, () => {
-      this.shot(this.gx, this.gy - 22, Z0 * 3, 5.2);
+      this.shot(this.gx, this.gy - 26, ZF, 5.2);
       this.tweens.add({ targets: this.glow, alpha: 0.16, duration: 2400, ease: 'Sine.InOut' });
     });
 
@@ -474,10 +503,10 @@ export class EndingScene extends Phaser.Scene {
       this.tweens.add({ targets: this.glow, alpha: 0.06, duration: 3000 });
       for (const f of this.family) f.bob = 0.5;
       // 단체 사진: 고나는 엄마 앞 가운데 (모두의 얼굴이 보이게)
-      this.tweens.add({ targets: this, gy: this.gF + 6, duration: 1400, ease: 'Sine.InOut' });
-      this.frame(L.c, this.gF, Z0 * 2, 1.6);
+      this.tweens.add({ targets: this, gy: this.gF + HELD_Y, duration: 1400, ease: 'Sine.InOut' });
+      this.frame(L.c + 2, this.gF + HELD_Y + 2, ZG, 1.6);
     });
-    this.at(s8 + 2.0, () => this.frame(L.c, this.gF, Z0, ENDING_TITLE_AT - s8 - 2.4));
+    this.at(s8 + 2.0, () => this.frame(L.c + 2, this.gF + HELD_Y + 2, Z0, ENDING_TITLE_AT - s8 - 2.4));
     this.at(s8 + 4.0, () => this.heart(L.c - 30, this.gF - 70, 0.8));
     this.at(s8 + 6.5, () => this.heart(L.c + 28, this.gF - 74, 0.8));
     this.at(ENDING_TITLE_AT - 2.2, () => this.tweens.add({ targets: this.dim, alpha: 0.42, duration: 2600, ease: 'Sine.InOut' }));
@@ -522,34 +551,27 @@ export class EndingScene extends Phaser.Scene {
     const cy = view.y + (this.portrait ? view.height * 0.4 : view.height * 0.55);
     const prev = this.memory;
     const objs: Phaser.GameObjects.GameObject[] = [];
-    // 게임 속 배경(숲길)을 카드 높이에 맞춰 미리 줄인 그림 (한 번만)
-    const memKey = `end-mem-bg-${Math.round(ch * z)}`;
-    if (!this.textures.exists(memKey) && this.textures.exists('bg-image')) {
-      const src = this.textures.get('bg-image').getSourceImage() as HTMLImageElement;
-      const hh = Math.round(ch * z);
-      const ww = Math.round((src.width * hh) / src.height);
-      const c = document.createElement('canvas');
-      c.width = ww;
-      c.height = hh;
-      const g = c.getContext('2d')!;
-      g.imageSmoothingEnabled = true;
-      g.drawImage(src, 0, 0, ww, hh);
-      // 회상 느낌: 살짝 따뜻하게
-      g.fillStyle = 'rgba(255, 214, 170, 0.18)';
-      g.fillRect(0, 0, ww, hh);
-      this.textures.addCanvas(memKey, c);
-    }
     const frameR = this.add.rectangle(cx, cy, cw + 4 / z * 3, ch + 4 / z * 3, 0xf6e4c0, 1).setDepth(320).setAlpha(0);
     objs.push(frameR);
-    if (this.textures.exists(memKey)) {
-      const bg = this.add.tileSprite(cx, cy, cw * z, ch * z, memKey).setScale(1 / z).setDepth(321).setAlpha(0);
+    // 게임 속 배경(숲길): 부드럽게 줄이지 않고 배경 도트 1칸 = 반 칸(0.5)으로 그대로 — 가족 도트와 같은 밀도.
+    // 카드 땅 높이에 게임 땅 줄(GAME_BG.groundRow)이 오도록 맞추고 옆으로 흘려 보냄
+    const groundY = cy + ch * 0.36;
+    if (this.textures.exists('bg-image')) {
+      const bg = this.add
+        .tileSprite(cx, cy, Math.ceil(cw * 2), Math.ceil(ch * 2), 'bg-image')
+        .setScale(0.5)
+        .setDepth(321)
+        .setAlpha(0);
+      bg.tilePositionY = GAME_BG.groundRow - (groundY - (cy - ch / 2)) * 2;
       objs.push(bg);
-      this.tweens.add({ targets: bg, tilePositionX: 260, duration: dur * 1000 + 800, ease: 'Linear' });
+      // 회상 느낌: 살짝 따뜻하게 (색 덮개 — 흐리게 하지 않음)
+      const warm = this.add.rectangle(cx, cy, cw, ch, 0xffd6aa, 0.16).setDepth(321.5).setAlpha(0);
+      objs.push(warm);
+      this.tweens.add({ targets: bg, tilePositionX: 520, duration: dur * 1000 + 800, ease: 'Linear' });
     }
     // 성장 단계 고나 (게임 원본 스프라이트) — 카드 아래쪽 땅 위에서 그 단계의 움직임
     const key = st === 'walker' ? 'dino' : `dino-stage-${st}`;
     const frames = st === 'newborn' ? [0, 1] : st === 'crawler' ? [0, 1] : st === 'walker' ? [1, 2, 3, 4] : [1, 0, 2, 0];
-    const groundY = cy + ch * 0.36;
     const sp = this.add.sprite(cx - cw * 0.12, groundY, key, frames[0]).setOrigin(0.5, 1).setDepth(323).setAlpha(0);
     objs.push(sp);
     let k = 0;
@@ -634,6 +656,7 @@ export class EndingScene extends Phaser.Scene {
     for (const c of this.cues) {
       if (!c.done && this.t >= c.at) {
         c.done = true;
+        this.cueLate = this.t - c.at;
         c.fn();
       }
     }

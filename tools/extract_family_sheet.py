@@ -4,7 +4,7 @@
   - 배경(크림색 종이)과 발밑 풀밭·꽃만 투명하게 (바깥 테두리에서부터 채우기 — 짙은 외곽선 안쪽은 건드리지 않음)
   - 반짝이 선·하트·이름표처럼 떨어진 조각은 버림 (가장 큰 덩어리 = 인물만 남김)
   - 남은 픽셀의 색은 원본 그대로 (알파만 0/255)
-출력: public/assets/ending/fam-<id>.png  (id: imo, samchon, mom, dad, halmeoni, halabeoji)
+출력: art-src/ending/fam-<id>.png (→ tools/pixelize_family.py 로 게임용 도트 fam-<id>-px.png)  (id: imo, samchon, mom, dad, halmeoni, halabeoji)
 실행: python3 tools/extract_family_sheet.py
 """
 import os
@@ -14,7 +14,7 @@ from scipy import ndimage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'art-src', 'ending', 'family-sheet', 'family-cast-concept-sheet.png')
-OUT = os.path.join(ROOT, 'public', 'assets', 'ending')
+OUT = os.path.join(ROOT, 'art-src', 'ending')
 # 시트에서 각 인물이 들어 있는 영역 (x0, y0, x1, y1) — 이름표 위까지
 BOXES = {
     'imo': (85, 185, 360, 560),

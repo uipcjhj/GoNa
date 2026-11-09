@@ -2065,7 +2065,7 @@ export class GameScene extends Phaser.Scene {
     for (const id of ENDING_FAMILY) {
       const key = `fam-${id}`;
       if (this.textures.exists(key)) continue;
-      this.load.image(key, `assets/ending/fam-${id}.png`);
+      this.load.image(key, `assets/ending/fam-${id}-px.png`);
       added++;
     }
     if (added) this.load.start();
