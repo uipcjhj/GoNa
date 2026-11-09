@@ -468,8 +468,8 @@ async function bossTests(label, device) {
   // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
   await page.waitForTimeout(1500);
-  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length + (e.sp?.visible ? 1 : 0), /* 접촉 동작 중엔 상대가 두 사람 그림 안에 있음 */ halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
-  check(`${label}: ending scene 6 (grandma kiss) — 6 family on screen, grandma beside GONA`, s6.scene === 6 && s6.visible === 6 && s6.halmeoniNearGona, JSON.stringify(s6));
+  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length + (e.sp?.visible ? 1 : 0), /* 접촉 동작 중엔 상대가 두 사람 그림 안에 있음 */ kiss: e.sp?.visible && e.sp.anims.currentAnim?.key === 'esp-grandma_kiss', halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
+  check(`${label}: ending scene 6 (grandma kiss) — close-up kiss frames`, s6.scene === 6 && s6.kiss, JSON.stringify(s6));
   // 타이틀 → 크레딧 → 마지막 문구 → 검은 화면 + 버튼
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 79.5; });
   await page.waitForTimeout(800);
@@ -853,13 +853,13 @@ async function endingArtTests(label, device) {
   };
   await goto(2, 30.0);
   const a = await snap();
-  check(`${label}: ending family = independent sprites from the ending sheet (1:1 scale, frame animation playing)`, a.fam.every((f) => f.key === 'ech-' + f.id && Math.abs(f.sx) === 1 && f.sy === 1 && f.playing && f.anim.startsWith('ech-' + f.id + '-')), JSON.stringify(a.fam.map((f) => [f.id, f.anim, f.sx, f.sy, f.playing])));
+  check(`${label}: ending family = crisp NPC sprites restored from the final sheet (1:1 dot scale)`, a.fam.every((f) => f.key === 'ech-' + f.id && Math.abs(f.sx) === 1 && f.sy === 1 && f.tw < 30), JSON.stringify(a.fam.map((f) => [f.id, f.anim, f.sx, f.sy, f.playing])));
   check(`${label}: ending GONA from the ending sheet (not stretched)`, a.gkey === 'ech-gona' && a.gsx === a.gsy, JSON.stringify({ key: a.gkey, anim: a.ganim, s: [a.gsx, a.gsy] }));
   check(`${label}: ending scene 3 — all six family members fully on screen, faces apart`, a.allIn && a.faceOverlap < 0.12, JSON.stringify({ out: a.out, faceOverlap: a.faceOverlap, pair: a.pair, zoom: a.zoom }));
   await page.screenshot({ path: `${S}/${label}-s3.png` });
   await goto(3, 33.0);
   const c = await snap();
-  check(`${label}: ending scene 4 (GONA runs) — run frames playing, family all visible, GONA in frame`, c.allIn && c.gonaIn && c.gsx === c.gsy && c.ganim === 'ech-gona-run', JSON.stringify({ out: c.out, gona: c.gonaIn, anim: c.ganim }));
+  check(`${label}: ending scene 4 — GONA beside the family (no fake sliding), all visible`, c.allIn && c.gonaIn && Math.abs(c.gsx) === Math.abs(c.gsy), JSON.stringify({ out: c.out, gona: c.gonaIn }));
   await goto(4, 45.5);
   const d = await snap();
   check(`${label}: ending scene 5 (mom hug) — two-person hug frames from the final sheet`, d.sp === 'esp-mom_hug' && Number.isInteger(d.zoom), JSON.stringify({ sp: d.sp, zoom: d.zoom }));
