@@ -468,7 +468,7 @@ async function bossTests(label, device) {
   // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
   await page.waitForTimeout(1500);
-  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length, halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
+  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length + (e.sp?.visible ? 1 : 0), /* 접촉 동작 중엔 상대가 두 사람 그림 안에 있음 */ halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
   check(`${label}: ending scene 6 (grandma kiss) — 6 family on screen, grandma beside GONA`, s6.scene === 6 && s6.visible === 6 && s6.halmeoniNearGona, JSON.stringify(s6));
   // 타이틀 → 크레딧 → 마지막 문구 → 검은 화면 + 버튼
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 79.5; });
