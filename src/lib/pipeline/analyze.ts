@@ -15,7 +15,7 @@ import { computeScore } from "./scoring";
 import type { Analysis, ArticleCategory, HistoryEventType, ScoreBreakdown, Settings, SourceType } from "@/lib/types";
 
 export const aiConfigured = () => Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
-export const aiModel = () => process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || "gemini-2.5-flash-lite") : (process.env.ANTHROPIC_MODEL || "claude-opus-5-5");
+export const aiModel = () => process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite") : (process.env.ANTHROPIC_MODEL || "claude-opus-5-5");
 
 export interface AnalysisInput {
   title: string;
