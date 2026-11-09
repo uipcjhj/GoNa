@@ -239,7 +239,7 @@ async function introTests(label, device) {
   await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 첫 터치 = 이야기 시작 (소리 켜짐)
   await page.waitForTimeout(500);
   const t1 = await page.evaluate(() => ({ audio: window.__sound.ready, idx: document.querySelector('.pr-box').dataset.index, gate: document.querySelector('.pr-gate').classList.contains('hidden'),
-    music: window.__sound.status().musicMode, vol: window.__sound.music.title.volume }));
+    music: window.__sound.status().musicMode, vol: window.__sound.bgmEl.volume }));
   check(`${label}: first tap starts story subtitle 1 + title music (no voice)`, t1.audio && t1.idx === '0' && t1.gate && t1.music === 'title' && (await noVoice()), JSON.stringify(t1));
   check(`${label}: BGM stays at full volume (no narration ducking)`, t1.vol > 0.95, `title volume ${t1.vol.toFixed(2)}`);
   await page.touchscreen.tap(vp.width * 0.5, vp.height * 0.3); // 터치 = 다음 문장
@@ -312,10 +312,10 @@ async function introTests(label, device) {
   await page.locator('.op-skip').click();
   await page.waitForTimeout(400);
   const sk = await page.evaluate(() => ({ cover: document.querySelector('.cover').className, op: window.__gona.scene.isActive('Opening'), btn: getComputedStyle(document.querySelector('.cover-ui')).opacity,
-    vol: window.__sound.music.title.volume }));
+    vol: window.__sound.bgmEl.volume }));
   check(`${label}: skip button → title immediately`, sk.cover.includes('revealed') && !sk.op && sk.btn === '1', JSON.stringify(sk));
   await page.waitForTimeout(1200);
-  const vol = await page.evaluate(() => window.__sound.music.title.volume);
+  const vol = await page.evaluate(() => window.__sound.bgmEl.volume);
   check(`${label}: BGM full volume after skip`, vol > 0.95, String(vol));
   // 오프닝 다시 보기: 대기 없이 바로 1번 문장부터
   await page.locator('.cover-replay').click();
@@ -820,6 +820,67 @@ async function qteTests(label, device) {
   await b.close();
 }
 
+/** 터치할 때 배경음악이 늘어나는지 — 모든 HTMLMediaElement.play() 호출(음소거 준비 재생 포함)과 Web Audio 소스를 기록 */
+async function touchAudioTests(label, device) {
+  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.addInitScript(() => {
+    const log = (window.__plays = []);
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (/bgm-/.test(this.src)) log.push({ t: Math.round(performance.now()), src: this.src.split('/').pop(), muted: this.muted, id: (this.__id ??= Math.random().toString(36).slice(2, 6)) });
+      return play.call(this);
+    };
+    window.__bufs = 0;
+    const all = (window.__allEls = new Set());
+    const O = window.Audio;
+    window.Audio = function (...a) { const e = new O(...a); all.add(e); return e; };
+    window.Audio.prototype = O.prototype;
+    const st = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...a) { if (this.buffer && this.buffer.duration > 20) window.__bufs++; return st.apply(this, a); };
+  });
+  const G = (f, a) => page.evaluate(f, a);
+  const tap = async (sel) => { const r = await page.locator(sel).first().boundingBox(); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
+  const vp = page.viewportSize();
+  const tapEmpty = () => page.touchscreen.tap(vp.width / 2, Math.round(vp.height * 0.12));
+  const state = () => G(() => {
+    const els = (window.__sound && Object.values(window.__sound.allBgmEls?.() ?? {})) || [];
+    return { playing: [...document.querySelectorAll('audio')].length, plays: window.__plays.length, bufs: window.__bufs };
+  });
+  const steps = [];
+  const record = async (name) => {
+    await page.waitForTimeout(500);
+    const r = await G(() => { const out = { plays: window.__plays.slice(), bufs: window.__bufs, dbg: window.__sound.bgmDebug(), audible: [...(window.__allEls || [])].filter((e) => /bgm-/.test(e.src) && !e.paused).length }; window.__plays.length = 0; window.__bufs = 0; return out; });
+    steps.push({ name, plays: r.plays.length, srcs: [...new Set(r.plays.map((p) => p.src + (p.muted ? '(m)' : '')))].join(' '), bufs: r.bufs, active: r.dbg.active, playingEls: r.audible });
+  };
+  const round = async (tag) => {
+    await G(() => { window.__plays.length = 0; window.__bufs = 0; });
+    await page.waitForTimeout(10000); await record(`${tag} 10초 대기`);
+    await tapEmpty(); await record(`${tag} 빈 곳 1회`);
+    await tap('.pr-next'); await record(`${tag} 다음 1회`);
+    for (let i = 0; i < 5; i++) { await tapEmpty(); await page.waitForTimeout(250); } await record(`${tag} 빈 곳 5회`);
+    for (let i = 0; i < 5; i++) { await tap('.pr-next'); await page.waitForTimeout(250); } await record(`${tag} 다음 5회`);
+    await page.waitForTimeout(10000); await tapEmpty(); await record(`${tag} 10초 뒤 터치`);
+  };
+  await page.goto(URL + '?test=family-ending');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending?.t > 1, null, { timeout: 40000 });
+  await round('1차');
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.5; });
+  await page.waitForSelector('.end-replay', { state: 'visible', timeout: 20000 });
+  await page.waitForTimeout(800);
+  await tap('.end-replay');
+  await page.waitForTimeout(1500);
+  await round('다시보기');
+  // 엔딩 곡은 Web Audio 버퍼로 나옴 → 엔딩 중 터치로 배경음악 <audio> 의 play() 가 불리면 안 됨 (음소거 준비 재생 포함)
+  const bad = steps.filter((x) => x.plays > 0);
+  check(`${label}: touches during the ending start no BGM <audio> play() (incl. muted 'priming')`, bad.length === 0, JSON.stringify(steps));
+  check(`${label}: touches during the ending do not restart the ending track (only 'next' moves it), at most one BGM element playing`, steps.filter((x) => !/다음/.test(x.name)).every((x) => x.bufs === 0) && steps.every((x) => x.playingEls === 0 && x.active <= 1), JSON.stringify(steps.map((x) => [x.name, x.bufs, x.playingEls, x.active])));
+  check(`${label}: no page errors (touch audio)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 /** 오프닝·엔딩 배경음악 1개만 · 회상 카드 위치 고정 · 엔딩 '다음 ▶' 버튼 */
 async function endingFixTests(label, device) {
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -918,7 +979,7 @@ async function endingFixTests(label, device) {
   // 아이폰 상황 재현 — 오디오 관리자의 실제 '활성 배경음악 수'(소리 나는 <audio> + 엔딩 버퍼 + 합성)를 50ms 마다 기록
   const sample = (ms) => G((d) => new Promise((res) => { let mx = 0; const t0 = performance.now(); const id = setInterval(() => { mx = Math.max(mx, window.__sound.bgmDebug().active); if (performance.now() - t0 > d) { clearInterval(id); res(mx); } }, 50); }), ms);
   // ① play() 가 늦게 끝나는 사이 엔딩 곡으로 바뀜
-  await G(() => { const s = window.__sound; const el = s.music.title; const orig = el.play; el.play = function () { el.play = orig; const p = orig.call(el); return new Promise((r) => setTimeout(() => r(p), 900)); }; s.startMusic('title'); s.playEndingTrack(30); });
+  await G(() => { const s = window.__sound; const el = s.bgmEl; s.stopMusic(); const orig = el.play; el.play = function () { el.play = orig; const p = orig.call(el); return new Promise((r) => setTimeout(() => r(p), 900)); }; s.startMusic('title'); s.playEndingTrack(30); });
   const slow = await sample(1800);
   // ② 백그라운드 → 복귀
   await G(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
@@ -934,7 +995,7 @@ async function endingFixTests(label, device) {
   const back = await sample(1200);
   const backState = await G(() => window.__sound.bgmDebug());
   // ④ 같은 곡 반복 요청 — 다시 시작하지 않음
-  const same = await G(() => new Promise((res) => { const s = window.__sound; const g0 = s.bgmDebug().gen; for (let i = 0; i < 5; i++) s.startMusic('game'); setTimeout(() => res({ gen: s.bgmDebug().gen - g0, t: s.music.game.currentTime }), 300); }));
+  const same = await G(() => new Promise((res) => { const s = window.__sound; const g0 = s.bgmDebug().gen; for (let i = 0; i < 5; i++) s.startMusic('game'); setTimeout(() => res({ gen: s.bgmDebug().gen - g0, t: s.bgmEl.currentTime }), 300); }));
   check(`${label}: iPhone cases — late play(), background/return, synth→file, repeated requests: max one BGM`, slow <= 1 && vis <= 1 && visState.want.startsWith('ending') && synthOn && back <= 1 && !backState.synth && same.gen === 0, JSON.stringify({ slow, vis, visWant: visState.want, synthOn, back, backSynth: backState.synth, same }));
   await page.goto(URL + '?test=family-ending');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
@@ -972,6 +1033,7 @@ async function endingFixTests(label, device) {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.some((o) => n.startsWith(o));
+  if (want('touch-port')) await touchAudioTests('touch-port', devices['iPhone 13']);
   if (want('endfix-port')) await endingFixTests('endfix-port', devices['iPhone 13']);
   if (want('endfix-land')) await endingFixTests('endfix-land', devices['iPhone 13 landscape']);
   if (want('qte-port')) await qteTests('qte-port', devices['iPhone 13']);
