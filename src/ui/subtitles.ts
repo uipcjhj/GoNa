@@ -22,6 +22,9 @@ export class Subtitles {
   private pageEl: HTMLSpanElement;
   private gate: HTMLDivElement;
   private typeTimer = 0;
+  private fullText = '';
+  /** 엔딩 '다음 ▶' 버튼 (엔딩 중에만 보임) */
+  onNext: () => void = () => {};
   /** 대기 화면에서 '이야기 시작'을 눌렀을 때 */
   onBegin: () => void = () => {};
 
@@ -43,7 +46,13 @@ export class Subtitles {
     this.textEl.append(this.shownEl, this.restEl);
     this.pageEl = el('span', 'pr-page');
     const more = el('span', 'pr-more', '▼');
-    this.box.append(this.textEl, this.pageEl, more);
+    const next = el('button', 'pr-next', '다음 ▶');
+    next.type = 'button';
+    next.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onNext();
+    });
+    this.box.append(this.textEl, this.pageEl, more, next);
     this.root.append(this.gate, this.box);
     parent.append(this.root);
 
@@ -66,6 +75,19 @@ export class Subtitles {
     this.root.classList.add('hidden');
   }
 
+  /** 타이핑 중인지 */
+  get typing(): boolean {
+    return !this.box.classList.contains('hidden') && !this.box.classList.contains('typed') && this.fullText !== '';
+  }
+
+  /** 타이핑 중인 문장을 바로 끝까지 보여 줌 */
+  finishTyping(): void {
+    clearInterval(this.typeTimer);
+    this.shownEl.textContent = this.fullText;
+    this.restEl.textContent = '';
+    this.box.classList.add('typed');
+  }
+
   /** 지금 화면에 보이는(타이핑된) 자막 */
   get text(): string {
     return this.shownEl.textContent ?? '';
@@ -78,6 +100,7 @@ export class Subtitles {
     this.pageEl.textContent = `${l.index + 1}/${l.total}`;
     // 타이핑 효과: 문장 길이에 맞춰, 다음 문장 전에 조금 여유 있게 끝나게
     const chars = Array.from(l.text);
+    this.fullText = l.text;
     const step = Math.max(28, Math.min(70, (l.seconds * 1000 * 0.55) / chars.length));
     let n = 0;
     clearInterval(this.typeTimer);

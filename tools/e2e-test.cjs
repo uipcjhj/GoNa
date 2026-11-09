@@ -880,10 +880,119 @@ async function endingArtTests(label, device) {
   await b.close();
 }
 
+/** 오프닝·엔딩 배경음악 1개만 · 회상 카드 위치 고정 · 엔딩 '다음 ▶' 버튼 */
+async function endingFixTests(label, device) {
+  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  // 배경음악 세기: 소리 내는 bgm <audio> + 20초 넘는 Web Audio 버퍼 + 합성 음악 타이머 · 아이폰처럼 첫 play() 는 AbortError 로 거절(소리는 남)
+  await page.addInitScript(() => {
+    window.__bgm = { buf: new Set(), max: 0, at: '' };
+    const st = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...a) {
+      if (this.buffer && this.buffer.duration > 20) {
+        const set = window.__bgm.buf; set.add(this);
+        this.addEventListener('ended', () => set.delete(this));
+        const sp = this.stop.bind(this); this.stop = (...x) => { set.delete(this); return sp(...x); };
+      }
+      return st.apply(this, a);
+    };
+    const els = (window.__els = []);
+    const O = window.Audio;
+    window.Audio = function (...a) { const e = new O(...a); els.push(e); return e; };
+    window.Audio.prototype = O.prototype;
+    const play = HTMLMediaElement.prototype.play;
+    let aborted = false;
+    HTMLMediaElement.prototype.play = function () {
+      const p = play.call(this);
+      if (!aborted && /bgm-/.test(this.src) && !this.muted) { aborted = true; return p.then(() => { throw new DOMException('interrupted', 'AbortError'); }); }
+      return p;
+    };
+    setInterval(() => {
+      const files = els.filter((e) => /bgm-/.test(e.src) && !e.paused && !e.muted).map((e) => e.src.split('/').pop());
+      const synth = window.__sound && window.__sound.musicTimer != null ? 1 : 0;
+      const n = files.length + window.__bgm.buf.size + synth;
+      if (n > window.__bgm.max) { window.__bgm.max = n; window.__bgm.at = JSON.stringify({ files, buf: window.__bgm.buf.size, synth }); }
+    }, 50);
+  });
+  const G = (f, a) => page.evaluate(f, a);
+  const tap = async (sel) => { const r = await page.locator(sel).first().boundingBox(); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
+  // 오프닝 (첫 터치 → 이야기 → 건너뛰기 → 타이틀 → 게임 시작)
+  await page.goto(URL + '?test');
+  await page.waitForTimeout(1200);
+  await page.touchscreen.tap(100, 400);
+  await page.waitForTimeout(5000);
+  await tap('.op-skip').catch(() => {});
+  await page.waitForTimeout(3000);
+  const op = await G(() => window.__bgm);
+  check(`${label}: opening — at most one BGM at a time`, op.max <= 1, JSON.stringify(op));
+  // 아이폰 경쟁 상황: 타이틀 곡 play() 가 대기 중에 게임 곡으로 바뀌면(사이에 pause) 늦게 AbortError 로 거절됨 → 예전엔 합성 음악이 켜져 두 곡이 겹침
+  const race = await G(() => new Promise((res) => {
+    const s = window.__sound;
+    s.stopMusic();
+    const el = window.__els.find((e) => /bgm-title/.test(e.src));
+    const orig = el.play;
+    el.play = function () { el.play = orig; return new Promise((_, rej) => setTimeout(() => rej(new DOMException('interrupted by pause', 'AbortError')), 150)); };
+    s.startMusic('title');
+    s.startMusic('game');
+    setTimeout(() => {
+      const files = window.__els.filter((e) => /bgm-/.test(e.src) && !e.paused && !e.muted).length;
+      res({ files, synth: s.musicTimer != null ? 1 : 0 });
+      s.stopMusic();
+    }, 700);
+  }));
+  check(`${label}: iPhone AbortError race (title→game) — no second BGM (no synth fallback on top)`, race.files + race.synth <= 1, JSON.stringify(race));
+  // 엔딩 + 다시보기 3회
+  await page.goto(URL + '?test=family-ending');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
+  // 회상 카드 1~4단계 위치·크기
+  const rects = [];
+  await G(() => { const e = window.__gona.scene.getScene('Game').ending; e.t = 9.4; });
+  for (let i = 0; i < 4; i++) {
+    await page.waitForFunction((k) => { const e = window.__gona.scene.getScene('Game').ending; return e.memory.length && e.t > 9.6 + k * 3.0; }, i, { timeout: 15000 });
+    rects.push(await G(() => { const r = window.__gona.scene.getScene('Game').ending.memory[0]; return [Math.round(r.x * 10) / 10, Math.round(r.y * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10].join(','); }));
+  }
+  check(`${label}: ending memory cards 1-4 — same position and size`, new Set(rects).size === 1, rects.join(' | '));
+  // 다음 ▶: 타이핑 중 1번 = 문장 완성, 다음 1번 = 다음 대사·장면
+  await page.waitForFunction(() => { const b = document.querySelector('.pr-box'); return b && !b.classList.contains('typed') && (document.querySelector('.pr-shown')?.textContent?.length ?? 0) > 1; }, null, { timeout: 20000 });
+  const before = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, t: window.__gona.scene.getScene('Game').ending.t }));
+  await tap('.pr-next');
+  await page.waitForTimeout(100);
+  const typed = await G(() => ({ typed: document.querySelector('.pr-box').classList.contains('typed'), shown: document.querySelector('.pr-shown').textContent, i: document.querySelector('.pr-box').dataset.index }));
+  await page.waitForTimeout(400);
+  await tap('.pr-next'); await tap('.pr-next'); await tap('.pr-next'); // 연타 — 잠금으로 한 번만
+  await page.waitForTimeout(300);
+  const after = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, scene: window.__gona.scene.getScene('Game').ending.sceneNo }));
+  check(`${label}: ending next ▶ — 1st tap completes the typing line, 2nd moves to the next line (mashing advances once)`, typed.typed && typed.i === before.i && Number(after.i) === Number(before.i) + 1, JSON.stringify({ before, typed: typed.typed, after }));
+  // 마지막 대사까지 → 타이틀(크레딧 앞)
+  for (let k = 0; k < 12; k++) {
+    const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
+    if (ph === 'title') break;
+    await tap('.pr-next'); await page.waitForTimeout(420);
+  }
+  await page.waitForTimeout(600);
+  const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
+  check(`${label}: ending next ▶ on the last line goes to the title/credits`, ph === 'title' || ph === 'credits', ph);
+  for (let i = 0; i < 3; i++) {
+    await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.5; });
+    await page.waitForSelector('.end-replay', { state: 'visible', timeout: 15000 });
+    await page.waitForTimeout(800);
+    await tap('.end-replay');
+    await page.waitForTimeout(3000);
+  }
+  const en = await G(() => ({ max: window.__bgm.max, at: window.__bgm.at, now: window.__bgm.buf.size, files: window.__els.filter((e) => /bgm-/.test(e.src) && !e.paused && !e.muted).length }));
+  check(`${label}: ending + next ▶ + replay x3 — at most one BGM, exactly one playing now`, en.max <= 1 && en.now + en.files === 1, JSON.stringify(en));
+  check(`${label}: no page errors (ending fixes)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.some((o) => n.startsWith(o));
+  if (want('endfix-port')) await endingFixTests('endfix-port', devices['iPhone 13']);
+  if (want('endfix-land')) await endingFixTests('endfix-land', devices['iPhone 13 landscape']);
   if (want('endart-port')) await endingArtTests('endart-port', devices['iPhone 13']);
   if (want('endart-land')) await endingArtTests('endart-land', devices['iPhone 13 landscape']);
   if (want('qte-port')) await qteTests('qte-port', devices['iPhone 13']);

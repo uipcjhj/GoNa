@@ -72,6 +72,19 @@ async function boot(): Promise<void> {
     bus.emit(EV.prologueBegin);
   };
   subs.onBegin = beginPrologue;
+  // 엔딩 '다음 ▶': 타이핑 중이면 문장을 바로 다 보여 주고, 다 보이면 다음 대사·장면으로 (연타는 0.35초 잠금)
+  let nextLock = 0;
+  subs.onNext = () => {
+    if (!endingActive) return;
+    const now = performance.now();
+    if (now < nextLock) return;
+    nextLock = now + 350;
+    if (subs.typing) {
+      subs.finishTyping();
+      return;
+    }
+    (game.scene.getScene('Game') as GameScene).ending?.nextLine();
+  };
   bus.on(EV.openingStart, () => {
     // 성능: 프롤로그 동안 뒤의 게임 장면(배경·오브젝트)은 화면을 덮인 채로도 매 프레임 계산·그리기를 하고 있었음
     // → 재워 둠 (그리기 시간이 약 절반으로). 프롤로그가 끝나면 다시 깨움.

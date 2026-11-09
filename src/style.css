@@ -3054,3 +3054,32 @@ body.in-ending .pr-box {
   );
   color: #3a2238;
 }
+
+/* 엔딩 '다음 ▶' 버튼: 대사창 안쪽 오른쪽 아래 (엔딩 중에만) — 게임 도트 버튼 모양 */
+.pr-next {
+  display: none;
+}
+body.in-ending .pr-next {
+  display: block;
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #fff6e0;
+  background: #7a3e5a;
+  border: 2px solid #3a2238;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+body.in-ending .pr-next:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+body.in-ending .prologue-ui .pr-box {
+  padding-bottom: 38px;
+}

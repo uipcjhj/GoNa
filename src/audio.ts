@@ -374,7 +374,16 @@ class Sound {
         this.musicBroken[m] = true;
         this.log(`배경음악 파일 오류 (${MUSIC_FILES[m]})`, a.error?.message || `code ${a.error?.code}`);
       });
-      a.addEventListener('playing', () => this.emit());
+      // 배경음악은 늘 하나만: 지금 원하는 곡이 아닌 <audio> 가 (늦게 도착한 play() 등으로) 소리를 내기 시작하면 바로 멈춤,
+      // 원하는 곡이 실제로 나오기 시작하면 합성 음악(예비)은 끔 · 엔딩 곡을 Web Audio 로 재생 중이면 파일 음악은 모두 멈춤
+      a.addEventListener('playing', () => {
+        if (!a.muted && (a !== this.wantedMusicEl() || this.endingSrc)) {
+          a.pause();
+          return;
+        }
+        if (!a.muted) this.stopSynth();
+        this.emit();
+      });
       a.addEventListener('pause', () => this.emit());
       this.music[m] = a;
     });
@@ -493,7 +502,9 @@ class Sound {
       },
       (e) => {
         this.log(`배경음악 재생 (${mode})`, e);
-        if ((e as Error)?.name !== 'NotAllowedError') {
+        // 파일이 정말 재생 불가일 때만 합성 음악으로 대신. 아이폰에서 흔한 AbortError(재생 직후 정지와 겹침)·NotAllowedError 는
+        // 파일이 멀쩡하므로 합성으로 바꾸지 않음 → 예전엔 파일 음악과 합성 음악이 함께 나와 두 곡이 겹쳤음
+        if ((e as Error)?.name === 'NotSupportedError') {
           // 파일 문제: 합성 음악으로 대신
           this.musicBroken[mode] = true;
           this.startSynthMusic(mode);
@@ -996,6 +1007,22 @@ class Sound {
     this.startMusic('ending');
   }
 
+  /** 엔딩 곡을 sec 초 위치로 (다음 대사 버튼으로 장면을 건너뛸 때 음악도 같은 위치로 — 곡은 하나만) */
+  seekEnding(sec: number): void {
+    if (this.endingMode === 'buffer') {
+      this.playEndingTrack(sec);
+      return;
+    }
+    const el = this.music.ending;
+    if (this.endingMode === 'file' && el) {
+      try {
+        el.currentTime = sec;
+      } catch {
+        /* 로드 전 */
+      }
+    }
+  }
+
   /** 자막(내레이션)이 나오는 동안 음악을 살짝 낮춤 */
   duckEnding(on: boolean): void {
     if (!this.ctx || !this.endingGain) return;
@@ -1034,6 +1061,7 @@ class Sound {
 
   private startSynthMusic(mode: MusicMode): void {
     if (!this.ctx) return;
+    this.pauseFileMusic(); // 합성 음악과 파일 음악이 겹치지 않게
     this.musicSource = 'synth';
     this.mode = mode;
     if (this.musicTimer !== null) return;

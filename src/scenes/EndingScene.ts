@@ -412,6 +412,17 @@ export class EndingScene extends Phaser.Scene {
   }
 
 
+  /** 다음 대사로 (엔딩 '다음 ▶' 버튼): 다음 문장이 시작하는 시각으로 건너뜀 · 마지막 문장 뒤면 타이틀·크레딧으로.
+   *  건너뛴 사이의 장면 연출은 바로 적용되고(빨리 감기와 같음), 엔딩 곡도 같은 위치로 옮김 (곡은 하나만) */
+  nextLine(): boolean {
+    if (this.t >= ENDING_TITLE_AT - 0.05) return false;
+    const next = ENDING_LINES.find((l) => l.at > this.t + 0.05);
+    const target = next ? next.at : ENDING_TITLE_AT;
+    this.t = target - 0.02;
+    sound.seekEnding(this.t);
+    return true;
+  }
+
   private setStage(st: GonaStage): void {
     this.gStage = st;
     const key = st === 'walker' ? 'dino' : `dino-stage-${st}`;
@@ -598,10 +609,21 @@ export class EndingScene extends Phaser.Scene {
     stages.forEach((st, i) => this.at(base + 0.1 + i * each, () => this.sceneNo === 2 && this.showMemory(st, each)));
   }
 
+  /** frame(x, ground, z) 로 잡히는 화면 영역 (카메라가 아직 옮겨 가는 중이어도 같은 값) */
+  private viewOf(x: number, ground: number, z: number): { x: number; y: number; width: number; height: number } {
+    const L = this.L;
+    const vw = this.scale.width / z;
+    const vh = this.scale.height / z;
+    const at = this.portrait ? 0.7 : z > this.Z0 ? 0.99 : 0.9;
+    const cx = Phaser.Math.Clamp(x, vw / 2, L.W - vw / 2);
+    const cy = Phaser.Math.Clamp(ground - vh * at + vh / 2, vh / 2, L.H - vh / 2);
+    return { x: cx - vw / 2, y: cy - vh / 2, width: vw, height: vh };
+  }
+
   private showMemory(st: GonaStage, dur: number): void {
-    const cam = this.cameras.main;
-    const view = cam.worldView;
-    const z = cam.zoom;
+    // 회상 카드 1~4단계: 언제나 같은 자리·크기 (장면 02 의 고정 구도 기준 — 카메라 이동·자막 길이와 상관없음)
+    const z = this.Z0;
+    const view = this.viewOf(this.L.c, this.gNear, z);
     const W = this.scale.width;
     const H = this.scale.height;
     // 카드 크기 (화면 픽셀): 세로 = 폭 86% · 높이 30% / 가로 = 폭 62% · 높이 58%
