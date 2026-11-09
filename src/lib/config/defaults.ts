@@ -178,13 +178,15 @@ export const DEFAULT_SETTINGS: Settings = {
   maxQueriesPerRun: 18,
   maxAnalyzePerRun: 40,
   maxPerCountryPerRun: 6,
+  maxJobMinutes: 20,
   lookbackDays: 3,
   englishOnly: true,
   analysisLanguage: "ko",
   reportWeekStart: "monday",
   reportTimezone: "Asia/Seoul",
   reportPeriodDays: 7,
-  showDemoData: true,
+  showDemoData: false,
+  demoPrefVersion: 2,
   rotation: 0,
   lastScheduledRunAt: null,
 };
@@ -196,6 +198,11 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
     weights: { ...DEFAULT_WEIGHTS, ...(stored?.weights ?? {}) },
     weekly: { ...DEFAULT_WEEKLY, ...(stored?.weekly ?? {}) },
   };
+  // migration: demo data is hidden by default from v2 on (the user can switch it back on in Settings)
+  if (stored && stored.demoPrefVersion !== 2) {
+    merged.showDemoData = false;
+    merged.demoPrefVersion = 2;
+  }
   // migration: settings saved before the weekly feature get the new domestic/global feeds once
   if (stored && !stored.weekly && stored.rssFeeds) {
     const have = new Set(stored.rssFeeds.map((f) => f.url));

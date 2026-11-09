@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { loadData } from "@/lib/data";
+import { listOpportunities } from "@/lib/db/repo";
+import { aiConfigured } from "@/lib/pipeline/analyze";
+import { RulesNotice } from "@/components/rules-notice";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui";
 import { WorldMap } from "@/components/world-map";
 import { HBar, ScoreHistogram } from "@/components/charts";
@@ -14,7 +17,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
   const range = sp.range === "30" ? 30 : 7;
   const since = daysAgoIso(range);
-  const { opportunities, articles } = await loadData(Math.max(range, 30) + 30);
+  const { opportunities, articles, settings } = await loadData(Math.max(range, 30) + 30);
 
   const inRange = opportunities.filter((o) => (o.latestPublishedAt ?? o.firstSeenAt) >= since || o.firstSeenAt >= since);
   const newOpps = opportunities.filter((o) => o.firstSeenAt >= since);
@@ -24,6 +27,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const competitorNews = artsInRange.filter((a) => a.competitors.length > 0 && a.status === "analyzed");
   const verified = articles.filter((a) => a.verification.status === "verified" && (a.verification.checkedAt ?? "") >= since);
   const demoShown = articles.some((a) => a.isDemo);
+  const hiddenDemo = settings.showDemoData ? 0 : (await listOpportunities()).filter((o) => o.isDemo).length;
+  const noRealData = inRange.length === 0;
+  const rulesCount = inRange.filter((o) => o.analysisMode === "rules").length;
 
   const counts: Record<string, { total: number; hot: number }> = {};
   for (const o of inRange) {
@@ -53,6 +59,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   return (
     <div className="space-y-5">
       <DemoBanner show={demoShown} />
+      {hiddenDemo > 0 && <div className="text-[11px] text-slate-400">DEMO 가상 프로젝트 {hiddenDemo}건은 숨김 상태이며 KPI·지도에 포함되지 않습니다 (설정 → DEMO 데이터 표시).</div>}
+      {noRealData && (
+        <Card className="border-sky-200 p-4 sm:p-5">
+          <div className="text-base font-semibold text-slate-900">실제 데이터 없음</div>
+          <p className="mt-1 text-sm text-slate-500">최근 {range}일 동안 수집·분석된 실제 수주기회가 없습니다. 상단 <b className="text-sky-700">수주기회 탐색 → 빠른 테스트</b>를 누르면 약 1~2분 안에 실제 기사 최대 20건을 수집·분석합니다 (API 키 불필요).</p>
+        </Card>
+      )}
+      {!aiConfigured() && rulesCount > 0 && <RulesNotice />}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold tracking-[0.25em] text-sky-700">GLOBAL OPPORTUNITY RADAR</div>
@@ -87,7 +101,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader><CardTitle>국가별 기회 현황</CardTitle><span className="text-xs text-slate-400">최근 {range}일 · {inRange.length}개 프로젝트</span></CardHeader>
-          <CardContent className="pt-3"><WorldMap counts={counts} /></CardContent>
+          <CardContent className="relative pt-3">
+            <WorldMap counts={counts} />
+            {noRealData && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><span className="rounded-lg border border-line bg-navy-900/90 px-4 py-2 text-sm text-slate-500">실제 데이터 없음</span></div>}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>국가별 프로젝트 분포</CardTitle></CardHeader>
@@ -105,14 +122,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
             <CardTitle>수주기회 점수 분포</CardTitle>
             <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Info className="h-3 w-3" />실제 수주 확률이 아닌 우선순위 지표</span>
           </CardHeader>
-          <CardContent className="pt-2"><ScoreHistogram data={buckets} /></CardContent>
+          <CardContent className="pt-2">{noRealData ? <div className="flex h-40 items-center justify-center text-sm text-slate-400">실제 데이터 없음</div> : <ScoreHistogram data={buckets} />}</CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader><CardTitle>최근 발견된 주요 투자 프로젝트</CardTitle><Link href="/opportunities" className="text-xs text-sky-700 hover:underline">전체 보기 →</Link></CardHeader>
         <div className="divide-y divide-slate-100">
-          {top.length === 0 && <div className="p-6 text-center text-sm text-slate-400">해당 기간에 발견된 프로젝트가 없습니다. 상단 <b>수주기회 탐색</b>을 눌러 수집을 시작하세요.</div>}
+          {top.length === 0 && <div className="p-6 text-center text-sm text-slate-400">실제 데이터 없음 — 상단 <b>수주기회 탐색 → 빠른 테스트</b>로 실제 기사를 수집하세요.</div>}
           {top.map((o) => (
             <Link key={o.id} href={`/opportunities/${o.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:gap-4 sm:px-5">
               <ScorePill score={o.score} />

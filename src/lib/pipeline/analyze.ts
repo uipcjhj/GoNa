@@ -2,6 +2,8 @@
 // rule-based extractor (clearly labelled "rules") so the pipeline still works without any keys.
 
 
+
+
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -205,29 +207,50 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
 
 // ------------------------------------------------------------------ rule-based fallback
 
-const FACILITY_RULES: { re: RegExp; facility: string; industry?: string; solutions: string[]; needs: string[] }[] = [
-  { re: /gigafactory|battery (cell )?(plant|factory|manufacturing)|cathode|anode|battery production/i, facility: "Battery Plant", industry: "EV & Battery", solutions: ["Production Logistics", "AGV", "AMR", "AS/RS", "Automated Warehouse"], needs: ["공정 간 물류 자동화", "원자재/완제품 자동창고"] },
-  { re: /cold (storage|chain)|refrigerated|frozen|temperature-controlled/i, facility: "Cold Storage", industry: "Cold Chain", solutions: ["Cold Chain Automation", "AS/RS", "4-Way Shuttle", "WMS"], needs: ["냉동냉장 자동보관", "저온 환경 입출고 자동화"] },
-  { re: /air ?cargo|cargo terminal|baggage|airport/i, facility: "Airport / Air Cargo Facility", industry: "Airport & Air Cargo", solutions: ["Airport Cargo Handling System", "Airport Baggage Handling System", "Conveyor System"], needs: ["화물/수하물 처리 자동화"] },
-  { re: /distribution (center|centre)|fulfil?ment (center|centre)|warehouse|logistics (hub|park|center|centre)/i, facility: "Distribution Center / Warehouse", industry: "Logistics Automation", solutions: ["AS/RS", "Shuttle System", "Conveyor System", "Sorter", "WMS", "WCS"], needs: ["입출고·피킹 자동화", "보관 자동화", "분류(소팅) 자동화"] },
-  { re: /tire|tyre/i, facility: "Tire Plant", industry: "Tire", solutions: ["Production Logistics", "AS/RS", "Conveyor System", "AGV"], needs: ["그린타이어/완제품 자동 보관·이송"] },
-  { re: /brewery|beverage|bottling|dairy|food (processing|plant|factory)/i, facility: "Food & Beverage Plant", industry: "Food & Beverage", solutions: ["AS/RS", "Conveyor System", "WMS", "Production Logistics"], needs: ["완제품 팔레트 자동창고", "출하 자동화"] },
-  { re: /petrochemical|chemical plant|polymer|refinery/i, facility: "Petrochemical Plant", industry: "Petrochemical", solutions: ["AS/RS", "Conveyor System", "WMS"], needs: ["포장 제품 자동창고/출하"] },
-  { re: /(car|vehicle|auto(motive)?|ev) (plant|factory|assembly)|automaker|auto parts/i, facility: "Automotive Plant", industry: "Automotive", solutions: ["Production Logistics", "AGV", "AMR", "Conveyor System"], needs: ["부품 공급 물류 자동화"] },
-  { re: /(\$|€|£|usd|eur)\s?[\d.,]+\s?(billion|million|bn|mn)?[^.]{0,40}\b(expansion|investment|facility|campus|site)\b/i, facility: "Manufacturing Plant", industry: "Manufacturing", solutions: ["Production Logistics", "AGV", "AS/RS"], needs: ["생산 물류 자동화 (투자 규모 기반 추정)"] },
-  { re: /factory|plant|manufacturing (facility|expansion|site|campus|hub|operations)|production (line|facility|capacity)/i, facility: "Manufacturing Plant", industry: "Manufacturing", solutions: ["Production Logistics", "AGV", "AS/RS"], needs: ["생산 물류 자동화"] },
+const FACILITY_RULES: { re: RegExp; facility: string; ko: string; industry?: string; solutions: string[]; needs: string[] }[] = [
+  { re: /gigafactory|battery (cell )?(plant|factory|manufacturing)|cathode|anode|battery production|배터리 ?(공장|셀|생산)|이차전지|2차전지|양극재|음극재/i, facility: "Battery Plant", ko: "배터리 공장", industry: "EV & Battery", solutions: ["Production Logistics", "AGV", "AMR", "AS/RS", "Automated Warehouse"], needs: ["공정 간 물류 자동화", "원자재/완제품 자동창고"] },
+  { re: /cold (storage|chain)|refrigerated|frozen|temperature-controlled|콜드체인|냉동|냉장|저온 ?물류/i, facility: "Cold Storage", ko: "냉동냉장 물류센터", industry: "Cold Chain", solutions: ["Cold Chain Automation", "AS/RS", "4-Way Shuttle", "WMS"], needs: ["냉동냉장 자동보관", "저온 환경 입출고 자동화"] },
+  { re: /air ?cargo|cargo terminal|baggage|airport|공항|수하물|항공화물|화물터미널/i, facility: "Airport / Air Cargo Facility", ko: "공항·항공화물 시설", industry: "Airport & Air Cargo", solutions: ["Airport Cargo Handling System", "Airport Baggage Handling System", "Conveyor System"], needs: ["화물/수하물 처리 자동화"] },
+  { re: /distribution (center|centre)|fulfil?ment (center|centre)|warehouse|logistics (hub|park|center|centre)|물류센터|풀필먼트|물류창고|자동창고|물류단지|물류허브|물류 ?거점|스마트 ?물류/i, facility: "Distribution Center / Warehouse", ko: "물류센터", industry: "Logistics Automation", solutions: ["AS/RS", "Shuttle System", "Conveyor System", "Sorter", "WMS", "WCS"], needs: ["입출고·피킹 자동화", "보관 자동화", "분류(소팅) 자동화"] },
+  { re: /tire|tyre|타이어/i, facility: "Tire Plant", ko: "타이어 공장", industry: "Tire", solutions: ["Production Logistics", "AS/RS", "Conveyor System", "AGV"], needs: ["그린타이어/완제품 자동 보관·이송"] },
+  { re: /brewery|beverage|bottling|dairy|food (processing|plant|factory)|식품 ?공장|음료|맥주|제과|유제품/i, facility: "Food & Beverage Plant", ko: "식음료 공장", industry: "Food & Beverage", solutions: ["AS/RS", "Conveyor System", "WMS", "Production Logistics"], needs: ["완제품 팔레트 자동창고", "출하 자동화"] },
+  { re: /petrochemical|chemical plant|polymer|refinery|석유화학|화학 ?공장|정유/i, facility: "Petrochemical Plant", ko: "석유화학 공장", industry: "Petrochemical", solutions: ["AS/RS", "Conveyor System", "WMS"], needs: ["포장 제품 자동창고/출하"] },
+  { re: /(car|vehicle|auto(motive)?|ev) (plant|factory|assembly)|automaker|auto parts|완성차|자동차 ?(공장|부품)|전기차 ?공장/i, facility: "Automotive Plant", ko: "자동차 공장", industry: "Automotive", solutions: ["Production Logistics", "AGV", "AMR", "Conveyor System"], needs: ["부품 공급 물류 자동화"] },
+  { ko: "생산시설", re: /(\$|€|£|usd|eur)\s?[\d.,]+\s?(billion|million|bn|mn)?[^.]{0,40}\b(expansion|investment|facility|campus|site)\b/i, facility: "Manufacturing Plant", industry: "Manufacturing", solutions: ["Production Logistics", "AGV", "AS/RS"], needs: ["생산 물류 자동화 (투자 규모 기반 추정)"] },
+  { ko: "생산공장", re: /자동화 ?설비|공정 ?자동화|물류 ?자동화|로봇 ?도입|생산라인|생산시설|생산기지|제조시설|스마트 ?팩토리|스마트 ?공장|공장|factory|plant|manufacturing (facility|expansion|site|campus|hub|operations)|production (line|facility|capacity)/i, facility: "Manufacturing Plant", industry: "Manufacturing", solutions: ["Production Logistics", "AGV", "AS/RS"], needs: ["생산 물류 자동화"] },
 ];
 
+const US_STATES = ["Texas", "California", "Ohio", "Georgia", "Indiana", "Arizona", "Tennessee", "Kentucky", "Michigan", "Alabama", "South Carolina", "North Carolina", "Illinois", "Pennsylvania", "New York", "Nevada", "Oklahoma", "Kansas", "Missouri", "Wisconsin", "Minnesota", "Virginia", "Florida", "Louisiana", "Mississippi", "Utah", "Colorado", "Oregon", "Washington State", "New Jersey", "Iowa", "Arkansas"];
+const KO_DISPLAY: Record<string, string> = { 美: "미국", 中: "중국", 日: "일본", UAE: "UAE" };
+const KO_REGIONS = ["서울", "부산", "인천", "대구", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+  "평택", "이천", "용인", "화성", "안성", "김포", "양주", "파주", "시흥", "안산", "광명", "여주", "포천", "평창", "천안", "아산", "당진", "서산", "청주", "충주", "오창", "음성", "진천",
+  "구미", "포항", "경주", "창원", "김해", "양산", "거제", "광양", "여수", "순천", "군산", "새만금", "익산", "전주", "원주", "춘천", "강릉", "오산", "칠곡", "밀양", "영천", "상주", "나주"];
+const KO_COUNTRY: Record<string, string> = { 미국: "United States", 美: "United States", 캐나다: "Canada", 멕시코: "Mexico", 폴란드: "Poland", 헝가리: "Hungary", 체코: "Czech Republic", 독일: "Germany", 영국: "United Kingdom", 스페인: "Spain", 베트남: "Vietnam", 인도네시아: "Indonesia", 태국: "Thailand", 말레이시아: "Malaysia", 필리핀: "Philippines", 싱가포르: "Singapore", 인도: "India", 아랍에미리트: "United Arab Emirates", UAE: "United Arab Emirates", 사우디: "Saudi Arabia", 카타르: "Qatar", 호주: "Australia", 중국: "China", 中: "China", 일본: "Japan", 日: "Japan", 대만: "Taiwan", 브라질: "Brazil" };
+
+function extractAmountKo(text: string): string | null {
+  const m = text.match(/\d[\d,.]*\s?조(?:\s?\d[\d,.]*\s?억)?\s?원?|\d[\d,.]*\s?억\s?(?:원|달러|유로)?|\d[\d,.]*\s?만\s?달러/);
+  return m ? m[0].trim().replace(/(\d)\s+(조|억|만)/g, "$1$2") : null;
+}
+
+function guessCompanyKo(rawTitle: string): string {
+  const t = rawTitle.replace(/^(\[[^\]]+\]|\([^)]+\)|【[^】]+】)\s*/g, "").trim();
+  const m = t.match(/^([A-Za-z0-9가-힣&·.\-]{2,20}?)(?:,|\s?…|\s?·\s|(?:이|가|은|는)\s)/);
+  if (!m) return "Unknown";
+  const name = m[1].replace(/(이|가|은|는)$/, "");
+  return /^(정부|국토부|산업부|중기부|지자체|올해|내년|국내|글로벌|업계|美|中|日)$/.test(name) ? "Unknown" : name;
+}
+
 function extractAmount(text: string): string {
-  const m = text.match(/(?:US\$|\$|€|£|¥|₩|AED|SAR|A\$|AU\$|RM|VND|IDR|THB|PLN|HUF|EUR|USD)\s?\d[\d,.]*\s?(?:billion|million|bn|mn|m|b|trillion)?\b|\d[\d,.]*\s?(?:billion|million|bn|mn)\s?(?:dollars|euros|USD|EUR|won|yen|baht|ringgit|rupiah|dirhams|riyals|zloty|forint)/i);
+  const m = text.match(/(?:US\$|\$|€|£|¥|₩|AED|SAR|A\$|AU\$|RM|VND|IDR|THB|PLN|HUF|EUR|USD)\s?\d[\d,.]*\s?(?:billion|million|bln|mln|bn|mn|m|b|trillion)?\b|\d[\d,.]*\s?(?:billion|million|bn|mn)\s?(?:dollars|euros|USD|EUR|won|yen|baht|ringgit|rupiah|dirhams|riyals|zloty|forint)/i);
   return m ? m[0].trim() : "Not Disclosed";
 }
 
 function guessCompany(rawTitle: string): string {
   // headline case ("Kia Plans ...") -> lower-case the verbs so the pattern can find the subject
-  const title = rawTitle.replace(/\b(To|Plans?|Will|Invests?|Opens?|Breaks|Announces?|Unveils?|Expands?|Builds?|Selects?|Signs?|Starts?|Launches?|Commits?|Eyes|Picks|Wins)\b/g, (m) => m.toLowerCase());
-  const m = title.match(/^([A-Z][\w&.'’-]*(?:\s+[A-Z][\w&.'’-]*){0,3})\s+(?:to|plans?|will|invests?|opens?|breaks|announces?|unveils?|expands?|builds?|selects?|signs?|starts?|launches?|commits?|eyes|picks|wins)\b/);
-  return m ? m[1] : "Unknown";
+  const VERBS = "to|plans?|may|might|could|would|will|invests?|opens?|breaks?|announces?|unveils?|expands?|builds?|selects?|signs?|starts?|launches?|commits?|eyes|picks|wins|adds?|secures?|unveils?|begins?|completes?|awards?|taps|chooses|is|has";
+  const title = rawTitle.replace(new RegExp(`\\b(${VERBS})\\b`, "gi"), (m) => m.toLowerCase());
+  const m = title.match(new RegExp(`^([A-Z][\\w&.'’-]*(?:(?:\\s+|,\\s*|\\s+and\\s+|\\s*&\\s*)[A-Z][\\w&.'’-]*){0,3})\\s+(?:${VERBS})\\b`));
+  return m && !/^(New|The|A|An|How|Why|What|This|Report)\b/.test(m[1]) ? m[1] : "Unknown";
 }
 
 export function analyzeWithRules(input: AnalysisInput, settings: Settings): Analysis {
@@ -235,6 +258,7 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
   const head = `${input.title} ${input.description ?? ""}`;
   const rule = FACILITY_RULES.find((r) => r.re.test(head)) ?? FACILITY_RULES.find((r) => r.re.test(text));
 
+  const korean = /[가-힣]/.test(input.title);
   const signal = settings.signals.find((s) => containsAny(head, s.keywords).length);
   const industryGroup = settings.industries.find((g) => containsAny(head, g.keywords).length);
   let country = "Unknown";
@@ -244,17 +268,27 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
       break;
     }
   }
+  if (!korean && country === "Unknown") {
+    const st = US_STATES.find((x) => new RegExp(`\\b${x}\\b`).test(input.title));
+    if (st) country = "United States";
+  }
+  if (korean) {
+    const foreign = Object.keys(KO_COUNTRY).find((k) => input.title.includes(k));
+    country = foreign ? KO_COUNTRY[foreign] : country === "Unknown" ? "South Korea" : country;
+  }
   if (country === "Unknown") {
     for (const c of settings.countries) if (containsAny(text.slice(0, 3000), [c.name]).length) { country = c.name; break; }
   }
+  const city = korean && country === "South Korea" ? KO_REGIONS.find((r) => input.title.includes(r)) ?? KO_REGIONS.find((r) => (input.description ?? "").includes(r)) ?? "Unknown" : "Unknown";
   const competitors = settings.competitors.filter((c) => containsAny(text, c.aliases.length ? c.aliases : [c.name]).length).map((c) => c.name);
 
-  const investment = /invest|build|construct|expan|new (plant|factory|facility|warehouse|distribution)|break(s)? ground|groundbreaking|tender|rfp/i.test(head);
-  const completed = /\b(opens|opened|inaugurat|officially launch|begins operations|started operations)\b/i.test(head);
-  const earnings = /\b(quarter|q[1-4]|earnings|revenue|profit|results)\b/i.test(input.title) && !investment;
-  const isTender = /tender|rfp|request for proposal|procurement/i.test(head);
+  const investment = /invest|build|construct|expan|new (plant|factory|facility|warehouse|distribution)|break(s)? ground|groundbreaking|tender|rfp|\bplans?\b|\badds?\b|to open|commits?|\bsecures?\b|신설|증설|착공|건립|투자|투입|확장|구축|도입|입찰|발주|짓는|짓기|세운다|조성/i.test(head);
+  const completed = /\b(opens|opened|inaugurat|officially launch|begins operations|started operations)\b/i.test(head) || (/(준공|개소|가동 시작|가동에 들어|문을 열)/.test(input.title) && !/(예정|계획|목표|추진)/.test(input.title));
+  const earnings = (/\b(quarter|q[1-4]|earnings|revenue|profit|results)\b/i.test(input.title) || /(실적|영업이익|순이익|분기 매출)/.test(input.title)) && !investment;
+  const isTender = /tender|rfp|request for proposal|procurement|입찰|발주|사업자 선정|공고/i.test(head);
 
-  const strategic = settings.countries.find((c) => c.name === country)?.priority ?? false;
+  // South Korea = home market (HQ) — treated as strategic
+  const strategic = country === "South Korea" || (settings.countries.find((c) => c.name === country)?.priority ?? false);
   const bd: ScoreBreakdown = {
     investment_signal: { score: investment ? (signal ? 22 : 16) : 4, reason: investment ? `제목/요약에 투자·건설 신호 키워드 확인${signal ? ` (${signal.name})` : ""}` : "명확한 시설 투자 신호 없음" },
     automation_potential: { score: rule ? (/(warehouse|distribution|cold|fulfil|cargo|baggage|automat)/i.test(rule.facility + head) ? 18 : 12) : 4, reason: rule ? `시설 유형(${rule.facility}) 기준 자동화 적용 가능성 추정` : "시설 유형 불명확" },
@@ -266,7 +300,7 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
     completedProject: completed,
     reReport: false,
     earningsOnly: earnings,
-    maWithoutCapex: /\b(acquires?|acquisition|merger|takeover)\b/i.test(input.title) && !investment,
+    maWithoutCapex: (/\b(acquires?|acquisition|merger|takeover)\b/i.test(input.title) || /(인수|합병)/.test(input.title)) && !investment,
     lowAutomationRelevance: !rule,
     insufficientEvidence: !input.text,
   };
@@ -276,19 +310,24 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
   if (category === "opportunity" && competitors.length && !investment) category = "competitor";
 
   const sentences = (input.description || input.text || "").split(/(?<=[.!?])\s+/).filter((s) => s.length > 30).slice(0, 3);
+  const company = korean ? guessCompanyKo(input.title) : guessCompany(input.title);
+  const amount = (korean ? extractAmountKo(head) ?? extractAmountKo(text.slice(0, 3000)) : null) ?? extractAmount(text);
+  // project name only from words actually in the title (location + facility keyword); otherwise Unknown
+  const place = city !== "Unknown" ? city : country !== "Unknown" && country !== "South Korea" ? (korean ? ((k) => (k ? KO_DISPLAY[k] ?? k : country))(Object.keys(KO_COUNTRY).find((k) => KO_COUNTRY[k] === country && input.title.includes(k))) : country) : "";
+  const projectName = rule && investment ? `${place ? `${place} ` : ""}${korean ? rule.ko : rule.facility}${isTender ? (korean ? " 입찰·발주" : " tender") : completed ? "" : korean ? " 투자" : " project"}` : "Unknown";
   return {
     mode: "rules",
     model: null,
     analyzedAt: new Date().toISOString(),
     isRelevant: relevant,
     category,
-    company: guessCompany(input.title),
-    projectName: "Unknown",
+    company,
+    projectName,
     country,
-    city: "Unknown",
+    city,
     region: regionOf(country),
     industry: industryGroup?.name ?? rule?.industry ?? "Unknown",
-    investmentAmount: extractAmount(text),
+    investmentAmount: amount,
     facilityType: rule?.facility ?? "Unknown",
     signalType: signal?.name ?? (isTender ? "RFP / Tender" : "Unknown"),
     projectStage: completed ? "Operational / Completed" : isTender ? "Equipment Procurement / Tender" : investment ? "Announced / Planned" : "Unknown",
@@ -304,9 +343,13 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
     score: sc.score,
     priority: sc.priority,
     summaryKo: ["[AI 미연결 — 규칙 기반 분석] 원문 발췌:", ...(sentences.length ? sentences : [input.title])],
-    whyItMatters: rule ? `${rule.facility} 관련 투자 신호 — ${rule.solutions.slice(0, 3).join(", ")} 등 검토 가능 (규칙 기반 추정)` : "규칙 기반 분석: 관련성 확인 필요",
+    whyItMatters: rule ? `${korean ? rule.ko : rule.facility} 관련 투자 신호 — ${rule.solutions.slice(0, 3).join(", ")} 등 검토 가능 (규칙 기반 추정)` : "규칙 기반 분석: 관련성 확인 필요",
     facts: [input.title],
-    inferences: rule ? [`시설 유형 '${rule.facility}'은 키워드 매칭 결과입니다.`] : [],
+    inferences: [
+      ...(rule ? [`시설 유형 '${rule.facility}'은 키워드 매칭 결과입니다.`] : []),
+      ...(projectName !== "Unknown" ? ["프로젝트명은 제목에 나온 지역·시설 단어로 구성한 규칙 기반 표기입니다."] : []),
+      ...(company !== "Unknown" ? ["기업명은 제목 첫머리에서 추출했습니다 (원문 확인 필요)."] : []),
+    ],
     uncertainties: ["AI 분석 미연결 상태로 기업명·프로젝트명·일정은 원문 확인이 필요합니다."],
     competitorsMentioned: competitors,
     competitorActivity: competitors.length ? "경쟁사 언급 (세부 활동 미분류)" : "",

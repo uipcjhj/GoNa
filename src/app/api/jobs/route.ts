@@ -9,13 +9,14 @@ export async function GET() {
   return NextResponse.json({ jobs: await listJobs(30) });
 }
 
-/** Find Opportunities: start (or resume) a collection job on the server. */
+/** 수주기회 탐색: start (or resume) a collection job on the server — mode quick (≤20 articles) or collect (full). */
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { mode?: "collect" | "reanalyze" };
-  const { job, created, resumed } = await startJob("manual", body.mode === "reanalyze" ? "reanalyze" : "collect");
+  const body = (await req.json().catch(() => ({}))) as { mode?: "collect" | "quick" | "reanalyze" };
+  const mode = body.mode === "reanalyze" ? "reanalyze" : body.mode === "quick" ? "quick" : "collect";
+  const { job, created, resumed } = await startJob("manual", mode);
   if (created || resumed) {
     const origin = new URL(req.url).origin;
     after(() => driveJob(job.id, origin));
   }
-  return NextResponse.json({ job, created, resumed });
+  return NextResponse.json({ job, created, resumed, busy: !created && !resumed });
 }

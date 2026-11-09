@@ -192,6 +192,7 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
           <CardContent className="grid grid-cols-2 gap-3 text-sm">
             <label className="col-span-2 flex items-center gap-2"><input type="checkbox" checked={s.autoCollect} onChange={(e) => up("autoCollect", e.target.checked)} />매일 자동 수집 사용</label>
             <label>자동 수집 주기 (시간)<Select value={s.collectionIntervalHours} onChange={(e) => up("collectionIntervalHours", Number(e.target.value))} className="w-full">{[24, 48, 72, 168].map((h) => <option key={h} value={h}>{h === 24 ? "매일" : h === 168 ? "매주" : `${h / 24}일마다`}</option>)}</Select></label>
+            <label>전체 탐색 제한시간 (분)<Input type="number" min={5} max={120} value={s.maxJobMinutes} onChange={(e) => up("maxJobMinutes", Number(e.target.value))} /></label>
             <label>검색 기간 (최근 N일)<Input type="number" value={s.lookbackDays} onChange={(e) => up("lookbackDays", Number(e.target.value))} /></label>
             <label>1회 최대 검색 수<Input type="number" value={s.maxQueriesPerRun} onChange={(e) => up("maxQueriesPerRun", Number(e.target.value))} /></label>
             <label>1회 최대 AI 분석 기사 수<Input type="number" value={s.maxAnalyzePerRun} onChange={(e) => up("maxAnalyzePerRun", Number(e.target.value))} /></label>
@@ -207,7 +208,20 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
       <Card id="demo">
         <CardHeader><CardTitle>데모 데이터</CardTitle></CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={s.showDemoData} onChange={(e) => up("showDemoData", e.target.checked)} />데모 데이터 표시 (저장 시 적용)</label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={s.showDemoData}
+              onChange={async (e) => {
+                const v = e.target.checked;
+                up("showDemoData", v);
+                await fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ showDemoData: v }) });
+                setMsg(v ? "DEMO 데이터를 표시합니다 (KPI·지도에도 포함)." : "DEMO 데이터를 숨겼습니다. 실제 데이터만 표시됩니다.");
+                router.refresh();
+              }}
+            />
+            DEMO 데이터 표시 (기본: 숨김 · 즉시 적용)
+          </label>
           <Button size="sm" variant="outline" onClick={() => demo("seed")}>데모 데이터 불러오기</Button>
           <Button size="sm" variant="danger" onClick={() => demo("remove")}>데모 데이터 삭제</Button>
           <span className="text-xs text-slate-400">데모 데이터는 가상 기업·example.com 링크로 구성되며 실제 수집 데이터와 분리되어 있습니다.</span>

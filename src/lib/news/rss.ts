@@ -14,8 +14,8 @@ function text(v: unknown): string {
 
 const strip = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
-export async function fetchRss(name: string, url: string, sinceIso: string, lang: "ko" | "en" = "en"): Promise<RawArticle[]> {
-  const res = await fetchWithRetry(url, { timeoutMs: 20000, headers: { Accept: "application/rss+xml, application/xml, text/xml" } }, 2);
+export async function fetchRss(name: string, url: string, sinceIso: string, lang: "ko" | "en" = "en", fast = false): Promise<RawArticle[]> {
+  const res = await fetchWithRetry(url, { timeoutMs: fast ? 8000 : 20000, headers: { Accept: "application/rss+xml, application/xml, text/xml" } }, fast ? 0 : 2);
   if (!res.ok) throw new Error(`RSS ${name} HTTP ${res.status}`);
   const xml = parser.parse(await res.text());
   const items: Record<string, unknown>[] = [].concat(xml?.rss?.channel?.item ?? xml?.feed?.entry ?? []);

@@ -12,6 +12,7 @@ import { sleep } from "@/lib/util/http";
 import { fetchRss } from "@/lib/news/rss";
 import { searchGnews } from "@/lib/news/gnews";
 import { searchGoogleNews } from "@/lib/news/googlenews";
+import { QUICK, isDomestic, planQuickQueries, quickScore, selectQuick } from "./quick";
 import { planWeeklyQueries, type WeeklyRange } from "@/lib/weekly/plan";
 import { weeklyFromAI, weeklyRules, weeklyPreScore } from "@/lib/weekly/classify";
 import { planQueries, preScore } from "@/lib/news/queries";
@@ -33,7 +34,10 @@ function log(job: Job, level: "info" | "warn" | "error", msg: string) {
 }
 
 export function isActive(job: Job): boolean {
-  return job.status === "running" && Date.now() - new Date(job.heartbeatAt).getTime() < STALE_MS;
+  if (job.status !== "running") return false;
+  const since = Date.now() - new Date(job.heartbeatAt).getTime();
+  // quick tests heartbeat every few seconds; a full run can spend longer on one slow source
+  return since < (job.mode === "quick" ? 90_000 : STALE_MS);
 }
 
 export async function latestJob(): Promise<Job | null> {
@@ -53,7 +57,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     return { job: running, created: false, resumed: true };
   }
   const settings = await getSettings();
-  const queries = mode === "collect" ? planQueries(settings) : mode === "weekly" && range ? planWeeklyQueries(settings, range) : [];
+  const queries = mode === "collect" ? planQueries(settings) : mode === "quick" ? planQuickQueries(settings) : mode === "weekly" && range ? planWeeklyQueries(settings, range) : [];
   const now = new Date().toISOString();
   const job: Job = {
     id: `job_${now.replace(/[-:.TZ]/g, "").slice(0, 14)}_${randomUUID().slice(0, 6)}`,
@@ -61,7 +65,12 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     mode,
     range,
     status: "running",
-    phase: mode === "collect" || mode === "weekly" ? "discover" : "analyze",
+    phase: mode === "collect" || mode === "quick" || mode === "weekly" ? "discover" : "analyze",
+    deadlineAt: new Date(Date.now() + (mode === "quick" ? QUICK.totalSeconds * 1000 : Math.max(5, settings.maxJobMinutes || 20) * 60_000)).toISOString(),
+    timeLimited: false,
+    step: "작업 준비 중",
+    failedSources: [],
+    quickPool: mode === "quick" ? [] : undefined,
     startedAt: now,
     finishedAt: null,
     heartbeatAt: now,
@@ -77,7 +86,8 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     error: null,
     slices: 0,
   };
-  const label = mode === "collect" ? `수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정`
+  const label = mode === "quick" ? `빠른 테스트 시작 — 국내 ${QUICK.perSide}건 + 글로벌 ${QUICK.perSide}건 목표, 검색 ${queries.length}건, 제한시간 ${QUICK.totalSeconds}초 (GDELT는 8초 1회만 시도)`
+    : mode === "collect" ? `전체 탐색 시작 — 제한시간 ${Math.max(5, settings.maxJobMinutes || 20)}분, `+`수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정`
     : mode === "weekly" ? `주간 업계동향 수집 시작 — ${range?.startDate} ~ ${range?.endDate}${range?.days?.length ? ` (누락 날짜 ${range.days.join(", ")})` : ""}, 검색 ${queries.length}건 예정`
     : mode === "weekly-analyze" ? `주간 업계동향 관련도 분석 — ${range?.startDate} ~ ${range?.endDate}` : "규칙 기반 분석 기사 AI 재분석 시작";
   log(job, "info", label);
@@ -96,7 +106,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     log(job, "info", `분석 대상 ${job.analyzeQueue.length}건 (미분석 ${need.filter((a) => a.status === "queued").length}건 포함)${aiConfigured() ? "" : " — AI 미연결: 규칙 기반 분류"}`);
   }
   await saveJob(job);
-  if (mode === "weekly" || mode === "weekly-analyze") return { job, created: true, resumed: false };
+  if (mode === "weekly" || mode === "weekly-analyze" || mode === "quick") return { job, created: true, resumed: false };
   await saveSettings({ ...settings, rotation: (settings.rotation ?? 0) + 1, ...(trigger === "scheduled" ? { lastScheduledRunAt: now } : {}) });
   return { job, created: true, resumed: false };
 }
@@ -119,20 +129,21 @@ export async function cancelJob(id: string): Promise<Job | null> {
 
 // ------------------------------------------------------------------ discovery
 
-async function runQuery(q: Job["queries"][number], settings: Settings, rangeStart?: string): Promise<RawArticle[]> {
-  const sinceIso = new Date(Date.now() - settings.lookbackDays * 86400_000).toISOString();
+async function runQuery(q: Job["queries"][number], settings: Settings, rangeStart?: string, fast = false): Promise<RawArticle[]> {
+  const sinceIso = new Date(Date.now() - (fast ? QUICK.lookbackDays : settings.lookbackDays) * 86400_000).toISOString();
   if (q.provider === "gdelt" && q.query.startsWith("{")) {
-    const p = JSON.parse(q.query) as { q: string; start: string; end: string };
+    const p = JSON.parse(q.query) as { q: string; start?: string; end?: string; quick?: boolean };
+    if (p.quick) return searchGdelt(p.q, { timespanDays: QUICK.lookbackDays, max: 50, englishOnly: true, fast: true });
     return searchGdelt(p.q, { timespanDays: 7, max: 75, englishOnly: true, start: p.start, end: p.end });
   }
   if (q.provider === "gdelt") return searchGdelt(q.query, { timespanDays: settings.lookbackDays, max: 75, englishOnly: settings.englishOnly });
   if (q.provider === "rss") {
     const feed = settings.rssFeeds.find((f) => f.url === q.query);
-    return fetchRss(feed?.name ?? q.label, q.query, rangeStart ?? sinceIso, feed?.lang ?? "en");
+    return fetchRss(feed?.name ?? q.label, q.query, rangeStart ?? sinceIso, feed?.lang ?? "en", fast);
   }
   if (q.provider === "googlenews") {
-    const p = JSON.parse(q.query) as { q: string; lang: "ko" | "en"; startDate?: string; endDate?: string };
-    return searchGoogleNews(p.q, { lang: p.lang, startDate: p.startDate, endDate: p.endDate, max: 30 });
+    const p = JSON.parse(q.query) as { q: string; lang: "ko" | "en"; startDate?: string; endDate?: string; when?: string };
+    return searchGoogleNews(p.q, { lang: p.lang, startDate: p.startDate, endDate: p.endDate, max: 30, fast, when: p.when });
   }
   if (q.provider === "gnews") return searchGnews(q.query, sinceIso);
   return [];
@@ -176,6 +187,8 @@ function toArticle(r: RawArticle, job: Job, settings: Settings): Article {
 
 async function discoverStep(job: Job, settings: Settings, recentTitles: { id: string; t: string; via?: boolean }[]): Promise<void> {
   const q = job.queries[job.cursor];
+  const quick = job.mode === "quick";
+  job.step = `검색 중 (${job.cursor + 1}/${job.queries.length}): ${q.label}`;
   let raw: RawArticle[] = [];
   // circuit breaker: if a provider failed 3 times in a row, skip its remaining queries this run
   const fails = (job.providerFailures ??= {});
@@ -183,15 +196,23 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
     log(job, "warn", `건너뜀: ${q.label} — ${q.provider} 연속 3회 실패`);
   } else {
     try {
-      raw = await runQuery(q, settings, job.range ? new Date(new Date(job.range.start).getTime() - 86400_000).toISOString() : undefined);
+      raw = await runQuery(q, settings, job.range ? new Date(new Date(job.range.start).getTime() - 86400_000).toISOString() : undefined, quick);
       fails[q.provider] = 0;
       log(job, "info", `검색 완료: ${q.label} → ${raw.length}건`);
     } catch (e) {
       job.stats.errors++;
-      if (e instanceof RateLimitError) await sleep(20_000); // back off; do not count toward the breaker
+      if (e instanceof RateLimitError) { if (!quick) await sleep(20_000); } // back off; do not count toward the breaker
       else fails[q.provider] = (fails[q.provider] ?? 0) + 1;
       const c = (e as { cause?: { code?: string; message?: string } })?.cause;
       const cause = c ? c.code || c.message || String(c) : null;
+      const raw0 = `${e instanceof Error ? e.message : e} ${cause ?? ""}`;
+      const reason = e instanceof RateLimitError ? "호출 제한(429)"
+        : /abort|timeout|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT/i.test(raw0) ? "응답 시간 초과"
+        : /ENOTFOUND|EAI_AGAIN/i.test(raw0) ? "주소 확인 실패(DNS)"
+        : /fetch failed|ECONNRESET|ECONNREFUSED|socket/i.test(raw0) ? `연결 실패(네트워크)${cause ? ` · ${cause}` : ""}`
+        : /HTTP (\d+)/.test(raw0) ? `서버 오류 ${raw0.match(/HTTP (\d+)/)![0]}`
+        : (e instanceof Error ? e.message : String(e)).slice(0, 60);
+      (job.failedSources ??= []).push(`${q.label} — ${reason}`);
       log(job, "error", `검색 실패: ${q.label} — ${e instanceof Error ? e.message : String(e)}${cause ? ` (${cause})` : ""}`.slice(0, 400));
     }
   }
@@ -204,6 +225,22 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
   for (const c of candidates) if (!uniq.has(c.id)) uniq.set(c.id, c);
   const existingRows = await getArticles([...uniq.keys()]);
   const existing = new Set(existingRows.map((a) => a.id));
+  if (quick) {
+    // quick test: hold candidates in the job; only the selected ≤20 are stored (no duplicates)
+    const pool = (job.quickPool ??= []);
+    const since = new Date(Date.now() - QUICK.lookbackDays * 86400_000).toISOString();
+    for (const a of uniq.values()) {
+      const nt = normalizeTitle(a.title);
+      const dupTitle = recentTitles.some((x) => x.t === nt || (nt.length > 20 && jaccard(x.t, nt) >= 0.85));
+      if (existing.has(a.id) || dupTitle || pool.some((p) => normalizeUrl(p.url) === a.urlNormalized)) { job.stats.duplicates++; continue; }
+      if (a.publishedAt && a.publishedAt < since) continue;
+      const r = raw.find((x) => normalizeUrl(x.url) === a.urlNormalized)!;
+      pool.push({ url: r.url, title: r.title, sourceName: r.sourceName, domain: r.domain || a.sourceDomain, publishedAt: r.publishedAt, publishedAtBasis: r.publishedAtBasis, language: r.language, sourceCountry: r.sourceCountry, description: r.description, provider: r.provider, query: r.query, score: quickScore(r.title, r.description), domestic: isDomestic({ title: r.title, language: r.language, domain: r.domain || a.sourceDomain }) });
+      recentTitles.push({ id: a.id, t: nt, via: Boolean(a.viaGoogleNews) });
+    }
+    if (pool.length > 400) pool.sort((x, y) => y.score - x.score).splice(400);
+    return;
+  }
   const toSave: Article[] = [];
   if (job.mode === "weekly") {
     // articles dropped earlier by the opportunity-only pre-filter may still matter for the weekly report
@@ -306,7 +343,7 @@ async function buildAnalyzeQueue(job: Job, settings: Settings) {
 
 async function processArticle(job: Job, id: string, settings: Settings, ctx: { opps: Opportunity[]; articles: Article[] }) {
   const [article] = await getArticles([id]);
-  if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly"))) return;
+  if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly" || job.mode === "quick"))) return;
   try {
     if (job.mode === "weekly-analyze" && article.status === "analyzed" && !aiConfigured()) {
       // no AI: (re)classify for the weekly report from stored data only — no network, no cost
@@ -322,7 +359,7 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
           verification: { status: "needs_check", httpStatus: null, finalUrl: null, redirects: 0, checkedAt: new Date().toISOString(), access: "unknown", note: "Google News 경유 링크 — 브라우저에서 원문으로 이동, 원문 URL·발행일 자동 확인 불가" },
           title: null, siteName: null, description: null, text: null, publishedAt: null, publishedAtBasis: null,
         }
-      : await verifyAndFetch(article.url);
+      : await verifyAndFetch(article.url, job.mode === "quick" ? 8000 : 15000);
     article.verification = page.verification;
     if (page.publishedAt) {
       article.publishedAt = page.publishedAt;
@@ -456,8 +493,12 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
   if (inProcess.has(jobId)) return false;
   inProcess.add(jobId);
   const owner = randomUUID();
-  const deadline = Date.now() + budgetMs;
   const job = await getJob(jobId);
+  // effective deadline = this slice's budget, capped by the job's overall time limit
+  const jobLimit = job?.deadlineAt ? new Date(job.deadlineAt).getTime() : Infinity;
+  const deadline = Math.min(Date.now() + budgetMs, jobLimit);
+  const quick = job?.mode === "quick";
+  const overLimit = () => Date.now() >= jobLimit;
   try {
     if (!job || job.status !== "running") return true;
     if (await isCancelRequested(jobId)) {
@@ -488,28 +529,60 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
     if (job.phase === "discover") {
       const recent = await listArticles({ sinceDays: job.range ? Math.ceil((Date.now() - new Date(job.range.start).getTime()) / 86400_000) + 14 : 14 });
       const recentTitles = recent.map((a) => ({ id: a.id, t: normalizeTitle(a.title), via: Boolean(a.viaGoogleNews) }));
-      while (job.cursor < job.queries.length && Date.now() < deadline) {
+      const discoverEnd = quick ? new Date(job.startedAt).getTime() + QUICK.discoverSeconds * 1000 : deadline;
+      while (job.cursor < job.queries.length && Date.now() < Math.min(deadline, discoverEnd)) {
         await discoverStep(job, settings, recentTitles);
         await beat();
       }
-      if (job.cursor >= job.queries.length) {
-        await buildAnalyzeQueue(job, settings);
-        job.phase = "analyze";
+      const discoverCut = job.cursor < job.queries.length && (overLimit() || (quick && Date.now() >= discoverEnd));
+      if (discoverCut) log(job, "warn", `검색 제한시간 도달 — 남은 검색 ${job.queries.length - job.cursor}건은 건너뛰고 지금까지 수집한 결과로 진행합니다.`);
+      if (job.cursor >= job.queries.length || discoverCut) {
+        if (quick) {
+          job.step = "수집 기사 선별 중";
+          const pool = job.quickPool ?? [];
+          const stored = (await listArticles({ sinceDays: 14 })).filter((a) => !a.isDemo && a.status === "analyzed").map((a) => a.title);
+          const picked = selectQuick(pool, stored);
+          const arts = picked.map((c) => toArticle({ ...c } as RawArticle, job!, settings));
+          for (const a of arts) a.statusNote = "빠른 테스트 수집";
+          await saveArticles(arts);
+          job.stats.newArticles = arts.length;
+          job.stats.queued = arts.length;
+          job.stats.filtered = Math.max(0, pool.length - arts.length);
+          job.analyzeQueue = arts.map((a) => a.id);
+          job.analyzeIndex = 0;
+          const dom = picked.filter((c) => c.domestic).length;
+          log(job, "info", `후보 ${pool.length}건 중 투자·설비 신호 기준 ${arts.length}건 선정 (국내 ${dom} · 글로벌 ${arts.length - dom}) — 나머지는 저장하지 않음`);
+          job.quickPool = [];
+        } else if (overLimit()) {
+          job.timeLimited = true;
+          job.phase = "done";
+        } else {
+          await buildAnalyzeQueue(job, settings);
+        }
+        if (job.phase !== "done") job.phase = "analyze";
         await beat();
       }
     }
 
     if (job.phase === "analyze") {
       const ctx = { opps: await listOpportunities(), articles: (await listArticles({ sinceDays: 400 })).filter((a) => a.opportunityId) };
-      const CONCURRENCY = 3;
-      while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - 20_000) {
+      const CONCURRENCY = quick ? 4 : 3;
+      const margin = quick ? 3_000 : 20_000;
+      while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin) {
         const batch = job.analyzeQueue.slice(job.analyzeIndex, job.analyzeIndex + CONCURRENCY);
+        job.step = `원문 확인·분석 중 (${Math.min(job.analyzeIndex + batch.length, job.analyzeQueue.length)}/${job.analyzeQueue.length})`;
+        await saveJob(job);
         // sequential merge step inside processArticle keeps clustering consistent; fetch+AI run in parallel
         await Promise.all(batch.map((id) => processArticle(job!, id, settings, ctx)));
         job.analyzeIndex += batch.length;
         await beat();
       }
-      if (job.analyzeIndex >= job.analyzeQueue.length) {
+      if (job.analyzeIndex < job.analyzeQueue.length && overLimit()) {
+        job.timeLimited = true;
+        log(job, "warn", `전체 제한시간 도달 — 분석하지 못한 ${job.analyzeQueue.length - job.analyzeIndex}건은 '분석 대기'로 저장되어 다음 실행에서 이어서 처리됩니다.`);
+        job.phase = "done";
+        await beat();
+      } else if (job.analyzeIndex >= job.analyzeQueue.length) {
         job.phase = job.mode === "collect" || job.mode === "weekly" ? "supplement" : "done";
         await beat();
       }
@@ -527,14 +600,16 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
       if ((!remaining.length || job.supplementDone.length >= 5) && job.mode === "weekly" && Date.now() < deadline - 60_000) {
         await weeklyAlternatives(job, settings, ctx);
       }
-      if (!remaining.length || job.supplementDone.length >= 5) job.phase = "done";
+      if (!remaining.length || job.supplementDone.length >= 5 || overLimit()) job.phase = "done";
     }
 
     if (job.phase === "done") {
       job.status = job.stats.errors > 0 ? "completed_with_errors" : "completed";
       job.finishedAt = new Date().toISOString();
       job.lease = null;
-      log(job, "info", `완료 — 신규 기사 ${job.stats.newArticles}, 중복 ${job.stats.duplicates}, 분석 ${job.stats.analyzed}, 신규 수주기회 ${job.stats.newOpportunities}, 오류 ${job.stats.errors}`);
+      job.step = job.timeLimited ? "제한시간 도달 — 수집된 결과까지 저장하고 종료" : "완료";
+      const secs = Math.round((Date.now() - new Date(job.startedAt).getTime()) / 1000);
+      log(job, "info", `${job.timeLimited ? "제한시간 종료" : "완료"} (${Math.floor(secs / 60)}분 ${secs % 60}초) — 신규 기사 ${job.stats.newArticles}, 중복 ${job.stats.duplicates}, 분석 ${job.stats.analyzed}, 신규 수주기회 ${job.stats.newOpportunities}, 오류 ${job.stats.errors}`);
       await saveJob(job);
       return true;
     }

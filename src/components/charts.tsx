@@ -9,7 +9,7 @@ const tooltipStyle = { fontSize: 12, borderRadius: 8, background: "#071226", bor
 const cursor = { fill: "rgba(46,242,196,0.06)" };
 
 export function HBar({ data, color = "#2ef2c4", height = 240 }: { data: { name: string; value: number }[]; color?: string; height?: number }) {
-  if (!data.length) return <div className="flex h-40 items-center justify-center text-sm text-slate-400">데이터 없음</div>;
+  if (!data.length) return <div className="flex h-40 items-center justify-center text-sm text-slate-400">실제 데이터 없음</div>;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>

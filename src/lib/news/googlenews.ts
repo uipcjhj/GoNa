@@ -14,9 +14,9 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function searchGoogleNews(
   query: string,
-  opts: { lang: "ko" | "en"; startDate?: string; endDate?: string; max?: number },
+  opts: { lang: "ko" | "en"; startDate?: string; endDate?: string; max?: number; fast?: boolean; when?: string },
 ): Promise<RawArticle[]> {
-  const wait = 1500 - (Date.now() - lastCall);
+  const wait = (opts.fast ? 800 : 1500) - (Date.now() - lastCall);
   if (wait > 0) await sleep(wait);
   lastCall = Date.now();
   let q = query;
@@ -25,10 +25,10 @@ export async function searchGoogleNews(
     const s = new Date(`${opts.startDate}T00:00:00Z`);
     const e = new Date(`${opts.endDate}T00:00:00Z`);
     q += ` after:${ymd(new Date(s.getTime() - 86400_000))} before:${ymd(new Date(e.getTime() + 2 * 86400_000))}`;
-  } else q += " when:7d";
+  } else q += ` when:${opts.when ?? "7d"}`;
   const loc = opts.lang === "ko" ? "hl=ko&gl=KR&ceid=KR:ko" : "hl=en-US&gl=US&ceid=US:en";
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&${loc}`;
-  const res = await fetchWithRetry(url, { timeoutMs: 20000 }, 2, 4000);
+  const res = await fetchWithRetry(url, { timeoutMs: opts.fast ? 8000 : 20000 }, opts.fast ? 1 : 2, opts.fast ? 1500 : 4000);
   if (!res.ok) throw new Error(`Google News HTTP ${res.status}`);
   const xml = parser.parse(await res.text());
   const items: Record<string, unknown>[] = [].concat(xml?.rss?.channel?.item ?? []);

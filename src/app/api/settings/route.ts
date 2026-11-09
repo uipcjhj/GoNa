@@ -15,10 +15,11 @@ export async function PUT(req: Request) {
   const body = (await req.json().catch(() => null)) as Partial<Settings> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
   const cur = await getSettings();
-  const next = mergeSettings({ ...cur, ...body, rotation: cur.rotation, lastScheduledRunAt: cur.lastScheduledRunAt });
+  const next = mergeSettings({ ...cur, ...body, rotation: cur.rotation, lastScheduledRunAt: cur.lastScheduledRunAt, demoPrefVersion: 2 });
   next.maxQueriesPerRun = Math.max(1, Math.min(60, Math.round(next.maxQueriesPerRun)));
   next.maxAnalyzePerRun = Math.max(1, Math.min(300, Math.round(next.maxAnalyzePerRun)));
   next.lookbackDays = Math.max(1, Math.min(30, Math.round(next.lookbackDays)));
+  next.maxJobMinutes = Math.max(5, Math.min(120, Math.round(next.maxJobMinutes || 20)));
   next.hotThreshold = Math.max(1, Math.min(100, next.hotThreshold));
   next.weekly.recommendCount = Math.max(5, Math.min(40, Math.round(next.weekly.recommendCount)));
   next.weekly.maxAnalyzePerRun = Math.max(10, Math.min(500, Math.round(next.weekly.maxAnalyzePerRun)));

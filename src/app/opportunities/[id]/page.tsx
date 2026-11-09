@@ -5,6 +5,7 @@ import { ensureInitialized } from "@/lib/data";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui";
 import { AccessBadge, ModeBadge, PriorityBadge, ScorePill, SourceTypeBadge, VerifyBadge } from "@/components/badges";
 import { SourceLink } from "@/components/source-link";
+import { RulesNotice } from "@/components/rules-notice";
 import { SCORE_CRITERIA } from "@/lib/config/defaults";
 import { fmtDate } from "@/lib/utils";
 import { ArrowLeft, AlertTriangle, Info, Lightbulb, FileCheck2 } from "lucide-react";
@@ -44,6 +45,7 @@ export default async function OpportunityDetail({ params }: PageProps<"/opportun
         {primary && <SourceLink a={primary} button>대표 원문 보기</SourceLink>}
       </div>
 
+      {o.analysisMode === "rules" && <RulesNotice />}
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader><CardTitle>프로젝트 개요</CardTitle><span className="text-[11px] text-slate-400">원문에 없는 정보는 Unknown / Not Disclosed로 표시</span></CardHeader>

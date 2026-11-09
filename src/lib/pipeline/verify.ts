@@ -129,7 +129,7 @@ function extract(html: string) {
   };
 }
 
-export async function verifyAndFetch(url: string): Promise<FetchedPage> {
+export async function verifyAndFetch(url: string, timeoutMs = 15000): Promise<FetchedPage> {
   const checkedAt = new Date().toISOString();
   const base: FetchedPage = {
     verification: { status: "unchecked", httpStatus: null, finalUrl: null, redirects: 0, checkedAt, access: "unknown", note: null },
@@ -141,7 +141,7 @@ export async function verifyAndFetch(url: string): Promise<FetchedPage> {
   try {
     for (;;) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 15000);
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       let res: Response;
       try {
         res = await fetch(current, {

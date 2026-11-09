@@ -294,10 +294,16 @@ export interface PlannedQuery {
   label: string;
 }
 
+export interface QuickCandidate {
+  url: string; title: string; sourceName: string; domain: string; publishedAt: string | null; publishedAtBasis: string;
+  language: string | null; sourceCountry: string | null; description: string | null; provider: string; query: string;
+  score: number; domestic: boolean;
+}
+
 export interface Job {
   id: string;
   trigger: "manual" | "scheduled";
-  mode: "collect" | "reanalyze" | "weekly" | "weekly-analyze";
+  mode: "collect" | "quick" | "reanalyze" | "weekly" | "weekly-analyze";
   range?: { start: string; end: string; startDate: string; endDate: string; days?: string[] } | null;
   status: JobStatus;
   phase: JobPhase;
@@ -313,6 +319,11 @@ export interface Job {
   supplementDone: string[];
   lease: { owner: string; until: string } | null;
   providerFailures?: Record<string, number>;
+  deadlineAt?: string | null; // overall time limit: on reaching it the job stops and keeps what it collected
+  timeLimited?: boolean;
+  step?: string; // human-readable current step (shown live in the UI)
+  failedSources?: string[];
+  quickPool?: QuickCandidate[]; // quick mode: candidates held until selection (only selected ones are stored)
   log: JobLog[];
   error: string | null;
   slices: number;
@@ -370,6 +381,7 @@ export interface Settings {
   maxQueriesPerRun: number;
   maxAnalyzePerRun: number;
   maxPerCountryPerRun: number;
+  maxJobMinutes: number; // overall time limit for a full collection run
   lookbackDays: number;
   englishOnly: boolean;
   analysisLanguage: "ko" | "en";
@@ -377,6 +389,7 @@ export interface Settings {
   reportTimezone: string;
   reportPeriodDays: number;
   showDemoData: boolean;
+  demoPrefVersion?: number; // 2 = demo hidden by default (one-time migration of older settings)
   rotation: number;
   lastScheduledRunAt: string | null;
 }

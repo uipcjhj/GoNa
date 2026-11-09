@@ -15,7 +15,7 @@ function parseSeenDate(s: string | undefined): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-export async function searchGdelt(query: string, opts: { timespanDays: number; max: number; englishOnly: boolean; start?: string; end?: string }): Promise<RawArticle[]> {
+export async function searchGdelt(query: string, opts: { timespanDays: number; max: number; englishOnly: boolean; start?: string; end?: string; fast?: boolean }): Promise<RawArticle[]> {
   // GDELT asks clients to keep to ~1 request / 5 seconds.
   const wait = 6500 - (Date.now() - lastCall);
   if (wait > 0) await sleep(wait);
@@ -34,7 +34,8 @@ export async function searchGdelt(query: string, opts: { timespanDays: number; m
     params.set("startdatetime", gd(opts.start));
     params.set("enddatetime", gd(opts.end));
   } else params.set("timespan", `${Math.max(1, opts.timespanDays)}d`);
-  const res = await fetchWithRetry(`${ENDPOINT}?${params}`, { timeoutMs: 30000 }, 2, 12000);
+  // fast (quick test): one short attempt, no retries — GDELT is often slow or rate-limited
+  const res = await fetchWithRetry(`${ENDPOINT}?${params}`, { timeoutMs: opts.fast ? 8000 : 30000 }, opts.fast ? 0 : 2, 12000);
   const text = await res.text();
   lastCall = Date.now();
   if (res.status === 429) throw new RateLimitError(`GDELT 호출 제한 (429): ${text.slice(0, 120)}`);
