@@ -458,8 +458,8 @@ async function bossTests(label, device) {
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
-  const en = await G(() => { const sc = window.__gona.scene.getScene('EndingCine'); const ids = ['imo', 'samchon', 'mom', 'dad', 'halmeoni', 'halabeoji']; return { e: window.__gona.scene.getScene('Game').debugEnding(), fam: sc.children.list.filter((o) => /^ech-(?!gona)/.test(o.texture?.key || '')).map((o) => o.texture.key).filter((k, i, all) => all.indexOf(k) === i).sort().join(','), famOk: ids.every((id) => sc.textures.exists('ech-' + id)) && sc.textures.exists('ech-gona'), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: sc.children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')), gona: sc.children.list.some((o) => /^dino-stage-newborn$/.test(o.texture?.key || '')) }; });
-  check(`${label}: final boss win → ending (own bg, 6 family sprite strips from the ending sheet loaded, baby GONA sprite, game hidden)`, en.e?.state === 'ending' && en.famOk && en.fam === 'ech-dad,ech-halabeoji,ech-halmeoni,ech-imo,ech-mom,ech-samchon' && en.bg && en.gameHidden && en.gona, JSON.stringify(en));
+  const en = await G(() => ({ e: window.__gona.scene.getScene('Game').debugEnding(), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: window.__gona.scene.getScene('EndingCine').children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')) }));
+  check(`${label}: final boss win → framed ending (village bg behind, game hidden)`, en.e?.state === 'ending' && en.bg && en.gameHidden, JSON.stringify(en));
   await page.waitForTimeout(2500);
   const music = await G(() => ({ mode: window.__sound.endingMode, want: window.__sound.wantMusic }));
   check(`${label}: ending music started (one track, buffer or file fallback)`, music.mode === 'buffer' || (music.mode === 'file' && music.want === 'ending'), JSON.stringify(music));
@@ -468,8 +468,8 @@ async function bossTests(label, device) {
   // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
   await page.waitForTimeout(1500);
-  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const h = e.family.find((f) => f.id === 'halmeoni'); return { scene: e.sceneNo, visible: e.family.filter((f) => f.s.visible && f.s.alpha > 0.5).length + (e.sp?.visible ? 1 : 0), /* 접촉 동작 중엔 상대가 두 사람 그림 안에 있음 */ kiss: e.sp?.visible && e.sp.anims.currentAnim?.key === 'esp-grandma_kiss', halmeoniNearGona: Math.abs(h.x - e.gx) < 40, line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
-  check(`${label}: ending scene 6 (grandma kiss) — close-up kiss frames`, s6.scene === 6 && s6.kiss, JSON.stringify(s6));
+  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const f = document.querySelector('.end-frame'); return { scene: e.sceneNo, frame: f?.dataset.scene, img: [...document.querySelectorAll('.ef-img.on')].map((i) => i.src.split('/').pop()).join(','), line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
+  check(`${label}: ending scene 6 — framed kiss & sniff illustration`, s6.scene === 6 && s6.frame === '6' && s6.img === 's6.png', JSON.stringify(s6));
   // 타이틀 → 크레딧 → 마지막 문구 → 검은 화면 + 버튼
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 79.5; });
   await page.waitForTimeout(800);
@@ -820,66 +820,6 @@ async function qteTests(label, device) {
   await b.close();
 }
 
-/** 엔딩 그림: 가족 도트 그림(반 도트 · 균일 배율) · 고나 비율 · 단체 장면에서 여섯 명 모두 화면 안 · 얼굴끼리 겹치지 않음 */
-async function endingArtTests(label, device) {
-  const b = await chromium.launch();
-  const ctx = await b.newContext({ ...device, deviceScaleFactor: 1 });
-  const page = await ctx.newPage(); const errs = [];
-  page.on('pageerror', e => errs.push(e.message));
-  const G = (f, a) => page.evaluate(f, a);
-  await page.goto(URL + '?test=family-ending');
-  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
-  const SC = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3];
-  const snap = () => G(() => {
-    const e = window.__gona.scene.getScene('Game').ending; const v = e.cameras.main.worldView;
-    const fam = e.family.map((f) => { const bb = f.s.getBounds(); return { id: f.id, key: f.s.texture.key, tw: f.s.frame.width, sx: f.s.scaleX, sy: f.s.scaleY, anim: f.s.anims.currentAnim?.key ?? '', playing: f.s.anims.isPlaying, frame: f.s.frame.name, x0: bb.x, x1: bb.right, y0: bb.y, y1: bb.bottom, vis: f.s.visible && f.s.alpha > 0.5 }; });
-    const inView = (o) => o.x0 >= v.x - 0.5 && o.x1 <= v.right + 0.5 && o.y0 >= v.y - 0.5 && o.y1 <= v.bottom + 0.5;
-    // 얼굴 = 그림 위쪽 머리 부분(머리카락 아래 ~ 턱), 양옆 20% 안쪽
-    // 얼굴 = 칸(cell) 위쪽 머리 부분, 양옆 25% 안쪽 (칸에는 투명 여백이 조금 있음)
-    const face = (o) => ({ x0: o.x0 + (o.x1 - o.x0) * 0.25, x1: o.x1 - (o.x1 - o.x0) * 0.25, y0: o.y0 + 8, y1: o.y0 + 30 });
-    let worst = 0; let pair = '';
-    for (let i = 0; i < fam.length; i++) for (let j = i + 1; j < fam.length; j++) {
-      const a = face(fam[i]), c = face(fam[j]);
-      const ov = Math.max(0, Math.min(a.x1, c.x1) - Math.max(a.x0, c.x0)) * Math.max(0, Math.min(a.y1, c.y1) - Math.max(a.y0, c.y0));
-      const r = ov / ((a.x1 - a.x0) * (a.y1 - a.y0));
-      if (r > worst) { worst = r; pair = fam[i].id + '/' + fam[j].id; }
-    }
-    const g = e.useSheet ? e.gk : e.gona;
-    return { sp: e.sp.visible ? e.sp.anims.currentAnim?.key ?? '' : '', gkey: g.texture.key, ganim: g.anims?.currentAnim?.key ?? '', t: +e.t.toFixed(1), zoom: e.cameras.main.zoom, allIn: fam.every((o) => o.vis && inView(o)), out: fam.filter((o) => !inView(o)).map((o) => o.id), faceOverlap: +worst.toFixed(2), pair, fam, gsx: g.scaleX, gsy: g.scaleY, gonaIn: inView({ x0: g.getBounds().x, x1: g.getBounds().right, y0: g.getBounds().y, y1: g.getBounds().bottom }) };
-  });
-  const goto = async (sc, at) => {
-    await G((t) => { const e = window.__gona.scene.getScene('Game').ending; if (e.t < t - 0.05) e.t = t - 0.05; }, SC[sc]);
-    await page.waitForFunction((t) => window.__gona.scene.getScene('Game').ending.t >= t, at, { timeout: 30000 });
-  };
-  await goto(2, 30.0);
-  const a = await snap();
-  check(`${label}: ending family = crisp NPC sprites restored from the final sheet (1:1 dot scale)`, a.fam.every((f) => f.key === 'ech-' + f.id && Math.abs(f.sx) === 1 && f.sy === 1 && f.tw < 30), JSON.stringify(a.fam.map((f) => [f.id, f.anim, f.sx, f.sy, f.playing])));
-  check(`${label}: ending GONA from the ending sheet (not stretched)`, a.gkey === 'ech-gona' && a.gsx === a.gsy, JSON.stringify({ key: a.gkey, anim: a.ganim, s: [a.gsx, a.gsy] }));
-  check(`${label}: ending scene 3 — all six family members fully on screen, faces apart`, a.allIn && a.faceOverlap < 0.12, JSON.stringify({ out: a.out, faceOverlap: a.faceOverlap, pair: a.pair, zoom: a.zoom }));
-  await page.screenshot({ path: `${S}/${label}-s3.png` });
-  await goto(3, 33.0);
-  const c = await snap();
-  check(`${label}: ending scene 4 — GONA beside the family (no fake sliding), all visible`, c.allIn && c.gonaIn && Math.abs(c.gsx) === Math.abs(c.gsy), JSON.stringify({ out: c.out, gona: c.gonaIn }));
-  await goto(4, 45.5);
-  const d = await snap();
-  check(`${label}: ending scene 5 (mom hug) — two-person hug frames from the final sheet`, d.sp === 'esp-mom_hug' && Number.isInteger(d.zoom), JSON.stringify({ sp: d.sp, zoom: d.zoom }));
-  await page.screenshot({ path: `${S}/${label}-s5.png` });
-  await goto(5, 49.6);
-  const k = await snap();
-  check(`${label}: ending scene 6 — grandma kiss contact frames`, k.sp === 'esp-grandma_kiss', JSON.stringify({ sp: k.sp }));
-  await page.screenshot({ path: `${S}/${label}-s6-kiss.png` });
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').ending.t >= 56.2, null, { timeout: 30000 });
-  const sn = await snap();
-  check(`${label}: ending scene 6 — uncle sniff contact frames`, sn.sp === 'esp-uncle_sniff', JSON.stringify({ sp: sn.sp }));
-  await page.screenshot({ path: `${S}/${label}-s6-sniff.png` });
-  await goto(7, 77.5);
-  const f = await snap();
-  check(`${label}: ending scene 8 (last family photo) — all six on screen, faces apart`, f.allIn && f.gonaIn && f.faceOverlap < 0.12, JSON.stringify({ out: f.out, faceOverlap: f.faceOverlap, pair: f.pair }));
-  await page.screenshot({ path: `${S}/${label}-s8.png` });
-  check(`${label}: no page errors (ending art)`, errs.length === 0, errs.join(' | '));
-  await b.close();
-}
-
 /** 오프닝·엔딩 배경음악 1개만 · 회상 카드 위치 고정 · 엔딩 '다음 ▶' 버튼 */
 async function endingFixTests(label, device) {
   const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -946,14 +886,6 @@ async function endingFixTests(label, device) {
   // 엔딩 + 다시보기 3회
   await page.goto(URL + '?test=family-ending');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
-  // 회상 카드 1~4단계 위치·크기
-  const rects = [];
-  await G(() => { const e = window.__gona.scene.getScene('Game').ending; e.t = 9.4; });
-  for (let i = 0; i < 4; i++) {
-    await page.waitForFunction((k) => { const e = window.__gona.scene.getScene('Game').ending; return e.memory.length && e.t > 9.6 + k * 3.0; }, i, { timeout: 15000 });
-    rects.push(await G(() => { const r = window.__gona.scene.getScene('Game').ending.memory[0]; return [Math.round(r.x * 10) / 10, Math.round(r.y * 10) / 10, Math.round(r.width * 10) / 10, Math.round(r.height * 10) / 10].join(','); }));
-  }
-  check(`${label}: ending memory cards 1-4 — same position and size`, new Set(rects).size === 1, rects.join(' | '));
   // 다음 ▶: 타이핑 중 1번 = 문장 완성, 다음 1번 = 다음 대사·장면
   await page.waitForFunction(() => { const b = document.querySelector('.pr-box'); return b && !b.classList.contains('typed') && (document.querySelector('.pr-shown')?.textContent?.length ?? 0) > 1; }, null, { timeout: 20000 });
   const before = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, t: window.__gona.scene.getScene('Game').ending.t }));
@@ -966,7 +898,7 @@ async function endingFixTests(label, device) {
   const after = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, scene: window.__gona.scene.getScene('Game').ending.sceneNo }));
   check(`${label}: ending next ▶ — 1st tap completes the typing line, 2nd moves to the next line (mashing advances once)`, typed.typed && typed.i === before.i && Number(after.i) === Number(before.i) + 1, JSON.stringify({ before, typed: typed.typed, after }));
   // 마지막 대사까지 → 타이틀(크레딧 앞)
-  for (let k = 0; k < 12; k++) {
+  for (let k = 0; k < 28; k++) {
     const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
     if (ph === 'title') break;
     await tap('.pr-next'); await page.waitForTimeout(420);
@@ -1004,6 +936,26 @@ async function endingFixTests(label, device) {
   // ④ 같은 곡 반복 요청 — 다시 시작하지 않음
   const same = await G(() => new Promise((res) => { const s = window.__sound; const g0 = s.bgmDebug().gen; for (let i = 0; i < 5; i++) s.startMusic('game'); setTimeout(() => res({ gen: s.bgmDebug().gen - g0, t: s.music.game.currentTime }), 300); }));
   check(`${label}: iPhone cases — late play(), background/return, synth→file, repeated requests: max one BGM`, slow <= 1 && vis <= 1 && visState.want.startsWith('ending') && synthOn && back <= 1 && !backState.synth && same.gen === 0, JSON.stringify({ slow, vis, visWant: visState.want, synthOn, back, backSynth: backState.synth, same }));
+  await page.goto(URL + '?test=family-ending');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
+  // 액자: 장면 1~8 모두 같은 자리·크기 · 그림 전체가 보임(contain, 잘림 없음) · 화면 안 · 대사창·위 버튼과 안 겹침
+  const frames = [];
+  for (let i = 0; i < 8; i++) {
+    await G((k) => { const e = window.__gona.scene.getScene('Game').ending; const at = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3][k]; if (e.t < at) e.t = at - 0.02; }, i);
+    await page.waitForFunction((k) => document.querySelector('.end-frame')?.dataset.scene === String(k + 1), i, { timeout: 15000 });
+    await page.waitForTimeout(700);
+    frames.push(await G(() => {
+      const f = document.querySelector('.end-frame').getBoundingClientRect();
+      const im = document.querySelector('.ef-img.on');
+      const ir = im.getBoundingClientRect();
+      const s = Math.min(ir.width / im.naturalWidth, ir.height / im.naturalHeight);
+      const box = document.querySelector('.pr-box:not(.hidden)')?.getBoundingClientRect();
+      const top = document.querySelector('.tm-back, .ap-open')?.getBoundingClientRect();
+      return { r: [f.left, f.top, f.width, f.height].map(Math.round).join(','), img: im.src.split('/').pop(), full: im.naturalWidth * s <= ir.width + 0.5 && im.naturalHeight * s <= ir.height + 0.5 && im.complete && im.naturalWidth > 0, inView: f.left >= 0 && f.top >= 0 && f.right <= innerWidth && f.bottom <= innerHeight, boxClear: !box || box.top >= f.bottom || box.bottom <= f.top };
+    }));
+    if (i === 0 || i === 4 || i === 7) await page.screenshot({ path: `${S}/${label}-frame-s${i + 1}.png` });
+  }
+  check(`${label}: ending frame — scenes 1-8 same position & size, whole image visible, on screen, clear of the dialog`, new Set(frames.map((f) => f.r)).size === 1 && frames.every((f) => f.full && f.inView && f.boxClear) && frames.map((f) => f.img.replace('s3b', 's3')).join(',') === 's1.png,s2.png,s3.png,s4.png,s5.png,s6.png,s7.png,s8.png', JSON.stringify(frames));
   await page.goto(URL + '?test=family-ending&debugAudio=1');
   await page.waitForSelector('.audio-debug', { timeout: 30000 });
   await page.waitForTimeout(1500);
@@ -1022,8 +974,6 @@ async function endingFixTests(label, device) {
   const want = (n) => !only || only.some((o) => n.startsWith(o));
   if (want('endfix-port')) await endingFixTests('endfix-port', devices['iPhone 13']);
   if (want('endfix-land')) await endingFixTests('endfix-land', devices['iPhone 13 landscape']);
-  if (want('endart-port')) await endingArtTests('endart-port', devices['iPhone 13']);
-  if (want('endart-land')) await endingArtTests('endart-land', devices['iPhone 13 landscape']);
   if (want('qte-port')) await qteTests('qte-port', devices['iPhone 13']);
   if (want('qte-land')) await qteTests('qte-land', devices['iPhone 13 landscape']);
   if (want('feat-se')) await featureTests('feat-se', devices['iPhone SE']);

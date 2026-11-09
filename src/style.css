@@ -3103,3 +3103,106 @@ body.in-ending .prologue-ui .pr-box {
   color: #ffb0b0;
   outline: 2px solid #ff5050;
 }
+
+/* ───────── 엔딩 액자 (ui/endingFrame.ts) — 같은 자리·같은 크기 · 그림은 원래 비율(contain) · 픽셀 그대로 ───────── */
+.ef-safe {
+  position: fixed;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  visibility: hidden;
+  pointer-events: none;
+}
+.end-frame {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  padding: 3px;
+  background: #3a2238;
+  border: 3px solid #f3e1c3;
+  box-shadow:
+    0 0 0 3px #3a2238,
+    0 6px 0 3px rgba(20, 10, 30, 0.55);
+  pointer-events: none;
+  transition: opacity 1.4s ease;
+}
+.end-frame.hidden {
+  display: none;
+}
+.end-frame.out {
+  opacity: 0;
+}
+.ef-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1b1028;
+}
+.ef-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.ef-img.on {
+  opacity: 1;
+}
+.ef-fx {
+  position: absolute;
+  inset: 0;
+}
+.ef-p {
+  position: absolute;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.ef-heart {
+  height: 11%;
+  transform: translate(-50%, -50%);
+  animation: ef-float 2.6s ease-out forwards;
+}
+.ef-heart.big {
+  height: 16%;
+}
+.ef-sniff {
+  height: 24%;
+  transform: translate(-50%, -50%);
+  animation: ef-sniff 1.8s ease-out forwards;
+}
+.ef-dust {
+  width: 1.6%;
+  aspect-ratio: 1;
+  background: #f6e7d2;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+  animation: ef-dust 0.9s steps(6, end) forwards;
+}
+.ef-star {
+  width: 0.7%;
+  aspect-ratio: 1;
+  background: #fff6c8;
+  opacity: 0.2;
+  animation: ef-twinkle 3.2s ease-in-out infinite;
+}
+@keyframes ef-float {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.7); }
+  20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -130%) scale(1); }
+}
+@keyframes ef-sniff {
+  0% { opacity: 0; transform: translate(-50%, -20%) rotate(-6deg); }
+  25% { opacity: 1; }
+  50% { transform: translate(-50%, -50%) rotate(6deg); }
+  100% { opacity: 0; transform: translate(-50%, -90%) rotate(-4deg); }
+}
+@keyframes ef-dust {
+  0% { opacity: 0.9; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-260%, -120%) scale(1.8); }
+}
+@keyframes ef-twinkle {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.95; }
+}

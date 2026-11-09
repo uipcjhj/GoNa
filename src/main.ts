@@ -13,6 +13,7 @@ import { Subtitles } from './ui/subtitles';
 import { BattleUi } from './ui/battleUi';
 import { EndingUi } from './ui/endingUi';
 import { mountAudioDebug } from './ui/audioDebug';
+import { EndingFrame } from './ui/endingFrame';
 import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
@@ -114,6 +115,7 @@ async function boot(): Promise<void> {
   };
   const overlay = new Overlay(ui);
   // ── 가족 엔딩: 자막은 저절로 넘어가고(터치 무시), 끝나면 THE END 화면
+  const endingFrame = new EndingFrame(ui);
   const endingUi = new EndingUi(ui);
   let endingActive = false;
   bus.on(EV.endingStart, () => {
@@ -136,6 +138,7 @@ async function boot(): Promise<void> {
   });
   const leaveEnding = (): void => {
     sound.stopEnding();
+    endingFrame.hide();
     endingActive = false;
     document.body.classList.remove('in-ending');
     subs.hide();
