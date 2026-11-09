@@ -983,6 +983,35 @@ async function endingFixTests(label, device) {
   }
   const en = await G(() => ({ max: window.__bgm.max, at: window.__bgm.at, now: window.__bgm.buf.size, files: window.__els.filter((e) => /bgm-/.test(e.src) && !e.paused && !e.muted).length }));
   check(`${label}: ending + next ▶ + replay x3 — at most one BGM, exactly one playing now`, en.max <= 1 && en.now + en.files === 1, JSON.stringify(en));
+  // 아이폰 상황 재현 — 오디오 관리자의 실제 '활성 배경음악 수'(소리 나는 <audio> + 엔딩 버퍼 + 합성)를 50ms 마다 기록
+  const sample = (ms) => G((d) => new Promise((res) => { let mx = 0; const t0 = performance.now(); const id = setInterval(() => { mx = Math.max(mx, window.__sound.bgmDebug().active); if (performance.now() - t0 > d) { clearInterval(id); res(mx); } }, 50); }), ms);
+  // ① play() 가 늦게 끝나는 사이 엔딩 곡으로 바뀜
+  await G(() => { const s = window.__sound; const el = s.music.title; const orig = el.play; el.play = function () { el.play = orig; const p = orig.call(el); return new Promise((r) => setTimeout(() => r(p), 900)); }; s.startMusic('title'); s.playEndingTrack(30); });
+  const slow = await sample(1800);
+  // ② 백그라운드 → 복귀
+  await G(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(400);
+  await G(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+  const vis = await sample(1200);
+  const visState = await G(() => window.__sound.bgmDebug());
+  // ③ 합성 음악(파일 고장) → 실제 음원으로 복귀
+  await G(() => { const s = window.__sound; s.stopMusic(); s.musicBroken.title = true; s.startMusic('title'); });
+  await page.waitForTimeout(500);
+  const synthOn = await G(() => window.__sound.bgmDebug().synth);
+  await G(() => { const s = window.__sound; s.musicBroken.title = false; s.startMusic('game'); });
+  const back = await sample(1200);
+  const backState = await G(() => window.__sound.bgmDebug());
+  // ④ 같은 곡 반복 요청 — 다시 시작하지 않음
+  const same = await G(() => new Promise((res) => { const s = window.__sound; const g0 = s.bgmDebug().gen; for (let i = 0; i < 5; i++) s.startMusic('game'); setTimeout(() => res({ gen: s.bgmDebug().gen - g0, t: s.music.game.currentTime }), 300); }));
+  check(`${label}: iPhone cases — late play(), background/return, synth→file, repeated requests: max one BGM`, slow <= 1 && vis <= 1 && visState.want.startsWith('ending') && synthOn && back <= 1 && !backState.synth && same.gen === 0, JSON.stringify({ slow, vis, visWant: visState.want, synthOn, back, backSynth: backState.synth, same }));
+  await page.goto(URL + '?test=family-ending&debugAudio=1');
+  await page.waitForSelector('.audio-debug', { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  const panel = await G(() => document.querySelector('.audio-debug')?.textContent ?? '');
+  check(`${label}: ?debugAudio=1 shows the audio panel (scene, wanted BGM, active count, HTML, WebAudio, synth, log, version)`, /장면/.test(panel) && /원하는 BGM/.test(panel) && /활성 BGM/.test(panel) && /WebAudio/.test(panel) && /버전/.test(panel), panel.slice(0, 120));
+  await page.goto(URL + '?test=family-ending');
+  await page.waitForTimeout(1500);
+  check(`${label}: audio panel hidden without debugAudio`, (await page.locator('.audio-debug').count()) === 0);
   check(`${label}: no page errors (ending fixes)`, errs.length === 0, errs.join(' | '));
   await b.close();
 }

@@ -214,6 +214,15 @@ class Sound {
   private keepAliveEl: HTMLAudioElement | null = null;
   private primed = false;
   private wantMusic: MusicMode | null = null;
+  /** 배경음악 요청 세대 — 새 요청(시작·정지·전환)마다 +1. 늦게 끝난 예전 play()/해독 결과는 세대가 다르면 무시 */
+  private bgmGen = 0;
+  /** (디버그) 최근 배경음악 시작·정지 기록 */
+  readonly bgmLog: string[] = [];
+  private logBgm(msg: string): void {
+    const t = new Date();
+    this.bgmLog.push(`${t.toTimeString().slice(0, 8)} ${msg}`);
+    if (this.bgmLog.length > 12) this.bgmLog.shift();
+  }
   private musicSource: 'file' | 'synth' | 'none' = 'none';
   private errors: string[] = [];
   private listeners: (() => void)[] = [];
@@ -232,6 +241,8 @@ class Sound {
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
       window.addEventListener(ev, wake, { capture: true, passive: true });
     }
+    // 배경음악 감시 (하나만): 0.4초마다 '들리는 배경음악은 최대 1개' 규칙을 강제 — 어떤 경로로 새어 나온 소리든 멈춤
+    window.setInterval(() => this.enforceSingleBgm('watch'), 400);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         // 앱 전환: 음악 멈춤 (돌아오면 다시)
@@ -239,7 +250,7 @@ class Sound {
         return;
       }
       if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch((e) => this.log('resume(복귀)', e));
-      if (this.wantMusic && !this.muted) this.playFileMusic(this.wantMusic);
+      if (this.wantMusic && !this.muted && !this.endingSrc) this.playFileMusic(this.wantMusic, false);
       this.emit();
     });
   }
@@ -295,7 +306,7 @@ class Sound {
     this.primeElements();
     // 터치 전에 음악을 틀려다 막혔으면 지금 다시 (이미 나오고 있으면 건드리지 않음)
     const want = this.wantedMusicEl();
-    if (this.wantMusic && !this.muted && this.musicSource !== 'synth' && (!want || want.paused)) this.playFileMusic(this.wantMusic);
+    if (this.wantMusic && !this.muted && this.musicSource !== 'synth' && !this.endingSrc && (!want || want.paused)) this.playFileMusic(this.wantMusic, false);
     this.emit();
     if (!this.ctx) return;
     if (!this.unlockedOnce && this.ctx) {
@@ -377,11 +388,7 @@ class Sound {
       // 배경음악은 늘 하나만: 지금 원하는 곡이 아닌 <audio> 가 (늦게 도착한 play() 등으로) 소리를 내기 시작하면 바로 멈춤,
       // 원하는 곡이 실제로 나오기 시작하면 합성 음악(예비)은 끔 · 엔딩 곡을 Web Audio 로 재생 중이면 파일 음악은 모두 멈춤
       a.addEventListener('playing', () => {
-        if (!a.muted && (a !== this.wantedMusicEl() || this.endingSrc)) {
-          a.pause();
-          return;
-        }
-        if (!a.muted) this.stopSynth();
+        this.enforceSingleBgm('playing');
         this.emit();
       });
       a.addEventListener('pause', () => this.emit());
@@ -456,7 +463,7 @@ class Sound {
       a.play().then(
         () => {
           // 원하는 음악이면 그대로 두고, 아니면 멈춤
-          const isWanted = !this.muted && a === this.wantedMusicEl();
+          const isWanted = !this.muted && a === this.wantedMusicEl() && !this.endingSrc;
           if (!isWanted) {
             a.pause();
             a.currentTime = 0;
@@ -477,13 +484,15 @@ class Sound {
     return this.music[this.wantMusic] ?? null;
   }
 
-  private playFileMusic(mode: MusicMode): boolean {
+  /** fromStart: 새로 시작(true) / 끊겼던 곡 다시 이어 틀기(false — 앱 복귀·터치 깨우기, 처음으로 되돌리지 않음) */
+  private playFileMusic(mode: MusicMode, fromStart = true): boolean {
     const el = this.music[mode];
     if (!el || this.musicBroken[mode]) return false;
+    const gen = this.bgmGen;
     clearInterval(this.fadeTimer);
     if (this.volumeWorks) el.volume = 1;
-    // 반복하지 않는 곡(엔딩)은 처음부터
-    if (MUSIC_ONCE[mode] && el.paused) {
+    // 반복하지 않는 곡(엔딩)은 새로 시작할 때만 처음부터
+    if (fromStart && MUSIC_ONCE[mode] && el.paused) {
       try {
         el.currentTime = 0;
       } catch {
@@ -497,15 +506,20 @@ class Sound {
     el.muted = false;
     el.play().then(
       () => {
+        // 그사이 다른 요청(정지·다른 곡·엔딩 버퍼)이 있었으면 이 곡은 멈춤
+        if (gen !== this.bgmGen || el !== this.wantedMusicEl() || this.endingSrc) {
+          el.pause();
+          this.logBgm(`늦게 시작된 ${mode} 정지 (세대 ${gen}→${this.bgmGen})`);
+          return;
+        }
         this.musicSource = 'file';
         this.emit();
       },
       (e) => {
         this.log(`배경음악 재생 (${mode})`, e);
-        // 파일이 정말 재생 불가일 때만 합성 음악으로 대신. 아이폰에서 흔한 AbortError(재생 직후 정지와 겹침)·NotAllowedError 는
-        // 파일이 멀쩡하므로 합성으로 바꾸지 않음 → 예전엔 파일 음악과 합성 음악이 함께 나와 두 곡이 겹쳤음
-        if ((e as Error)?.name === 'NotSupportedError') {
-          // 파일 문제: 합성 음악으로 대신
+        // 파일이 정말 재생 불가일 때만, 그리고 아직 같은 요청일 때만 합성 음악으로 대신
+        // (아이폰의 AbortError·NotAllowedError 는 파일이 멀쩡함 — 합성으로 바꾸면 두 곡이 겹침)
+        if ((e as Error)?.name === 'NotSupportedError' && gen === this.bgmGen && this.wantMusic === mode) {
           this.musicBroken[mode] = true;
           this.startSynthMusic(mode);
         }
@@ -513,6 +527,49 @@ class Sound {
     );
     this.musicSource = 'file';
     return true;
+  }
+
+  /**
+   * 배경음악 하나만 규칙 강제 (구조적 보장):
+   *  - 엔딩 곡(Web Audio 버퍼)이 나오는 중이면 → 파일 음악·합성 음악 모두 멈춤, 버퍼도 지금 것 하나만
+   *  - 아니면 → 지금 원하는 곡의 <audio> 하나만 (음소거 준비 재생은 소리가 없어 제외), 그 곡이 들리면 합성 음악 멈춤
+   */
+  private enforceSingleBgm(why: string): void {
+    const want = this.endingSrc ? null : this.wantedMusicEl();
+    for (const [m, a] of Object.entries(this.music) as [MusicMode, HTMLAudioElement][]) {
+      if (a.paused || a.muted || a === want) continue;
+      a.pause();
+      this.logBgm(`${why}: 겹친 ${m} 정지`);
+    }
+    for (const src of [...this.endingAll]) {
+      if (src === this.endingSrc) continue;
+      this.killSrc(src);
+      this.logBgm(`${why}: 겹친 엔딩 버퍼 정지`);
+    }
+    const fileAudible = !!want && !want.paused && !want.muted;
+    if (this.musicTimer !== null && (this.endingSrc || fileAudible || !this.wantMusic)) {
+      this.stopSynth();
+      this.logBgm(`${why}: 겹친 합성 음악 정지`);
+    }
+  }
+
+  /** (디버그 패널·테스트) 배경음악 실제 상태 */
+  bgmDebug(): { want: string; gen: number; active: number; html: string[]; webAudio: number; synth: boolean; ending: string; log: string[] } {
+    const html = (Object.entries(this.music) as [MusicMode, HTMLAudioElement][])
+      .filter(([, a]) => !a.paused)
+      .map(([m, a]) => `${m}${a.muted ? '(음소거 준비)' : ''} ${a.currentTime.toFixed(1)}s`);
+    const audible = (Object.values(this.music) as HTMLAudioElement[]).filter((a) => !a.paused && !a.muted).length;
+    const synth = this.musicTimer !== null;
+    return {
+      want: this.endingSrc ? 'ending(버퍼)' : (this.wantMusic ?? '없음'),
+      gen: this.bgmGen,
+      active: audible + this.endingAll.size + (synth ? 1 : 0),
+      html,
+      webAudio: this.endingAll.size,
+      synth,
+      ending: this.endingMode ?? '-',
+      log: this.bgmLog.slice(-5),
+    };
   }
 
   private pauseFileMusic(): void {
@@ -870,6 +927,12 @@ class Sound {
 
   /** BGM 시작 또는 모드 전환 — 파일(우선) 또는 합성 */
   startMusic(mode: MusicMode = 'game'): void {
+    // 같은 곡이 이미 나오고 있으면 아무것도 안 함 (반복 요청으로 다시 시작·중복 없음)
+    const cur = this.music[mode];
+    if (this.wantMusic === mode && !this.endingSrc && ((cur && !cur.paused && !cur.muted) || (this.musicSource === 'synth' && this.musicTimer !== null))) return;
+    this.bgmGen++;
+    this.logBgm(`시작 ${mode} (세대 ${this.bgmGen})`);
+    if (this.endingSrc) this.stopEnding(); // 엔딩 곡이 남아 있으면 정리 (다시 시작·타이틀로)
     this.wantMusic = mode;
     if (this.muted) return;
     if (this.playFileMusic(mode)) {
@@ -885,6 +948,8 @@ class Sound {
    */
   fadeOutMusic(ms = 700): void {
     const el = this.wantedMusicEl();
+    this.bgmGen++;
+    this.logBgm(`페이드아웃 (세대 ${this.bgmGen})`);
     this.wantMusic = null;
     this.stopSynth();
     clearInterval(this.fadeTimer);
@@ -935,6 +1000,8 @@ class Sound {
 
   stopMusic(): void {
     clearInterval(this.fadeTimer);
+    this.bgmGen++;
+    this.logBgm(`정지 (세대 ${this.bgmGen})`);
     this.wantMusic = null;
     this.pauseFileMusic();
     this.stopSynth();
@@ -947,6 +1014,17 @@ class Sound {
   private endingBuf: AudioBuffer | null = null;
   private endingLoad: Promise<boolean> | null = null;
   private endingSrc: AudioBufferSourceNode | null = null;
+  /** 시작한 엔딩 버퍼 소스 전부 (끝나면 빠짐) — 하나를 넘으면 감시가 정리 */
+  private endingAll = new Set<AudioBufferSourceNode>();
+  private killSrc(src: AudioBufferSourceNode): void {
+    this.endingAll.delete(src);
+    try {
+      src.stop();
+    } catch {
+      /* 이미 끝남 */
+    }
+    src.disconnect();
+  }
   private endingGain: GainNode | null = null;
   /** 엔딩 곡이 Web Audio 로 재생 중인지 (아니면 <audio> 파일로 재생 — 음량 조절 안 됨) */
   endingMode: 'buffer' | 'file' | null = null;
@@ -994,17 +1072,21 @@ class Sound {
       // 늦게 시작하면 그만큼 건너뛰어 장면과 박자를 맞춤
       src.start(0, Math.max(0, Math.min(offsetSec, this.endingBuf.duration - 1)));
       src.onended = () => {
+        this.endingAll.delete(src);
         if (this.endingSrc === src) this.endingSrc = null;
       };
+      this.endingAll.add(src);
       this.endingSrc = src;
+      this.logBgm(`엔딩 버퍼 시작 ${offsetSec.toFixed(1)}s`);
       this.endingGain = g;
       this.endingMode = 'buffer';
       this.emit();
       return;
     }
     // 예비: <audio> 파일 (아이폰은 음량을 바꿀 수 없어 낮추기·페이드 없이 그대로 재생)
-    this.endingMode = 'file';
     this.startMusic('ending');
+    this.endingMode = 'file';
+    this.seekFile(offsetSec);
   }
 
   /** 엔딩 곡을 sec 초 위치로 (다음 대사 버튼으로 장면을 건너뛸 때 음악도 같은 위치로 — 곡은 하나만) */
@@ -1013,13 +1095,16 @@ class Sound {
       this.playEndingTrack(sec);
       return;
     }
+    if (this.endingMode === 'file') this.seekFile(sec);
+  }
+
+  private seekFile(sec: number): void {
     const el = this.music.ending;
-    if (this.endingMode === 'file' && el) {
-      try {
-        el.currentTime = sec;
-      } catch {
-        /* 로드 전 */
-      }
+    if (!el || sec <= 0) return;
+    try {
+      el.currentTime = sec;
+    } catch {
+      /* 로드 전 */
     }
   }
 
@@ -1044,23 +1129,16 @@ class Sound {
   }
 
   stopEnding(): void {
-    const src = this.endingSrc;
     this.endingSrc = null;
-    if (src) {
-      try {
-        src.stop();
-      } catch {
-        /* 이미 끝남 */
-      }
-      src.disconnect();
-    }
+    for (const src of [...this.endingAll]) this.killSrc(src);
     this.endingGain?.disconnect();
     this.endingGain = null;
     this.endingMode = null;
   }
 
   private startSynthMusic(mode: MusicMode): void {
-    if (!this.ctx) return;
+    if (!this.ctx || this.endingSrc) return;
+    this.logBgm(`합성 음악 ${mode}`);
     this.pauseFileMusic(); // 합성 음악과 파일 음악이 겹치지 않게
     this.musicSource = 'synth';
     this.mode = mode;

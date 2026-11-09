@@ -12,6 +12,7 @@ import { AudioPanel } from './ui/audioPanel';
 import { Subtitles } from './ui/subtitles';
 import { BattleUi } from './ui/battleUi';
 import { EndingUi } from './ui/endingUi';
+import { mountAudioDebug } from './ui/audioDebug';
 import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
@@ -212,6 +213,16 @@ async function boot(): Promise<void> {
         });
       }
     }
+  }
+
+  // 오디오 디버그 패널 (?debugAudio=1 — 일반 사용자에게는 안 보임)
+  if (new URLSearchParams(window.location.search).get('debugAudio') === '1') {
+    mountAudioDebug(document.body, () => {
+      const g = game.scene.getScene('Game') as GameScene | null;
+      const st = (g as unknown as { state?: string })?.state ?? '-';
+      const en = g?.ending;
+      return openingActive ? '오프닝' : en ? `엔딩 ${en.sceneNo}` : `게임(${st})`;
+    });
   }
 
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출

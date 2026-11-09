@@ -3083,3 +3083,23 @@ body.in-ending .pr-next:active {
 body.in-ending .prologue-ui .pr-box {
   padding-bottom: 38px;
 }
+
+/* 오디오 디버그 패널 (?debugAudio=1) */
+.audio-debug {
+  position: fixed;
+  left: 4px;
+  top: calc(env(safe-area-inset-top) + 48px);
+  z-index: 9999;
+  max-width: 78vw;
+  margin: 0;
+  padding: 4px 6px;
+  font: 10px/1.35 monospace;
+  white-space: pre-wrap;
+  color: #c8ffb0;
+  background: rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+}
+.audio-debug.bad {
+  color: #ffb0b0;
+  outline: 2px solid #ff5050;
+}
