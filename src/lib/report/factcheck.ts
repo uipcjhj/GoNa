@@ -8,12 +8,12 @@ import type { Article, ReportAnalysis, Settings, SourceLevel } from "@/lib/types
 import { GeminiError, generateJSON, geminiConfigured } from "@/lib/ai/gemini";
 import { verifyAndFetch } from "@/lib/pipeline/verify";
 import { TAXONOMY } from "@/lib/weekly/taxonomy";
-import { amountTable, fixAmountScale, normalizeNumbers, validateSummary } from "./validate";
+import { amountTable, cleanSummaryLines, fixAmountScale, normalizeNumbers, validateSummary } from "./validate";
 
 /** Bump when the prompt or the validation rules change: older results are re-analysed, current ones reused. */
 export const REPORT_ANALYSIS_VERSION = "r3.1";
 /** Prompt / post-processing revision. Older results stay valid (no automatic overwrite) but can be re-run on request. */
-export const PROMPT_REV = "p2";
+export const PROMPT_REV = "p3";
 
 const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동창고 AS/RS·셔틀·AGV/AMR·컨베이어·소터·WMS/WCS, 제조물류, 공항 수하물·화물 시스템) 주간 업계동향 보고서 담당 애널리스트입니다.
 기사 1건을 [SOURCE]만 근거로 분석해 JSON으로 답합니다.
@@ -36,15 +36,25 @@ ${Object.entries(TAXONOMY).map(([k, v]) => `   - ${k}: ${v.subs.join(" | ")}`).j
  - [SOURCE]에 사실이 충분하면 수주 가능성이 낮아도 반드시 4줄을 쓴다. 경쟁사 동향, 피지컬 AI, 서비스로봇, 드론·방산 제조, 시장·정책동향도 정상 요약한다.
  - 관련성이 낮다는 판단은 report_type / order_potential에만 반영하고, 요약을 비우는 이유가 될 수 없다.
  - summary를 비우는 경우는 [SOURCE]가 제목 한 줄뿐이거나 확인 가능한 사실이 2개 미만일 때만이며, 그때 summary_status="insufficient_source".
- 형식: 정확히 4줄, 각 줄 20~40자, 명사형 보고서체(…추진/확대/계획/예정/부각), 기호·번호·따옴표 없음
+ 형식: summary 배열에 정확히 4개 문자열, 각 줄 20~40자, 명사형 보고서체(…추진/확대/계획/예정/부각). 번호(1. 2.)·기호·머리말·따옴표 없이 문장만
  1줄: 주체와 핵심 사업 (누가, 어디서, 무엇을)
- 2줄: 규모·금액·일정 (원문 수치. 금액은 성격을 함께: 시설 투자 / 투자유치 / 조건부 대출 / 자기자본 / 기업가치 / 계약액). 수치가 없으면 확인된 다른 핵심 사실
+ 2줄: 투자규모·시설규모·일정 등 구체적 수치 (금액은 성격을 함께: 시설 투자 / 투자유치 / 조건부 대출 / 자기자본 / 기업가치 / 계약액). 원문이 금액을 대출·자기자본 등으로 나누면 구성을 밝힌다 (예: "총 X억 달러, 조건부 대출 Y억·자기자본 Z억"). 수치가 없으면 확인된 다른 핵심 사실
  3줄: 실제 설비·기술·사업범위 (원문에 확정된 내용만)
- 4줄: 시사점 — 수주 가능성이 있으면 현대무벡스 관점의 잠재 수요(추정임을 드러내는 '…가능성', '잠재 수요' 표현), 없으면 해당 산업·경쟁사·기술 관점의 구체적 시사점
+ 4줄: 현대무벡스 관점의 구체적 사업 시사점 — 기사 유형별로:
+   · 신규 물류센터 → 당사 자동창고·Sorter·이송설비 잠재 수요
+   · 제조공장 신·증설 → 공정물류·AGV·자동창고 적용 가능성
+   · 콜드체인 → 저온 자동보관·이송 설비 수요
+   · 경쟁사 수주·M&A → 당사 경쟁 구도와 시장 영향
+   · 경쟁사 신제품 → 솔루션 경쟁력·차별화 필요성
+   · 피지컬 AI·로봇 → 당사 로봇·통합제어 사업 연관성
+   · 정책·시장동향 → 당사 고객 산업의 투자환경·사업기회 변화
+   추정은 '가능성', '잠재 수요'로 표현하고, 기사 고유의 산업·제품·지역을 넣어 다른 기사에 그대로 붙일 수 없게 쓴다. 관련성이 낮으면 수주기회를 억지로 만들지 말고 고객 산업 관점으로 쓴다.
+   나쁜 4줄 예: "대규모 방산 제조 시설 확장 관련 물류자동화 수요 동향 참고 필요" (상투적·비구체적)
+   좋은 4줄 예: "드론 양산 전환 시 부품 입고·조립 공정물류 자동화 수요 가능성" (산업·공정·당사 설비 연결)
  - 네 줄은 서로 다른 핵심 정보. 같은 내용 반복·기업명 반복 금지(기업명은 1줄에만).
  - 원문 확정 사실(1~3줄)과 현대무벡스 관점 추정(4줄)을 섞지 않는다. 원문에 없는 AGV·AMR·자동창고·컨베이어 도입을 사실처럼 쓰지 않는다.
  - 금액은 [AMOUNTS]에 주어진 한국어 환산값을 그대로 쓴다 (직접 환산 금지: "$21.5 billion"은 "215억 달러"이지 "21.5억 달러"가 아님).
- - 금지 문장: "업계 동향 참고", "관련 설비 수요 동향 참고 필요", "자동화 설비 도입 여부 원문 미확인", "원문 미기재", "관련 내용 언급", "○○ 소재" 등 정보 없는 상투문구.
+ - 금지 문장: "업계 동향 참고", "관련 설비 수요 동향 참고 필요", "…동향 주목", "…참고 필요", "자동화 설비 도입 여부 원문 미확인", "원문 미기재", "관련 내용 언급", "○○ 소재" 등 정보 없는 상투문구.
  line_evidence: 1~3줄 각각을 뒷받침하는 원문 구절(그대로 인용), 4줄은 "".
 
 문장 밀도 예시 — 현대무벡스 실제 보고서. 문체·밀도만 참고하고, 예시의 기업명·금액·설비·지명은 절대 다른 기사에 쓰지 말 것:
@@ -157,7 +167,7 @@ export function quoteInSource(quote: string, source: string): boolean {
 export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | null): ReportAnalysis {
   const reasons: string[] = [...(raw.review_reasons ?? []).map((x) => str(x, 160)).filter(Boolean)];
   const ev = (q: unknown) => { const s = str(q, 400); return s && quoteInSource(s, src.text) ? s : ""; };
-  const cleaned = (raw.summary ?? []).map((l) => str(l, 80).replace(/^\s*([§⇒•\-*·]|\d{1,2}[.)](?!\d))\s*/u, "").replace(/^["'“‘]|["'”’]$/g, "")).filter(Boolean);
+  const cleaned = cleanSummaryLines(raw.summary ?? []).map((l) => l.slice(0, 80)); // numbering / labels / quotes removed, "\n" splits
   const scale = fixAmountScale(cleaned, src.text); // "21.5억 달러" for "$21.5 billion" → "215억 달러"
   const summary = scale.lines;
   const lineEvidence = [0, 1, 2, 3].map((i) => (i < 3 ? ev(raw.line_evidence?.[i]) : ""));
@@ -212,6 +222,17 @@ export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | n
   r.promptRev = PROMPT_REV;
   r.status = !summary.length && !refused ? "insufficient_source" : r.reviewReasons.length ? "needs_review" : "done";
   return r;
+}
+
+/** Rewrite only for summary-quality problems the model can fix (not for missing source / category doubts). */
+export function shouldRewrite(r: ReportAnalysis): boolean {
+  if (r.status !== "needs_review") return false;
+  return r.reviewReasons.some((x) => /(4줄|줄|요약을 비움|반복|상투|의미 없는|원문에 없는 수치|원문에 없는 자동화|금액|대출|자기자본|기업가치|투자유치|예시 문장|기호|길|짧은)/.test(x));
+}
+export function pickBetter(a: ReportAnalysis, b: ReportAnalysis): ReportAnalysis {
+  const score = (r: ReportAnalysis) => (r.status === "done" ? 0 : 100) + r.reviewReasons.length * 10 - r.summary.length;
+  const best = score(b) <= score(a) ? b : a;
+  return { ...best, autoFixes: [...(best.autoFixes ?? []), `Gemini 1회 재작성 (${best === b ? "재작성본 채택" : "원본 유지"})`] };
 }
 
 export function failedAnalysis(e: unknown, src: SourceText | null, model: string | null): ReportAnalysis {
@@ -270,7 +291,21 @@ export async function analyzeForReport(a: Article, settings: Settings): Promise<
   ].join("\n");
   try {
     const r = await generateJSON<Raw>({ system: SYSTEM, user, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.1 });
-    return buildReportAnalysis(r.data, src, r.model);
+    const first = buildReportAnalysis(r.data, src, r.model);
+    if (!shouldRewrite(first)) return first;
+    // one rewrite with the concrete problems; if it still fails, the better result is kept as 사용자 검토 필요
+    try {
+      const fix = [
+        user, "", "[REVISE] 직전 답변의 4줄 요약이 기준에 미달했습니다. 같은 원문 사실만으로 JSON 전체를 다시 작성하세요.",
+        `직전 요약: ${first.summary.join(" / ") || "(비어 있음)"}`,
+        `문제: ${first.reviewReasons.join(" · ")}`,
+      ].join("\n");
+      const r2 = await generateJSON<Raw>({ system: SYSTEM, user: fix, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.2 });
+      const second = buildReportAnalysis(r2.data, src, r2.model);
+      return pickBetter(first, second);
+    } catch {
+      return first; // rewrite call failed (quota etc.) → keep the first result for review
+    }
   } catch (e) {
     return failedAnalysis(e, src, null);
   }

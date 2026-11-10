@@ -64,7 +64,7 @@ export function Markers({ r }: { r: WeeklyRow }) {
   );
 }
 
-const AI_PROMPT_REV = "p2"; // keep in sync with PROMPT_REV (lib/report/factcheck)
+const AI_PROMPT_REV = "p3"; // keep in sync with PROMPT_REV (lib/report/factcheck)
 const SOURCE_LEVEL = { body: "기사 본문", excerpt: "제목·발췌문만 (본문 미확보)", title: "제목만" } as const;
 const PURPOSE = { facility_capex: "시설 투자비", funding_round: "투자유치(펀딩)", conditional_loan: "조건부 대출", equity: "자기자본", valuation: "기업가치", contract_value: "계약·수주액", acquisition: "인수 금액", total_program: "전체 투자계획", other: "기타", none: "—" } as Record<string, string>;
 const STAGE = { planned: "계획", approved: "승인", under_construction: "착공·건설 중", completed_operating: "준공·가동", organisation: "조직 신설", announcement: "발표", other: "기타" } as Record<string, string>;

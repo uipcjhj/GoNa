@@ -60,11 +60,11 @@ describe("금액 파싱", () => {
 describe("투자유치 vs 시설 투자", () => {
   const src = "Zipline raised $1.5 billion in new funding led by investors. The drone delivery company also plans a new manufacturing facility in Dallas.";
   test("투자유치 금액을 공장 투자로 쓰면 거부", () => {
-    const r = validateSummary(["Zipline, 미국 드론 배송 사업 확대", "15억 달러 공장 투자 추진", "댈러스 신규 제조시설 계획", "드론 배송 사업 확장에 따른 물류 거점 수요 부각"], src, { investmentPurpose: "funding_round" });
+    const r = validateSummary(["Zipline, 미국 드론 배송 사업 확대", "15억 달러 공장 투자 추진", "댈러스 신규 제조시설 계획", "댈러스 제조시설 신설 시 공정물류 자동화 적용 가능성"], src, { investmentPurpose: "funding_round" });
     assert.ok(r.some((x) => x.includes("투자유치")), r.join(" | "));
   });
   test("투자유치로 정확히 쓰면 통과", () => {
-    const r = validateSummary(["Zipline, 신규 투자유치로 사업 확대", "15억 달러 규모 펀딩 유치", "댈러스 신규 제조시설 계획 발표", "드론 배송 사업 확장에 따른 물류 거점 수요 부각"], src, { investmentPurpose: "funding_round" });
+    const r = validateSummary(["Zipline, 신규 투자유치로 사업 확대", "15억 달러 규모 펀딩 유치", "댈러스 신규 제조시설 계획 발표", "댈러스 제조시설 신설 시 공정물류 자동화 적용 가능성"], src, { investmentPurpose: "funding_round" });
     assert.deepEqual(r, []);
   });
   test("규칙 분류: 펀딩 기사는 제조물류 투자로 분류하지 않는다", () => {
@@ -128,7 +128,7 @@ describe("Gemini 결과 검증 → 상태", () => {
     schedule: { value: "2027년 착공", evidence: "Construction starts in 2027" }, automation: { mentioned: false, items: [], evidence: "" },
     supplier: { status: "unknown", name: "", evidence: "" }, construction_company: "", order_potential: "low",
     category: { group: "global", sub: "Industry", country_ko: "미국" },
-    summary: ["Pfizer, 미국 코네티컷 제조기술센터 건립", "6.5억 달러 투자·2027년 착공 예정", "신규 생산공정 개발 거점, 200명 근무", "제약 생산공정 고도화 투자 확대 부각"],
+    summary: ["Pfizer, 미국 코네티컷 제조기술센터 건립", "6.5억 달러 투자·2027년 착공 예정", "신규 생산공정 개발 거점, 200명 근무", "생산공정 개발 거점 확대로 제약 고객 자동화 사업기회 부각"],
     line_evidence: ["build a manufacturing technology center in Groton, Connecticut", "Pfizer will invest $650 million", "the center will employ 200 scientists and engineers", ""],
     confidence: "high", review_reasons: [],
   };
@@ -324,7 +324,7 @@ describe("금액 환산·성격 (Zipline·Neros 실제 사례)", () => {
   });
 });
 
-const good = ["Neros, 미국 소형 드론 생산능력 확충 추진", "총 6.15억 달러, 4.5억 달러 조건부 대출 포함", "모터·무선·배터리 등 핵심 부품 생산 확대", "드론 공급망 자국화로 북미 제조설비 투자 확대 부각"];
+const good = ["Neros, 미국 소형 드론 생산능력 확충 추진", "총 6.15억 달러, 4.5억 달러 조건부 대출 포함", "모터·무선·배터리 등 핵심 부품 생산 확대", "드론 양산 전환 시 부품 입고·조립 공정물류 자동화 가능성"];
 describe("Neros 실제 기사 4줄 구성", () => {
   test("원문 사실·수치가 맞는 4줄은 '분석 완료'", () => {
     const r = buildReportAnalysis(nerosRaw(good), nerosSrc, "m");
@@ -335,7 +335,7 @@ describe("Neros 실제 기사 4줄 구성", () => {
   test("원문에 없는 AGV·자동창고를 사실로 쓰면 검토 필요, 4줄 잠재 수요 표현은 허용", () => {
     const bad = buildReportAnalysis(nerosRaw([good[0]!, good[1]!, "AGV·자동창고 기반 생산라인 구축", good[3]!]), nerosSrc, "m");
     assert.equal(bad.status, "needs_review");
-    const hedged = buildReportAnalysis(nerosRaw([good[0]!, good[1]!, good[2]!, "대량생산 전환 시 자동창고 잠재 수요 가능성"]), nerosSrc, "m");
+    const hedged = buildReportAnalysis(nerosRaw([good[0]!, good[1]!, good[2]!, "드론 부품 대량생산 시 자동창고 잠재 수요 가능성"]), nerosSrc, "m");
     assert.equal(hedged.status, "done", hedged.reviewReasons.join(" | "));
   });
   test("상투문구·반복·예시 고유명사 혼입은 검토 필요", () => {
@@ -368,6 +368,93 @@ describe("요약 작성 ≠ 수주 가능성", () => {
     const a = article({ title: "x", report: old });
     assert.equal(needsAnalysis(a, { retryFailed: true }), false);
     assert.equal(needsAnalysis(a, { retryFailed: true, upgrade: true }), true);
-    assert.equal(PROMPT_REV, "p2");
+    assert.equal(PROMPT_REV, "p3");
+  });
+});
+
+// ---------------------------------------------------------------- Neros 실제 출력 회귀 (p3)
+import { cleanSummaryLines, line4Issues, componentIssues } from "@/lib/report/validate";
+
+const NEROS_ACTUAL = [
+  "1. Neros, 미국 내 드론 제조 시설 확장 계획 발표",
+  "2. 6억 1,500만 달러 투자와 2028년 생산 목표 설정",
+  "3. 소형 무인 항공기 및 부품 생산 라인 구축 추진",
+  "4. 대규모 방산 제조 시설 확장 관련 물류자동화 수요 동향 참고 필요",
+];
+const NEROS_GOOD = [
+  "Neros, 美 소형 드론 생산능력 확충 추진",
+  "총 6.15억 달러, 조건부 대출 4.5억·자기자본 1.65억",
+  "모터·배터리 등 핵심 부품 내재화, 2028년 연 100만 대 목표",
+  "드론 양산 전환 시 부품 입고·조립 공정물류 자동화 가능성",
+];
+
+describe("Neros 실제 출력 회귀", () => {
+  test("번호 제거 (배열·한 문자열 모두)", () => {
+    assert.equal(cleanSummaryLines(NEROS_ACTUAL)[0], "Neros, 미국 내 드론 제조 시설 확장 계획 발표");
+    assert.equal(cleanSummaryLines([NEROS_ACTUAL.join("\n")]).length, 4);
+    assert.ok(cleanSummaryLines(["① 첫 줄 내용입니다", "2) 둘째 줄", "4줄: 넷째", "시사점: 다섯"]).every((l) => !/^[①\d]|^(4줄|시사점)/.test(l)));
+  });
+  test("'6억 1,500만 달러'는 하나의 금액(6.15억 달러)으로 해석", () => {
+    assert.deepEqual(unsupportedNumbers(["6억 1,500만 달러 투자"], NEROS), []);
+  });
+  test("실제 출력은 대출·자기자본 뭉뚱그림 + 4줄 상투문구로 검토 필요", () => {
+    const lines = cleanSummaryLines(NEROS_ACTUAL);
+    assert.ok(componentIssues(lines, NEROS).length > 0, "대출·자기자본 구성 누락 검출");
+    assert.ok(line4Issues(lines, NEROS).some((x) => x.includes("상투")));
+    const r = buildReportAnalysis(nerosRaw(NEROS_ACTUAL), nerosSrc, "m");
+    assert.equal(r.status, "needs_review");
+    assert.ok(r.summary.every((l) => !/^\d\s?[.)]\s/.test(l)), "저장되는 요약에 번호 없음");
+    assert.equal(r.summary[0], "Neros, 미국 내 드론 제조 시설 확장 계획 발표");
+  });
+  test("개선된 4줄은 통과 (구성·수치·4줄 구체성)", () => {
+    const r = buildReportAnalysis(nerosRaw(NEROS_GOOD), nerosSrc, "m");
+    assert.equal(r.status, "done", r.reviewReasons.join(" | "));
+  });
+  test("4줄: 다른 기사에 붙일 수 있는 일반 문장·현대무벡스 관점 없음은 거부", () => {
+    assert.ok(line4Issues([...NEROS_GOOD.slice(0, 3), "제조업 전반의 자동화 사업기회 확대 기대"], NEROS).some((x) => x.includes("고유")));
+    assert.ok(line4Issues([...NEROS_GOOD.slice(0, 3), "미국 드론 산업 성장세 지속 부각"], NEROS).some((x) => x.includes("현대무벡스")));
+  });
+});
+
+describe("분석 흐름: 파싱 → 검증 → 1회 재작성 → 저장값", () => {
+  const realFetch = globalThis.fetch;
+  const env = { ...process.env };
+  let answers: object[] = [];
+  let calls = 0;
+  beforeEach(() => {
+    calls = 0;
+    process.env.GEMINI_API_KEY = "test-key"; process.env.GEMINI_BASE_URL = "https://gemini.test"; process.env.GEMINI_MIN_INTERVAL_MS = "0"; process.env.GEMINI_MODEL = "gemini-test-flash";
+    (globalThis as unknown as { __gemini?: unknown }).__gemini = undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://gemini.test/v1beta/models?")) return new Response(JSON.stringify({ models: [{ name: "models/gemini-test-flash", supportedGenerationMethods: ["generateContent"] }] }), { status: 200 });
+      if (url.startsWith("https://gemini.test")) { const a = answers[Math.min(calls, answers.length - 1)]; calls++; return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(a) }] } }] }), { status: 200 }); }
+      const body = NEROS.split("\n").filter((l) => !l.startsWith("#")).map((l) => `<p>${l}</p>`).join("");
+      return new Response(`<html><head><meta property="article:published_time" content="2026-11-03T00:00:00Z"></head><body><article>${body}</article></body></html>`, { status: 200, headers: { "content-type": "text/html" } });
+    }) as typeof fetch;
+  });
+  afterEach(() => { globalThis.fetch = realFetch; process.env = { ...env }; });
+  const neros = () => article({ title: "Neros plans $615M drone manufacturing expansion in US", url: "https://www.manufacturingdive.com/news/neros" });
+
+  test("실제 불량 출력 → 1회 재작성 → 개선본 저장 (호출 2회)", async () => {
+    answers = [nerosRaw(NEROS_ACTUAL), nerosRaw(NEROS_GOOD)];
+    const r = await analyzeForReport(neros(), settings);
+    assert.equal(calls, 2);
+    assert.equal(r.status, "done", r.reviewReasons.join(" | "));
+    assert.deepEqual(r.summary, NEROS_GOOD);
+    assert.ok(r.autoFixes?.some((x) => x.includes("재작성본 채택")));
+  });
+  test("재작성도 미달이면 사용자 검토 필요 (추가 호출 없음)", async () => {
+    answers = [nerosRaw(NEROS_ACTUAL), nerosRaw(NEROS_ACTUAL)];
+    const r = await analyzeForReport(neros(), settings);
+    assert.equal(calls, 2);
+    assert.equal(r.status, "needs_review");
+    assert.ok(r.summary.every((l) => !/^\d\./.test(l)));
+  });
+  test("처음부터 기준 충족이면 재작성 호출 없음", async () => {
+    answers = [nerosRaw(NEROS_GOOD)];
+    const r = await analyzeForReport(neros(), settings);
+    assert.equal(calls, 1);
+    assert.equal(r.status, "done", r.reviewReasons.join(" | "));
   });
 });

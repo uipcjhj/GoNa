@@ -34,19 +34,20 @@ export function amountsIn(text: string): Amount[] {
     if (Number.isFinite(num)) out.push({ value: num * mult, currency: c, raw: m[0].trim() });
   }
   // Korean: 15억 달러 · 6,000억원 · 1조 2,000억 원 · 3,000만 달러
-  const ko = /(\d[\d,]*(?:\.\d+)?)\s?조(?:\s?(\d[\d,]*(?:\.\d+)?)\s?억)?\s?(원|달러|유로|파운드|엔|루피|위안)?|(\d[\d,]*(?:\.\d+)?)\s?(억|만)\s?(원|달러|유로|파운드|엔|루피|위안)?/g;
+  // compound forms count as ONE amount: "1조 2,000억 원", "6억 1,500만 달러"
+  const N = "(\\d[\\d,]*(?:\\.\\d+)?)";
+  const ko = new RegExp(`${N}\\s?조(?:\\s?${N}\\s?억)?(?:\\s?${N}\\s?만)?\\s?(원|달러|유로|파운드|엔|루피|위안)?|${N}\\s?억(?:\\s?${N}\\s?만)?\\s?(원|달러|유로|파운드|엔|루피|위안)?|${N}\\s?만\\s?(원|달러|유로|파운드|엔|루피|위안)?`, "g");
+  const num = (x: string | undefined) => (x ? parseFloat(x.replace(/,/g, "")) : 0);
   for (const m of t.matchAll(ko)) {
     let v: number;
     let c: string | null;
-    if (m[1]) {
-      v = parseFloat(m[1].replace(/,/g, "")) * 1e12 + (m[2] ? parseFloat(m[2].replace(/,/g, "")) * 1e8 : 0);
-      c = cur(m[3]);
-    } else {
-      v = parseFloat(m[4]!.replace(/,/g, "")) * (m[5] === "억" ? 1e8 : 1e4);
-      c = cur(m[6]);
+    if (m[1]) { v = num(m[1]) * 1e12 + num(m[2]) * 1e8 + num(m[3]) * 1e4; c = cur(m[4]); }
+    else if (m[5]) { v = num(m[5]) * 1e8 + num(m[6]) * 1e4; c = cur(m[7]); }
+    else {
+      v = num(m[8]) * 1e4;
+      c = cur(m[9]);
+      if (!c) continue; // "만" without a currency is a quantity (e.g. 41.3만 ft²), not money
     }
-    // "만" without a currency is a quantity (e.g. 41.3만 ft²), not money
-    if (!c && m[5] === "만") continue;
     out.push({ value: v, currency: c ?? "KRW", raw: m[0].trim() });
   }
   return out;
@@ -124,9 +125,51 @@ export function unsupportedAutomation(lines: string[], source: string): string[]
   return bad;
 }
 
-const FILLER = /(업계 ?동향 ?참고|동향 ?참고 ?필요|수요 ?동향 ?참고|참고 ?필요$|원문 ?미기재|원문 ?미확인|도입 ?여부 ?(원문 ?)?미확인|관련 ?내용 ?언급|관련 ?소식$|^\S{1,8} ?소재$|정보 ?없음|확인 ?불가|미공개$|내용 ?없음|해당 ?없음|N\/A|Unknown|Not Disclosed)/i;
+const FILLER = /(업계 ?동향 ?참고|동향 ?참고 ?필요|동향 ?주목|관련 ?설비 ?수요 ?동향|수요 ?동향 ?참고|참고 ?필요$|원문 ?미기재|원문 ?미확인|도입 ?여부 ?(원문 ?)?미확인|관련 ?내용 ?언급|관련 ?소식$|^\S{1,8} ?소재$|정보 ?없음|확인 ?불가|미공개$|내용 ?없음|해당 ?없음|N\/A|Unknown|Not Disclosed)/i;
 export function fillerLines(lines: string[]): string[] {
   return lines.filter((l) => FILLER.test(l.trim()));
+}
+
+/** Split / clean raw model lines: one line per element, no numbering ("1.", "1)", "①", "(1)", "첫째,"), no labels, no quotes. */
+export function cleanSummaryLines(raw: unknown[]): string[] {
+  return raw
+    .flatMap((x) => (typeof x === "string" ? x.split(/\r?\n/) : []))
+    .map((l) => l
+      .replace(/^\s*(?:[§⇒•▪\-*·]|\(?\d{1,2}\s?[.)](?!\d)|[①②③④]|[1-4]\s?줄\s?[:：]?|(?:첫|둘|셋|넷)째\s?[,:]?|line\s?\d\s?[:.]?)\s*/iu, "")
+      .replace(/^(?:요약|주체|규모|수치|기술|설비|사업범위|시사점)\s?[:：]\s*/u, "")
+      .replace(/^["'“‘]+|["'”’]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim())
+    .filter(Boolean);
+}
+
+// line 4 must speak to Hyundai Movex's business and be specific to this article
+const MOVEX_TERMS = /(당사|현대무벡스|자동창고|AS\/RS|소터|Sorter|분류|이송|컨베이어|셔틀|AGV|AMR|공정물류|물류자동화|자동보관|저온|팔레트|피킹|WMS|WCS|통합제어|통합관제|로봇|경쟁|수주|솔루션|차별화|고객|투자환경|사업기회|발주|설비 수요|잠재 수요)/;
+const GENERIC_4 = /(동향 ?(참고|주목)|참고 ?필요|주목 ?필요|수요 ?동향|관련 ?설비|관련 ?수요|시사점 ?있음|모니터링 ?필요|지속 ?관찰|추이 ?주시)/;
+const STOP = new Set(["관련", "확대", "추진", "수요", "가능성", "잠재", "당사", "시장", "사업", "투자", "설비", "부각", "강화", "전망", "기대", "확보", "따른", "통한", "위한", "대한"]);
+const nouns = (l: string) => new Set((l.match(/[가-힣A-Za-z][가-힣A-Za-z0-9·]{1,}/g) ?? []).map((w) => w.replace(/(의|에|을|를|이|가|은|는|과|와|로|으로|에서)$/, "")).filter((w) => w.length >= 2 && !STOP.has(w)));
+export function line4Issues(lines: string[], source: string): string[] {
+  const l4 = lines[3];
+  if (!l4) return [];
+  const out: string[] = [];
+  if (GENERIC_4.test(l4)) out.push(`4줄 상투적 표현: ${l4}`);
+  if (!MOVEX_TERMS.test(l4)) out.push("4줄에 현대무벡스 사업 관점(자동창고·이송·공정물류·로봇·경쟁 구도·고객 투자환경 등)이 없음");
+  // specific to this article: shares at least one content word with lines 1–3 or the source (industry, product, company …)
+  const own = nouns(lines.slice(0, 3).join(" "));
+  const src = source.toLowerCase();
+  const anchored = [...nouns(l4)].some((w) => own.has(w) || (w.length >= 3 && src.includes(w.toLowerCase())));
+  if (!anchored) out.push("4줄이 이 기사 고유 내용과 연결되지 않음 (다른 기사에도 붙일 수 있는 일반 문장)");
+  return out;
+}
+
+/** The source splits the money into loan / equity / funding parts but the summary only gives a lump sum as "투자". */
+export function componentIssues(lines: string[], source: string): string[] {
+  const t = amountTable(source);
+  const parts = t.filter((x) => x.nature === "loan" || x.nature === "equity");
+  if (!parts.length) return [];
+  const text = lines.join(" ");
+  const named = /(대출|융자|자기자본|자본 ?투입|출자)/.test(text);
+  return named ? [] : [`금액 구성 누락: 원문은 ${parts.map((x) => `${x.ko} ${x.nature === "loan" ? "대출" : "자기자본"}`).join(" + ")} — 단순 '투자'로 뭉뚱그림`];
 }
 
 /** All checks; returns human-readable reasons (empty = passed). */
@@ -143,6 +186,7 @@ export function validateSummary(lines: string[], source: string, ctx: { countryK
   if (leaked.length) reasons.push(`예시 문장의 고유명사가 섞임: ${leaked.join(", ")}`);
   const nature = amountNatureIssues(clean, source);
   if (nature.length) reasons.push(...nature);
+  reasons.push(...componentIssues(clean, source), ...line4Issues(clean, source));
   const filler = fillerLines(clean);
   if (filler.length) reasons.push(`의미 없는 문장: ${filler.join(" / ")}`);
   if (clean.some((l) => /[§⇒•]/.test(l))) reasons.push("기호(§, ⇒ 등) 포함");
