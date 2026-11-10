@@ -9,7 +9,7 @@ import { withV2 } from "./taxonomy";
 import { daysOf, type Period } from "./period";
 import { getReport, previousReports, saveReport } from "./report";
 import { CURATION_VERSION, curate } from "./curate";
-import type { AccessType, Article, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportAIStatus, ReportAnalysis, ReportItem, ReportStatus, SourceLevel, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
+import type { AccessType, Article, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportAIStatus, ReportAnalysis, ReportItem, ReportStatus, SourceLevel, SourceTrace, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
 import { REPORT_ANALYSIS_VERSION } from "@/lib/report/factcheck";
 import { labelOf } from "./taxonomy";
 
@@ -25,6 +25,7 @@ export interface WeeklyRow {
   reportStatus: ReportStatus; recommended: boolean; isDemo: boolean; dupGroup: string | null; excerpt: string | null; policyNote: string | null;
   detail: DetailCategory | null; judgment: WeeklyJudgment | null; summary4: string[]; summary4Basis: WeeklyAnalysis["summary4Basis"] | null;
   order: number | null; edits: ReportItem["edits"] | null; image: ReportItem["image"] | null; sourceDomain: string; publishedAtBasis: string; competitorChecks: { name: string; confirmed: boolean; note: string }[];
+  sourceTrace: SourceTrace | null; // 원문 복원·본문 추출 기록
   /** detail category basis: "ai" = Gemini 원문 검증, "rules" = 키워드 예비 분류 (보고서 확정 전) */
   detailBasis: "ai" | "rules";
   /** Gemini report analysis (null = not analysed with the current version) */
@@ -94,7 +95,7 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
       detail: aiDetail ? { ...aiDetail, label: labelOf(aiDetail) } : w?.detail ?? null, judgment: ai && ai.status !== "failed" ? judgmentFromAI(ai, a) : w?.judgment ?? null,
       summary4: aiOk ? aiOk.summary : [], summary4Basis: aiOk ? "ai" : null,
       detailBasis: aiDetail ? "ai" : "rules", ai, aiStatus: ai ? ai.status : a.report ? "outdated" : "none",
-      gate: gateOf(a, ai, item, ds), approvedAt: item?.approvedAt ?? null,
+      gate: gateOf(a, ai, item, ds), approvedAt: item?.approvedAt ?? null, sourceTrace: a.sourceTrace ?? null,
       order: item?.order ?? null, edits: item?.edits ?? null, image: item?.image ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
       excerpt: a.excerpt, policyNote: w?.policy ? `${w.policy.kind === "law" ? "법령" : w.policy.kind === "enforcement" ? "시행" : w.policy.kind === "government_announcement" ? "정부 발표" : "기타"}${w.policy.effectiveDate ? ` · 시행일 ${w.policy.effectiveDate}` : ""}` : null,
     });

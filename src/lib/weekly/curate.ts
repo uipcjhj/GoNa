@@ -3,7 +3,7 @@
 // keeps 5–10 reference candidates with a rejection reason, and a "확인 필요" list (unverified date, out of period, unclear category).
 import type { Curation, CurationEntry } from "@/lib/types";
 import type { WeeklyRow } from "./view";
-import { storyMatcher } from "./story";
+import { sameCompetitorStory, storyMatcher } from "./story";
 
 export interface CurateOptions {
   target: number; // final picks (default 12)
@@ -111,7 +111,9 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
   const picks: (typeof eligible)[number][] = [];
   const skipped = new Map<string, "duplicate" | "balance">();
   const half = Math.ceil(o.target / 2);
-  const isDup = (r: WeeklyRow) => picks.some((p) => (r.dupGroup && p.dupGroup === r.dupGroup) || (r.opportunityId && p.opportunityId === r.opportunityId) || same(titleOf(r), titleOf(p)));
+  // transitive: anything matching a pick OR an article already skipped as that pick's duplicate (A≈B≈C → one story)
+  const covered: WeeklyRow[] = [];
+  const isDup = (r: WeeklyRow) => [...picks, ...covered].some((p) => (r.dupGroup && p.dupGroup === r.dupGroup) || (r.opportunityId && p.opportunityId === r.opportunityId) || same(titleOf(r), titleOf(p)) || sameCompetitorStory(r, p));
   const fits = (r: (typeof eligible)[number], strict: boolean) => {
     const sideCount = picks.filter((p) => p._p.side === r._p.side).length;
     if (strict && sideCount >= half) return false;
@@ -124,7 +126,7 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
     for (const r of eligible) {
       if (picks.length >= o.target) break;
       if (picks.includes(r)) continue;
-      if (isDup(r)) { skipped.set(r.id, "duplicate"); continue; }
+      if (isDup(r)) { skipped.set(r.id, "duplicate"); if (!covered.includes(r)) covered.push(r); continue; }
       if (r._p.score < 45) continue; // never pad the report with weak items
       if (!fits(r, strict)) { skipped.set(r.id, "balance"); continue; }
       picks.push(r);

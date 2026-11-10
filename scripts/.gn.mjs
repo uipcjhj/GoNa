@@ -1,0 +1,15 @@
+import fs from "node:fs";
+const u = fs.readFileSync(process.argv[2], "utf8").trim();
+const id = new URL(u).pathname.split("/").pop();
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
+const page = await fetch(`https://news.google.com/articles/${id}`, { headers: { "User-Agent": UA } });
+const html = await page.text();
+const sg = html.match(/data-n-a-sg="([^"]+)"/)?.[1], ts = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
+console.log("page", page.status, "sg", !!sg, "ts", ts);
+const inner = JSON.stringify(["garturlreq", [["X", "X", ["X", "X"], null, null, 1, 1, "US:en", null, 1, null, null, null, null, null, 0, 1], "X", "X", 1, [1, 1, 1], 1, 1, null, 0, 0, null, 0], id, Number(ts), sg]);
+const body = "f.req=" + encodeURIComponent(JSON.stringify([[["Fbv4je", inner, null, "generic"]]]));
+const r = await fetch("https://news.google.com/_/DotsSplashUi/data/batchexecute", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "User-Agent": UA }, body });
+const t = await r.text();
+console.log("batch", r.status, t.slice(0, 50));
+const m = t.match(/\[\\"garturlres\\",\\"(https?:[^\\"]+)\\"/);
+console.log("decoded:", m?.[1]);

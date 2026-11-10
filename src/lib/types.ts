@@ -211,6 +211,23 @@ export interface ReportItem {
   approvedAt?: string | null; // 사용자 최종 승인 (보고서에 그대로 사용해도 됨)
 }
 
+// ---------------------------------------------------------------- 원문 복원·본문 추출 기록
+/** ok = 본문 확보 · network_error = 접속 실패·차단 · robots_blocked = robots.txt 정책 · http_error = 4xx/5xx
+ *  no_text = 페이지는 열렸지만 기사 본문 추출 실패 · google_blocked / google_unresolved = Google News 링크 복원 실패 · manual = 사용자 입력 본문 */
+export type BodyStatus = "ok" | "network_error" | "robots_blocked" | "http_error" | "no_text" | "google_blocked" | "google_unresolved" | "manual";
+export interface SupportSource { url: string; title: string; kind: "official_press" | "other_media"; status: BodyStatus; chars: number; addedBy: "user" | "search"; checkedAt: string }
+export interface SourceTrace {
+  originalUrl: string; // 수집 당시 URL (Google News 경유 포함)
+  resolvedUrl: string | null; // 실제 언론사 기사 URL (보고서 표기용)
+  method: "direct" | "google_offline" | "google_decoder" | "manual";
+  bodyStatus: BodyStatus;
+  httpStatus: number | null;
+  chars: number;
+  note: string;
+  checkedAt: string;
+  support: SupportSource[]; // 보조 근거 (공식 보도자료·다른 매체) — 보고서의 언론사·발행일·URL과 별도
+}
+
 // ---------------------------------------------------------------- 보고서용 원문 검증 분석 (Gemini, v3)
 /** done = Gemini 분석 완료 · insufficient_source = 원문 부족 · failed = AI 분석 실패 · needs_review = 사용자 검토 필요 */
 export type ReportAIStatus = "done" | "insufficient_source" | "failed" | "needs_review";
@@ -336,6 +353,7 @@ export interface Article {
   feedbackAt: string | null;
   weekly?: WeeklyAnalysis | null;
   manualBody?: string | null; // 사용자가 직접 입력한 원문 본문 (원문 접근 실패 시)
+  sourceTrace?: SourceTrace | null; // 원문 복원·본문 추출 기록 (원본 URL, 해결된 URL, 상태·실패 이유, 보조 근거)
   report?: ReportAnalysis | null; // 보고서용 Gemini 원문 검증 분석 (v3) — 규칙 기반 요약과 분리
   viaGoogleNews?: boolean; // link is a Google News redirect; original URL not machine-resolvable
   altSearchedAt?: string | null; // paywalled article: free/official alternative search performed

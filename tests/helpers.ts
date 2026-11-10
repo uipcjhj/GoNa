@@ -63,7 +63,7 @@ export function row(p: Partial<WeeklyRow> & { id: string; title: string }): Week
     summary4: ["OO, 미국 공장 신설 추진", "5억 달러 투자 계획", "생산라인 확충", "공정물류 수요 주목"], summary4Basis: "ai", order: null, edits: null, image: null, sourceDomain: "news.example.com", publishedAtBasis: "원문 메타데이터", competitorChecks: [],
     detailBasis: "ai", aiStatus: ai ? ai.status : "none",
     gate: { aiDone: ai?.status === "done", dateVerified: (p.dateStatus ?? "verified") === "verified", sourceLevel: ai?.sourceLevel ?? null, linkDirect: true, approved: false, problems: [] },
-    approvedAt: null,
+    approvedAt: null, sourceTrace: null,
     ...p,
     ai,
   } as WeeklyRow;

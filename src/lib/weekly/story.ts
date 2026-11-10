@@ -37,3 +37,21 @@ export function storyMatcher(poolTitles: string[]) {
     return Boolean(ka && ka === kb);
   };
 }
+
+// bilingual places so Korean and English headlines about the same project can be matched (e.g. KNAPP hub in Boston / 보스턴)
+const PLACES: Record<string, string[]> = {
+  boston: ["boston", "보스턴"], texas: ["texas", "텍사스"], georgia: ["georgia", "조지아"], ohio: ["ohio", "오하이오"], chicago: ["chicago", "시카고"], atlanta: ["atlanta", "애틀랜타"],
+  dallas: ["dallas", "댈러스"], detroit: ["detroit", "디트로이트"], california: ["california", "캘리포니아"], poland: ["poland", "폴란드"], hungary: ["hungary", "헝가리"],
+  netherlands: ["netherlands", "네덜란드"], germany: ["germany", "독일"], austria: ["austria", "오스트리아"], vietnam: ["vietnam", "베트남"], india: ["india", "인도"], mexico: ["mexico", "멕시코"],
+  japan: ["japan", "일본"], singapore: ["singapore", "싱가포르"], uae: ["uae", "dubai", "두바이", "아랍에미리트"], australia: ["australia", "호주"],
+};
+export function placesOf(text: string): Set<string> {
+  const t = text.toLowerCase();
+  return new Set(Object.entries(PLACES).filter(([, ws]) => ws.some((w) => (/[가-힣]/.test(w) ? t.includes(w) : new RegExp(`\\b${w}\\b`).test(t)))).map(([k]) => k));
+}
+/** Same confirmed competitor + same (non-country) place in both headlines → same story across languages. */
+export function sameCompetitorStory(a: { competitors: string[]; title: string; titleKo: string | null }, b: { competitors: string[]; title: string; titleKo: string | null }): boolean {
+  if (!a.competitors.some((c) => b.competitors.includes(c))) return false;
+  const pa = placesOf(`${a.title} ${a.titleKo ?? ""}`), pb = placesOf(`${b.title} ${b.titleKo ?? ""}`);
+  return [...pa].some((p) => pb.has(p) && !["india", "japan", "germany", "austria", "poland", "hungary", "netherlands", "vietnam", "mexico", "singapore", "australia", "uae"].includes(p));
+}

@@ -154,6 +154,62 @@ export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => vo
   );
 }
 
+const BODY_STATUS: Record<string, string> = {
+  ok: "본문 확보", network_error: "접속 실패·네트워크 차단", robots_blocked: "robots.txt로 수집 제한", http_error: "HTTP 오류", no_text: "본문 추출 실패",
+  google_blocked: "Google News 복원 차단(captcha)", google_unresolved: "Google News 링크 복원 실패", manual: "사용자 입력 본문",
+};
+const METHOD: Record<string, string> = { direct: "직접 링크", google_offline: "Google News 링크 복원(오프라인)", google_decoder: "Google News 링크 복원", manual: "사용자 입력" };
+
+/** 원문 복원 기록: 원본·해결 URL, 본문 상태·실패 이유, 보조 근거(공식 보도자료) — 보고서 표기 정보와 별도. */
+function SourceTracePanel({ r, onDone }: { r: WeeklyRow; onDone: () => void }) {
+  const readOnly = useReadOnly();
+  const t = r.sourceTrace;
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function run(supportUrl?: string) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const d = await postJson("/api/weekly/resolve", { articleIds: [r.id], ...(supportUrl ? { supportUrl } : {}) });
+      const tr = d.results?.[0]?.trace;
+      setMsg(tr ? `${BODY_STATUS[tr.bodyStatus] ?? tr.bodyStatus} — ${tr.note}` : "완료");
+      setUrl("");
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-3 space-y-1.5 rounded-lg border border-line p-3 text-[13px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <b className="text-slate-800">원문 복원 기록</b>
+        {!readOnly && <button disabled={busy} onClick={() => run()} className="rounded-lg border border-slate-300 px-2.5 py-1 text-slate-700 hover:border-sky-200 disabled:opacity-50">{busy ? "확인 중…" : "원문 복원·재시도"}</button>}
+      </div>
+      {t ? (
+        <dl className="space-y-1 text-slate-600">
+          <div><dt className="inline text-slate-500">본문: </dt><dd className={t.bodyStatus === "ok" || t.bodyStatus === "manual" ? "inline text-sky-700" : "inline text-amber-700"}>{BODY_STATUS[t.bodyStatus] ?? t.bodyStatus}{t.httpStatus ? ` (HTTP ${t.httpStatus})` : ""} — {t.note}</dd></div>
+          <div className="break-all"><dt className="inline text-slate-500">수집 URL: </dt><dd className="inline">{t.originalUrl}</dd></div>
+          <div className="break-all"><dt className="inline text-slate-500">해결된 URL: </dt><dd className="inline">{t.resolvedUrl ?? "미해결"} · {METHOD[t.method] ?? t.method}</dd></div>
+          {t.support.length > 0 && (
+            <div><dt className="text-slate-500">보조 근거 (보고서 표기와 별도):</dt>
+              <dd><ul className="mt-0.5 space-y-0.5">{t.support.map((s) => <li key={s.url} className="break-all">· {s.kind === "official_press" ? "공식 보도자료" : "다른 매체"} — <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline">{s.title || s.url}</a> ({BODY_STATUS[s.status] ?? s.status}{s.chars ? ` · ${s.chars.toLocaleString()}자` : ""})</li>)}</ul></dd></div>
+          )}
+        </dl>
+      ) : <p className="text-slate-500">아직 원문 복원 기록이 없습니다.</p>}
+      {!readOnly && (
+        <form onSubmit={(e) => { e.preventDefault(); if (url) run(url); }} className="flex gap-1.5 pt-1">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="보조 근거 URL (공식 보도자료·다른 매체)" className="h-8 min-w-0 flex-1 rounded-lg border border-slate-300 bg-surface-2 px-2 text-[13px] text-slate-900" />
+          <button disabled={busy || !url} className="rounded-lg border border-slate-300 px-2.5 text-[13px] text-slate-700 disabled:opacity-40">추가</button>
+        </form>
+      )}
+      {msg && <p className="text-sky-700">{msg}</p>}
+    </div>
+  );
+}
+
 /** Period of the current weekly page (from the URL) for item updates made inside shared parts. */
 function periodOf(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -301,6 +357,7 @@ export function ArticleDetail({ r, reasons, rejectReason, onRefresh }: { r: Week
         </dl>
         {!r.inPeriod && r.publishedAt && <p className="mt-2 text-xs text-amber-700">조사 기간 밖에 발행된 기사입니다.</p>}
         {r.viaGoogleNews && !r.isDemo && <DirectUrlForm r={r} onDone={onRefresh} />}
+        {!r.isDemo && <SourceTracePanel r={r} onDone={onRefresh} />}
       </section>
 
       <section>

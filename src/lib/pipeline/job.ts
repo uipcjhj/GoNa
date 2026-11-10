@@ -21,6 +21,8 @@ import { classifySource, verifyAndFetch } from "./verify";
 import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
 import { analyzeArticle, aiConfigured } from "./analyze";
 import { analyzeForReport, needsAnalysis } from "@/lib/report/factcheck";
+import { readArticleSource } from "@/lib/report/source";
+const GN_RESOLVES = new Map<string, number>();
 import { geminiConfigured } from "@/lib/ai/gemini";
 import type { WeeklyReport } from "@/lib/types";
 import { findMatch, mergeInto, newOpportunityFrom } from "./cluster";
@@ -395,12 +397,19 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
       await saveArticles([article]);
       return;
     }
-    const page: Awaited<ReturnType<typeof verifyAndFetch>> = article.viaGoogleNews
+    // Google News links: try to restore the publisher URL (capped per job — Google may answer with a captcha)
+    let restored: Awaited<ReturnType<typeof verifyAndFetch>> | null = null;
+    if (article.viaGoogleNews && (GN_RESOLVES.get(job.id) ?? 0) < 20) {
+      GN_RESOLVES.set(job.id, (GN_RESOLVES.get(job.id) ?? 0) + 1);
+      const r = await readArticleSource(article).catch(() => null);
+      if (r?.page) restored = r.page;
+    }
+    const page: Awaited<ReturnType<typeof verifyAndFetch>> = restored ?? (article.viaGoogleNews
       ? {
           verification: { status: "needs_check", httpStatus: null, finalUrl: null, redirects: 0, checkedAt: new Date().toISOString(), access: "unknown", note: "Google News 경유 링크 — 브라우저에서 원문으로 이동, 원문 URL·발행일 자동 확인 불가" },
           title: null, siteName: null, description: null, text: null, publishedAt: null, publishedAtBasis: null,
         }
-      : await verifyAndFetch(article.url, job.mode === "quick" ? 8000 : 15000);
+      : await verifyAndFetch(article.url, job.mode === "quick" ? 8000 : 15000));
     article.verification = page.verification;
     if (page.publishedAt) {
       article.publishedAt = page.publishedAt;

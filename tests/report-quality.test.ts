@@ -458,3 +458,76 @@ describe("분석 흐름: 파싱 → 검증 → 1회 재작성 → 저장값", ()
     assert.equal(r.status, "done", r.reviewReasons.join(" | "));
   });
 });
+
+// ---------------------------------------------------------------- KNAPP 원문 복원 (2026-11 실제 사례)
+import { decodeOffline } from "@/lib/news/resolve";
+import { bodyStatusOf, readArticleSource, addSupportUrl } from "@/lib/report/source";
+import { insufficientAnalysis } from "@/lib/report/factcheck";
+
+const KNAPP_GN = "https://news.google.com/rss/articles/CBMisAFBVV95cUxPUVZDSENPdXdPVEQtU2hfcWxwZUR6a01QZE9MQURvODhLQmlpY3E2QVB5c25lbFFySk1SVjdmNE9GR3V3N1lNUk16YzdTYzJ2SFdHR1Eya3NqTjdlTjY5d295TUJJRWFJU1pHQXkzWk1VT2V4VktmRzVucmxPYmRwdmdpTUhjWmIwcUVSQzB5RUpobXVUNG5rU0xIbVRzQlN2WVBCLW5sY3R0TXgya09Vcw?oc=5";
+const KNAPP_TITLES = ["KNAPP Establishes Robotics and AI Innovation Hub in Boston, Plans 35 Jobs", "Knapp opens U.S. “robotics and AI innovation hub”", "KNAPP Establishes Robotics and AI Innovation Hub in Boston, MA"];
+
+describe("KNAPP 원문 복원", () => {
+  test("Google News 링크 해독: 구형 ID는 오프라인 복원, 신형(AU_yq…) ID는 디코더 호출 대상", () => {
+    const id = new URL(KNAPP_GN).pathname.split("/").pop()!;
+    assert.equal(decodeOffline(id), null, "신형 ID — 실제 환경에서는 Google 디코더로 citybiz.co 원문 URL 복원 확인");
+    const old = Buffer.from("\x08\x13\"\x2ahttps://www.irobotnews.com/news/articleView.html?idxno=49447\xd2\x01\x00", "latin1").toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
+    assert.equal(decodeOffline(old), "https://www.irobotnews.com/news/articleView.html?idxno=49447");
+  });
+  test("본문 실패 이유 구분: 네트워크 차단 / robots / HTTP / 추출 실패 / 정상", () => {
+    const v = (o: object) => ({ verification: { status: "verified", httpStatus: 200, finalUrl: null, redirects: 0, checkedAt: "", access: "unknown", note: "", ...o }, title: null, siteName: null, description: null, text: null, publishedAt: null, publishedAtBasis: null } as never);
+    assert.equal(bodyStatusOf(v({ status: "needs_check", httpStatus: null, note: "접속 시간 초과 또는 네트워크 오류 (fetch failed)" })).status, "network_error");
+    assert.equal(bodyStatusOf(v({ note: "링크 정상 · robots.txt 정책으로 본문 수집 생략" })).status, "robots_blocked");
+    assert.equal(bodyStatusOf(v({ status: "broken", httpStatus: 404 })).status, "http_error");
+    assert.equal(bodyStatusOf(v({})).status, "no_text");
+    assert.equal(bodyStatusOf({ ...(v({}) as object), text: "x".repeat(500) } as never).status, "ok");
+  });
+
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+  const page = (title: string, date: string, paras: string[]) => `<html><head><title>${title}</title><meta property="article:published_time" content="${date}"></head><body><article>${paras.map((p) => `<p>${p}</p>`).join("")}</article></body></html>`;
+
+  test("복원 → 본문·발행일 확보 → 보고서 URL 갱신, 공식 보도자료는 보조 근거로 별도 저장", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const u = String(input);
+      if (u.endsWith("/robots.txt")) return new Response("", { status: 404 });
+      // Google News decoder (as answered for the real link): signature page + batchexecute → publisher URL
+      if (u.startsWith("https://news.google.com/articles/")) return new Response('<c-wiz data-n-a-sg="SIG" data-n-a-ts="1762300000"></c-wiz>', { status: 200 });
+      if (u.startsWith("https://news.google.com/_/DotsSplashUi")) return new Response(')]}\'\n[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"https://www.citybiz.co/article/929035/knapp-establishes-robotics-and-ai-innovation-hub-in-boston/\\",1]",null]]', { status: 200 });
+      if (u.includes("citybiz.co")) return new Response(page("KNAPP Establishes Robotics and AI Innovation Hub", "2026-11-03T15:00:00Z", Array.from({ length: 6 }, (_, i) => `Paragraph ${i + 1}: KNAPP has established a robotics and AI innovation hub in Boston, Massachusetts, and plans to hire 35 engineers over the next years.`)), { status: 200, headers: { "content-type": "text/html" } });
+      if (u.includes("knapp.com")) return new Response(page("KNAPP press", "2026-11-02T08:00:00Z", Array.from({ length: 6 }, (_, i) => `Press ${i + 1}: KNAPP establishes the robotics and AI innovation hub KNAPPRobotics.ai in Boston to accelerate physical AI for logistics.`)), { status: 200, headers: { "content-type": "text/html" } });
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    const a = article({ title: KNAPP_TITLES[0]!, url: KNAPP_GN, viaGoogleNews: true, sourceName: "citybiz", publishedAt: "2026-11-03T21:38:05Z", publishedAtBasis: "Google News 검색 결과 날짜 (원문 미확인)" });
+    addSupportUrl(a, "https://www.knapp.com/en/newsroom/press/knapp-establishes-robotics-and-ai-innovation-hub-in-boston/");
+    const r = await readArticleSource(a);
+    assert.equal(r.trace.bodyStatus, "ok");
+    assert.equal(r.trace.originalUrl, KNAPP_GN);
+    assert.match(a.url, /citybiz\.co/);
+    assert.equal(a.viaGoogleNews, false);
+    assert.equal(a.publishedAt, "2026-11-03T15:00:00.000Z");
+    assert.match(a.publishedAtBasis, /원문 메타데이터/);
+    assert.equal(r.trace.support[0]?.kind, "official_press");
+    assert.equal(r.trace.support[0]?.status, "ok");
+    assert.match(r.supportText, /공식 보도자료/);
+    assert.equal(a.sourceName, "citybiz", "보고서 언론사는 원 기사 기준 (보조 근거로 바뀌지 않음)");
+  });
+
+  test("접속 차단이면 '원문 부족' 사유에 네트워크 차단을 명시 (본문 추출 실패와 구분)", async () => {
+    globalThis.fetch = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
+    const a = article({ title: KNAPP_TITLES[2]!, url: "https://www.citybiz.co/article/929035/x" });
+    const r = await readArticleSource(a);
+    assert.equal(r.trace.bodyStatus, "network_error");
+    const ins = insufficientAnalysis({ level: "title", text: "", chars: 0, url: null, publishedAt: null, publishedAtBasis: null, bodyNote: "접속 실패·네트워크 차단 — fetch failed" });
+    assert.ok(ins.reviewReasons[0]!.includes("네트워크 차단"));
+    assert.ok(ins.reviewReasons[0]!.includes("본문 직접 입력"));
+  });
+
+  test("KNAPP 로보틱스 거점 기사 3건(영문 2 + 국문 1)은 대표 1건만 추천", () => {
+    const ko = row({ id: "irobot", title: "오스트리아 크납, 美 보스턴에 물류산업용 로보틱스 랩 출범", competitors: ["KNAPP"], relevance: 80, reportStatus: "unreviewed" });
+    const en = KNAPP_TITLES.slice(0, 2).map((t, i) => row({ id: `en${i}`, title: t, competitors: ["KNAPP"], relevance: 70 - i, reportStatus: "unreviewed" }));
+    const c = curate([ko, ...en], { target: 12, rejectCount: 5, includeUnverified: false, previous: [] });
+    assert.equal(c.picks.length, 1);
+    assert.equal(c.picks[0]!.articleId, "irobot");
+  });
+});

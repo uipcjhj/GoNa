@@ -6,8 +6,8 @@
 import "server-only";
 import type { Article, ReportAnalysis, Settings, SourceLevel } from "@/lib/types";
 import { GeminiError, generateJSON, geminiConfigured } from "@/lib/ai/gemini";
-import { verifyAndFetch } from "@/lib/pipeline/verify";
 import { TAXONOMY } from "@/lib/weekly/taxonomy";
+import { BODY_STATUS_LABEL, readArticleSource } from "./source";
 import { amountTable, cleanSummaryLines, fixAmountScale, normalizeNumbers, validateSummary } from "./validate";
 
 /** Bump when the prompt or the validation rules change: older results are re-analysed, current ones reused. */
@@ -123,31 +123,17 @@ interface Raw {
   summary_status?: string; summary?: string[]; line_evidence?: string[]; confidence?: string; review_reasons?: string[];
 }
 
-export interface SourceText { level: SourceLevel; text: string; chars: number; url: string | null; publishedAt: string | null; publishedAtBasis: string | null }
+export interface SourceText { level: SourceLevel; text: string; chars: number; url: string | null; publishedAt: string | null; publishedAtBasis: string | null; viaSupport?: boolean; bodyNote?: string }
 
-/** Read the article: direct publisher page body when possible; otherwise title + excerpt only. */
+/** Read the article (Google News links restored, body status recorded); support sources are added as labelled extra text. */
 export async function readSource(a: Article): Promise<SourceText> {
   const excerpt = (a.excerpt ?? "").trim();
-  let body = "";
-  let url: string | null = null;
-  let publishedAt: string | null = null;
-  let basis: string | null = null;
-  if (a.manualBody && a.manualBody.trim().length > 100) {
-    body = a.manualBody.trim(); // 사용자가 직접 붙여넣은 원문 본문
-    url = null;
-  } else if (!a.viaGoogleNews && !/news\.google\.com/.test(a.url)) {
-    for (const timeout of [15000, 30000]) { // one retry with a longer timeout
-      try {
-        const page = await verifyAndFetch(a.url, timeout);
-        if (page.publishedAt) { publishedAt = page.publishedAt; basis = page.publishedAtBasis; }
-        if (page.text && page.text.length > 200) { body = page.text; url = page.verification.finalUrl || a.url; break; }
-        if (page.verification.status === "verified") break; // page read fine, just no article text
-      } catch { /* retry once */ }
-    }
-  }
-  const text = normalizeNumbers([`TITLE: ${a.title}`, excerpt ? `EXCERPT: ${excerpt}` : "", body ? `BODY:\n${body.slice(0, 9000)}` : ""].filter(Boolean).join("\n\n"));
-  const level: SourceLevel = body.length >= 600 ? "body" : excerpt.length >= 100 || body.length > 200 ? "excerpt" : "title";
-  return { level, text, chars: body.length || excerpt.length, url, publishedAt, publishedAtBasis: basis };
+  const r = await readArticleSource(a, { searchAlternatives: true });
+  const body = r.body;
+  const text = normalizeNumbers([`TITLE: ${a.title}`, excerpt ? `EXCERPT: ${excerpt}` : "", body ? `BODY:\n${body.slice(0, 9000)}` : "", r.supportText].filter(Boolean).join("\n\n"));
+  const supportChars = r.supportText.length;
+  const level: SourceLevel = body.length >= 600 || supportChars >= 800 ? "body" : excerpt.length >= 100 || body.length > 200 ? "excerpt" : "title";
+  return { level, text, chars: body.length || supportChars || excerpt.length, url: r.trace.resolvedUrl, publishedAt: null, publishedAtBasis: null, viaSupport: !body && supportChars >= 800, bodyNote: `${BODY_STATUS_LABEL[r.trace.bodyStatus]} — ${r.trace.note}` };
 }
 
 const str = (v: unknown, n = 300) => (typeof v === "string" ? v.trim().slice(0, n) : "");
@@ -218,7 +204,7 @@ export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | n
   if (r.supplier.status === "decided" && !r.supplier.evidence) { r.supplier = { status: "unknown", name: "", evidence: "" }; reasons.push("공급사 확정 근거 없음 → 확인 불가로 변경"); }
   if (r.automation.mentioned && !r.automation.evidence) { r.automation = { mentioned: false, items: [], evidence: "" }; reasons.push("자동화 언급 근거 없음 → 미언급으로 변경"); }
   r.reviewReasons = [...new Set(reasons)];
-  r.autoFixes = scale.fixes;
+  r.autoFixes = [...scale.fixes, ...(src.viaSupport ? ["기사 페이지 본문 대신 보조 근거(공식 보도자료·다른 매체) 본문으로 확인 — 보고서 표기 URL·언론사·발행일은 원 기사 기준"] : [])];
   r.promptRev = PROMPT_REV;
   r.status = !summary.length && !refused ? "insufficient_source" : r.reviewReasons.length ? "needs_review" : "done";
   return r;
@@ -250,7 +236,7 @@ export function failedAnalysis(e: unknown, src: SourceText | null, model: string
 }
 
 export function insufficientAnalysis(src: SourceText): ReportAnalysis {
-  return { ...failedAnalysis(new Error("원문 부족"), src, null), status: "insufficient_source", error: null, reviewReasons: ["원문 본문·발췌를 확보하지 못함 — 제목만으로는 요약하지 않음 (원문 URL 확인 필요)"] };
+  return { ...failedAnalysis(new Error("원문 부족"), src, null), status: "insufficient_source", error: null, reviewReasons: [`원문 본문·발췌를 확보하지 못함${src.bodyNote ? ` (${src.bodyNote})` : ""} — 원문 재시도, 보조 근거 URL 추가 또는 본문 직접 입력`] };
 }
 
 /** Reuse policy (protects the free quota): current-version results are kept; failed / insufficient / old ones may be re-run. */
