@@ -3,6 +3,8 @@ import { periodFromRequest } from "@/lib/weekly/api";
 import { getReport, saveReport, setItem } from "@/lib/weekly/report";
 import type { ReportItem, ReportStatus, WeeklyCategory } from "@/lib/types";
 import { requireAdmin } from "@/lib/session";
+import { getArticle } from "@/lib/db/repo";
+import { REPORT_ANALYSIS_VERSION } from "@/lib/report/factcheck";
 
 const STATUSES: ReportStatus[] = ["unreviewed", "selected", "excluded", "hold"];
 const CATS: WeeklyCategory[] = ["domestic", "global", "competitor", "policy", "tech", "opportunity"];
@@ -39,7 +41,19 @@ export async function POST(req: Request) {
     };
   }
   let report;
-  const approved = typeof body.approved === "boolean" ? body.approved : undefined; // 사용자 최종 승인
-  for (const id of ids) report = await setItem(period, id, { status, category, edits, approved });
+  const approved = typeof body.approved === "boolean" ? body.approved : undefined; // 사용자 최종 승인 (원문 검증 완료와 별도)
+  const approvedFor: Record<string, string> = {};
+  if (approved) {
+    // approval needs a 4-line summary: the user's own edit or the latest Gemini result; remembers which one was approved
+    const cur = await getReport(period);
+    for (const id of ids) {
+      const userSummary = (edits === undefined ? cur.items[id]?.edits : edits)?.summary4?.some((l) => l.trim());
+      const art = await getArticle(id);
+      const ai = art?.report && art.report.version === REPORT_ANALYSIS_VERSION && art.report.summary.length === 4 && art.report.status !== "failed" ? art.report : null;
+      if (!userSummary && !ai) return NextResponse.json({ error: "보고서에 쓸 4줄 요약이 없어 승인할 수 없습니다. Gemini 원문 검증을 완료하거나 요약을 입력하세요." }, { status: 400 });
+      approvedFor[id] = userSummary ? "user" : ai!.analyzedAt;
+    }
+  }
+  for (const id of ids) report = await setItem(period, id, { status, category, edits, approved, approvedFor: approvedFor[id] });
   return NextResponse.json({ ok: true, items: Object.fromEntries(ids.map((id) => [id, report!.items[id]])) });
 }

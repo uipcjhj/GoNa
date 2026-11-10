@@ -73,6 +73,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     const auto = w?.primaryCategory ?? null;
     const ai = a.report && a.report.version === REPORT_ANALYSIS_VERSION ? a.report : null;
     const aiOk = ai && (ai.status === "done" || ai.status === "needs_review") && ai.summary.length === 4 ? ai : null;
+    // a "done" result without a usable 4-line summary is not done (an empty / partial summary never counts as verified)
+    const aiStatus: WeeklyRow["aiStatus"] = ai ? (ai.status === "done" && !aiOk ? "needs_review" : ai.status) : a.report ? "outdated" : "none";
     const aiDetail = ai && ai.status !== "failed" && ai.category.group !== "review" ? { group: ai.category.group, country: ai.category.group === "global" ? ai.category.countryKo || null : null, sub: ai.category.sub } as Omit<DetailCategory, "label"> : null;
     const ds = dateStatus(a);
     const others = a.altSourceIds?.length ? "found" : a.altSearchedAt ? "none" : a.verification.access === "paywall" ? "not_searched" : null;
@@ -94,8 +96,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
       // report summary = validated Gemini result only (rule-generated sentences are never used as a report summary)
       detail: aiDetail ? { ...aiDetail, label: labelOf(aiDetail) } : w?.detail ?? null, judgment: ai && ai.status !== "failed" ? judgmentFromAI(ai, a) : w?.judgment ?? null,
       summary4: aiOk ? aiOk.summary : [], summary4Basis: aiOk ? "ai" : null,
-      detailBasis: aiDetail ? "ai" : "rules", ai, aiStatus: ai ? ai.status : a.report ? "outdated" : "none",
-      gate: gateOf(a, ai, item, ds), approvedAt: item?.approvedAt ?? null, sourceTrace: a.sourceTrace ?? null,
+      detailBasis: aiDetail ? "ai" : "rules", ai, aiStatus,
+      gate: gateOf(a, ai, aiOk, item, ds), approvedAt: approvalOf(item, ai, aiOk).valid ? item!.approvedAt! : null, sourceTrace: a.sourceTrace ?? null,
       order: item?.order ?? null, edits: item?.edits ?? null, image: item?.image ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
       excerpt: a.excerpt, policyNote: w?.policy ? `${w.policy.kind === "law" ? "법령" : w.policy.kind === "enforcement" ? "시행" : w.policy.kind === "government_announcement" ? "정부 발표" : "기타"}${w.policy.effectiveDate ? ` · 시행일 ${w.policy.effectiveDate}` : ""}` : null,
     });
@@ -219,7 +221,16 @@ export function recommend(rows: WeeklyRow[], target: number): string[] {
 const DATE_OK = (d: DateStatus) => d === "verified";
 
 /** Gates for using an article in the company report without warnings. */
-function gateOf(a: Article, ai: ReportAnalysis | null, item: ReportItem | undefined, ds: DateStatus): WeeklyRow["gate"] {
+/** 승인은 '원문 검증 완료'와 별개의 사용자 상태. 유효하려면 ① 요약이 있고(사용자 수정 또는 Gemini 4줄) ② 승인 이후 Gemini 재분석으로 요약이 바뀌지 않아야 한다. */
+export function approvalOf(item: ReportItem | undefined, ai: ReportAnalysis | null, aiOk: ReportAnalysis | null): { valid: boolean; note: string | null } {
+  if (!item?.approvedAt) return { valid: false, note: null };
+  const userSummary = Boolean(item.edits?.summary4?.some((l) => l.trim()));
+  if (!userSummary && !aiOk) return { valid: false, note: "승인 취소됨 — 보고서에 쓸 4줄 요약이 없습니다" };
+  if (!userSummary && item.approvedFor && item.approvedFor !== "user" && ai && item.approvedFor !== ai.analyzedAt) return { valid: false, note: "승인 후 Gemini 재분석으로 요약이 바뀌었습니다 — 다시 확인하고 승인하세요" };
+  return { valid: true, note: null };
+}
+
+function gateOf(a: Article, ai: ReportAnalysis | null, aiOk: ReportAnalysis | null, item: ReportItem | undefined, ds: DateStatus): WeeklyRow["gate"] {
   const problems: string[] = [];
   const edited = Boolean(item?.edits?.summary4?.some(Boolean));
   const aiDone = ai?.status === "done";
@@ -232,8 +243,9 @@ function gateOf(a: Article, ai: ReportAnalysis | null, item: ReportItem | undefi
   if (!linkDirect) problems.push("Google News 경유 링크 — 발행 매체 원문 URL 미확인");
   if (ai && ai.sourceLevel === "excerpt") problems.push("본문 미확보 — 제목·발췌문 기준 분석 (검증 수준 낮음)");
   if (edited && !aiDone) problems.push("요약은 사용자 수정본 사용");
-  const approved = Boolean(item?.approvedAt);
-  return { aiDone, dateVerified: DATE_OK(ds), sourceLevel: ai?.sourceLevel ?? null, linkDirect, approved, problems };
+  const ap = approvalOf(item, ai, aiOk);
+  if (ap.note) problems.push(ap.note);
+  return { aiDone: aiDone && Boolean(aiOk), dateVerified: DATE_OK(ds), sourceLevel: ai?.sourceLevel ?? null, linkDirect, approved: ap.valid, problems };
 }
 
 /** Internal judgment items from the Gemini facts (replaces keyword guesses when available). */

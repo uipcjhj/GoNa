@@ -208,7 +208,8 @@ export interface ReportItem {
   order?: number; // 보고서 순서 (보고서 편집에서 드래그)
   edits?: { titleKo?: string; detailLabel?: string; summary4?: string[]; caption?: string }; // 사용자 수정본 (원본 기사 데이터와 별도 저장)
   image?: ReportImage | null; // PPT 기사 이미지 (출처·사용 조건 기록)
-  approvedAt?: string | null; // 사용자 최종 승인 (보고서에 그대로 사용해도 됨)
+  approvedAt?: string | null; // 사용자 최종 승인 (보고서에 그대로 사용해도 됨) — '원문 검증 완료'와 별도 상태
+  approvedFor?: string | null; // 승인한 내용의 기준: "user"(사용자 수정 요약) 또는 승인 당시 Gemini 분석 시각 — 재분석되면 재승인 필요
 }
 
 // ---------------------------------------------------------------- 원문 복원·본문 추출 기록

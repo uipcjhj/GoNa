@@ -13,6 +13,7 @@ import { AllTab } from "./all-tab";
 import { RejectsTab } from "./rejects-tab";
 import { EditorTab } from "./editor-tab";
 import { ExportTab } from "./export-tab";
+import { revOf } from "@/lib/weekly/effective";
 
 export type Tab = "rec" | "all" | "rejects" | "edit" | "export";
 
@@ -223,7 +224,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
       {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
       {visited.has("rejects") && <div hidden={tab !== "rejects"}><RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} /></div>}
       {visited.has("edit") && !readOnly && <div hidden={tab !== "edit"}><EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} onAnalyzeSelected={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} /></div>}
-      {visited.has("export") && !readOnly && <div hidden={tab !== "export"}><ExportTab pq={pq} selected={selected} onDownload={download} busy={busy} /></div>}
+      {visited.has("export") && !readOnly && <div hidden={tab !== "export"}><ExportTab pq={pq} selected={selected} rev={revOf(rows)} onDownload={download} busy={busy} /></div>}
     </div>
     </ReadOnlyContext.Provider>
   );

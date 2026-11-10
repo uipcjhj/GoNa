@@ -3,6 +3,7 @@
 import type { Curation } from "@/lib/types";
 import type { WeeklyRow } from "./view";
 import { ORDER_ROOM_LABEL, SUPPLIER_LABEL } from "./taxonomy";
+import { effectiveOf } from "./effective";
 
 export interface ExportRow {
   id: string; order: number; label: string; date: string; dateWarning: boolean; title: string; media: string; url: string;
@@ -18,18 +19,17 @@ export const NO_SUMMARY = "[검토 필요] Gemini 원문 검증 요약 없음 �
 
 /** The 4 report lines: the user's edit first, then the validated Gemini summary. Rule-generated text is never used. */
 export function reportLines(r: WeeklyRow): string[] {
-  const src = r.edits?.summary4?.some(Boolean) ? r.edits.summary4 : r.summary4.length === 4 ? r.summary4 : null;
-  if (!src) return [NO_SUMMARY, "", "", ""];
-  return [...src.map((l) => l.trim()), "", "", "", ""].slice(0, 4);
+  const e = effectiveOf(r); // 사용자 수정 > 최신 Gemini (화면·Excel·PPT 공통)
+  return e.source.summary === "none" ? [NO_SUMMARY, "", "", ""] : e.lines;
 }
-export const reportTitle = (r: WeeklyRow) => r.edits?.titleKo || r.titleKo || r.title;
-export const reportLabel = (r: WeeklyRow) => r.edits?.detailLabel || r.detail?.label || "확인 필요";
+export const reportTitle = (r: WeeklyRow) => effectiveOf(r).titleKo;
+export const reportLabel = (r: WeeklyRow) => effectiveOf(r).label;
 
 function base(r: WeeklyRow, order: number): ExportRow {
   const d = dateOf(r);
   return {
     id: r.id, order, label: reportLabel(r), date: d.date, dateWarning: d.warn, title: reportTitle(r), media: r.sourceName, url: r.url,
-    summary: reportLines(r), summaryNote: r.edits?.summary4 ? "사용자 수정" : r.summary4.length === 4 ? (r.aiStatus === "done" ? "Gemini 원문 검증" : "Gemini 요약 — 검토 필요") : "요약 없음 (AI 분석 필요)", isDemo: r.isDemo,
+    summary: reportLines(r), summaryNote: r.edits?.summary4?.some((l) => l.trim()) ? "사용자 수정" : r.summary4.length === 4 ? (r.aiStatus === "done" ? "Gemini 원문 검증" : "Gemini 요약 — 검토 필요") : "요약 없음 (AI 분석 필요)", isDemo: r.isDemo,
     quality: { aiStatus: r.aiStatus, aiDone: r.gate.aiDone, dateVerified: r.gate.dateVerified, sourceLevel: r.gate.sourceLevel, linkDirect: r.gate.linkDirect, approved: r.gate.approved, edited: Boolean(r.edits?.summary4?.some(Boolean)), problems: r.gate.problems },
   };
 }

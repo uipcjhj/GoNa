@@ -11,7 +11,7 @@ import { postJson } from "./parts";
 type DocResp = { doc: ReportDoc; fit: Record<string, FitIssue[]>; render: boolean };
 const SOURCE_LABEL = { article: "원문 기사 이미지", press_release: "보도자료 배포 이미지", official: "기업 공식 이미지", upload: "직접 업로드" } as const;
 
-export function ExportTab({ pq, selected, onDownload, busy }: { pq: Record<string, string>; selected: number; onDownload: (k: "excel" | "pptx" | "both") => void; busy: string | null }) {
+export function ExportTab({ pq, selected, rev, onDownload, busy }: { pq: Record<string, string>; selected: number; rev: string; onDownload: (k: "excel" | "pptx" | "both") => void; busy: string | null }) {
   const [data, setData] = useState<DocResp | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [work, setWork] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function ExportTab({ pq, selected, onDownload, busy }: { pq: Record<strin
       .then((d) => { if (alive) { setData(d); setErr(null); } })
       .catch((e) => { if (alive) setErr(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
-  }, [pqKey, selected, reload]);
+  }, [pqKey, selected, reload, rev]); // rev changes when an analysis / edit / approval changes → preview and exports show the same latest data
 
   async function task(key: string, fn: () => Promise<string | void>) {
     setWork(key);

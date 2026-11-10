@@ -8,13 +8,16 @@ import type { ReportStatus } from "@/lib/types";
 import { allLabels } from "@/lib/weekly/taxonomy";
 import { cn } from "@/lib/utils";
 import { postJson, type PeriodQuery } from "./parts";
+import { baselineOf, dataSignature, editsToSave, effectiveOf, userSummaryDiffersFromGemini } from "@/lib/weekly/effective";
 
 type Draft = { titleKo: string; label: string; lines: string[] };
 
+/** Inputs start from user edit → latest Gemini result (never rule text, never an empty old value over a newer one). */
 function draftOf(r: WeeklyRow): Draft {
-  const lines = r.edits?.summary4?.some(Boolean) ? r.edits.summary4 : r.summary4;
-  return { titleKo: r.edits?.titleKo || r.titleKo || r.title, label: r.edits?.detailLabel || r.detail?.label || "확인 필요", lines: [...(lines ?? []), "", "", "", ""].slice(0, 4) };
+  const e = effectiveOf(r);
+  return { titleKo: e.titleKo, label: e.label, lines: e.lines };
 }
+const SRC_LABEL = { user: "사용자 수정", gemini: "최신 Gemini 분석", rules: "예비 분류(키워드)", none: "없음" } as const;
 
 function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps }: {
   r: WeeklyRow; index: number; total: number; pq: PeriodQuery;
@@ -24,16 +27,19 @@ function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showOrig, setShowOrig] = useState(false);
-  const original = { titleKo: r.titleKo || r.title, label: r.detail?.label || "확인 필요", lines: r.summary4 };
+  const original = baselineOf(r); // 최신 Gemini 값 (사용자 수정과 별도)
+  const eff = effectiveOf(r);
+  const staleEdit = userSummaryDiffersFromGemini(r);
   const dirty = JSON.stringify(d) !== JSON.stringify(draftOf(r));
   const labels = useMemo(() => [...new Set([original.label, d.label, ...allLabels()])], [original.label, d.label]);
+  const toSave = editsToSave(d, r); // only fields that really differ from the latest Gemini values
 
-  async function save(edits: object | null) {
+  async function save(edits: object | null, doneMsg?: string) {
     setSaving(true);
     setMsg(null);
     try {
       await postJson("/api/weekly/item", { ...pq, articleId: r.id, edits });
-      setMsg(edits ? "저장됨" : "원본으로 되돌림");
+      setMsg(doneMsg ?? (edits ? "저장됨" : "원본으로 되돌림"));
       onSaved();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -83,25 +89,34 @@ function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps 
               <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-sky-700">{r.sourceName} · 원문</a>
               <span className={r.dateStatus === "verified" ? "text-slate-500" : "text-amber-700"}>{r.dateStatus === "verified" ? r.kstDate : "발행일 미확인"}</span>
               <button onClick={() => setShowOrig(!showOrig)} className="text-slate-500 underline-offset-2 hover:underline">{showOrig ? "원본 숨기기" : "원본 보기"}</button>
-              {r.edits?.summary4?.some(Boolean) || r.edits?.titleKo ? <span className="text-sky-700">수정본 사용 중</span> : null}
+              {eff.source.summary === "user" || eff.source.title === "user" || eff.source.label === "user" ? <span className="text-sky-700">수정본 사용 중</span> : null}
               <span className={r.gate.aiDone ? "text-sky-700" : "text-amber-700"}>{r.gate.aiDone ? "원문 검증 완료" : r.gate.problems[0] ?? "검토 필요"}</span>
-              <button onClick={async () => { await postJson("/api/weekly/item", { ...pq, articleId: r.id, approved: !r.approvedAt }); onSaved(); }} className={r.approvedAt ? "rounded-lg bg-sky-50 px-2 py-0.5 font-semibold text-sky-700" : "rounded-lg border border-slate-300 px-2 py-0.5 text-slate-600 hover:border-sky-200"}>{r.approvedAt ? "승인됨 ✓" : "최종 승인"}</button>
+              <button disabled={!r.approvedAt && eff.source.summary === "none"} title={eff.source.summary === "none" ? "4줄 요약이 있어야 승인할 수 있습니다" : "원문 검증과 별개로, 이 내용을 보고서에 사용한다는 사용자 승인"}
+                onClick={async () => { setMsg(null); try { await postJson("/api/weekly/item", { ...pq, articleId: r.id, approved: !r.approvedAt }); onSaved(); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); } }}
+                className={cn("rounded-lg px-2 py-0.5 disabled:opacity-40", r.approvedAt ? "bg-sky-50 font-semibold text-sky-700" : "border border-slate-300 text-slate-600 hover:border-sky-200")}>{r.approvedAt ? "승인됨 ✓" : "보고서 사용 승인"}</button>
             </div>
             <div className="flex items-center gap-2">
               {msg && <span className="text-xs text-slate-500">{msg}</span>}
               {r.edits && <button onClick={() => { setD({ titleKo: original.titleKo, label: original.label, lines: [...original.lines, "", "", "", ""].slice(0, 4) }); save(null); }} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-500 hover:bg-slate-100"><RotateCcw className="h-3.5 w-3.5" />원본</button>}
               <button onClick={onRemove} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] text-slate-500 hover:bg-slate-100"><X className="h-3.5 w-3.5" />보고서에서 빼기</button>
-              <button disabled={!dirty || saving} onClick={() => save({ titleKo: d.titleKo, detailLabel: d.label, summary4: d.lines })} className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-brand-ink disabled:opacity-40">
+              <button disabled={!dirty || saving} onClick={() => save(toSave)} className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-brand-ink disabled:opacity-40">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}저장
               </button>
             </div>
           </div>
+          {staleEdit && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+              <span>사용자 수정 요약이 최신 Gemini 분석과 다릅니다. 수정본이 우선 사용 중이며 자동으로 바뀌지 않습니다.</span>
+              <button disabled={saving} onClick={() => save(editsToSave({ ...d, lines: original.lines }, r), "최신 Gemini 요약으로 교체")} className="rounded-lg border border-amber-300 px-2.5 py-1 hover:bg-amber-100">최신 Gemini 요약으로 교체</button>
+            </div>
+          )}
+          {r.approvedAt === null && r.gate.problems.some((p) => p.startsWith("승인")) && <p className="text-[13px] text-amber-700">{r.gate.problems.find((p) => p.startsWith("승인"))}</p>}
           {showOrig && (
             <div className="rounded-lg bg-navy-900/60 p-3 text-[13px] text-slate-600">
-              <div className="mb-1 text-xs text-slate-500">원본 (기사 데이터 · {r.summary4.length ? (r.aiStatus === "done" ? "Gemini 원문 검증 요약" : "Gemini 요약 — 검토 필요") : "요약 없음 — AI 분석 필요"})</div>
+              <div className="mb-1 text-xs text-slate-500">최신 분석 ({r.ai?.analyzedAt ? r.ai.analyzedAt.slice(0, 16).replace("T", " ") : "분석 없음"} · {original.source.summary === "gemini" ? (r.aiStatus === "done" ? "Gemini 원문 검증 요약" : "Gemini 요약 — 검토 필요") : "요약 없음 — AI 분석 필요"}) · 출처: 제목 {SRC_LABEL[eff.source.title]} / 구분 {SRC_LABEL[eff.source.label]} / 요약 {SRC_LABEL[eff.source.summary]}</div>
               <div className="font-medium text-slate-800">{original.titleKo}</div>
               <div className="text-xs">{original.label}</div>
-              <ol className="mt-1 list-decimal pl-5">{original.lines.map((l, i) => <li key={i}>{l}</li>)}</ol>
+              {original.source.summary === "gemini" ? <ol className="mt-1 list-decimal pl-5">{original.lines.map((l, i) => <li key={i}>{l}</li>)}</ol> : <p className="mt-1 text-xs text-amber-700">Gemini 4줄 요약이 없습니다.</p>}
               {r.titleKo && r.titleKo !== r.title && <div className="mt-1 text-xs">원문 제목: {r.title}</div>}
             </div>
           )}
@@ -185,7 +200,7 @@ export function EditorTab({ rows, target, pq, onSet, onRefresh, onAnalyzeSelecte
           if (!r) return null;
           return (
             <EditorItem
-              key={`${id}-${r.edits ? JSON.stringify(r.edits) : "o"}`}
+              key={`${id}-${dataSignature(r)}`}
               r={r}
               index={i}
               total={ids.length}
