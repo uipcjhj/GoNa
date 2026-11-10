@@ -6,6 +6,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Textar
 import { SCORE_CRITERIA } from "@/lib/config/defaults";
 import type { PlannedQuery, Region, Settings, KeywordGroup } from "@/lib/types";
 import type { SystemStatus } from "@/lib/status";
+import { GeminiCheck } from "./gemini-check";
 
 const REGIONS: Region[] = ["North America", "Europe", "Southeast Asia", "Middle East", "Oceania", "East Asia", "South Asia", "Latin America", "Africa", "Other"];
 const splitList = (s: string) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
@@ -72,11 +73,12 @@ export function SettingsForm({ initial, initialQueries, status }: { initial: Set
         <CardContent className="grid gap-x-8 md:grid-cols-2">
           <Row ok label="뉴스 검색 (GDELT)" detail="무료 · API 키 불필요 · 항상 사용" />
           <Row ok={status.gnews} label="GNews (선택)" detail={status.gnews ? "연결됨" : "미연결 — GNEWS_API_KEY 설정 시 추가 소스로 사용"} />
-          <Row ok={status.ai} label="AI 분석 (Claude)" detail={status.ai ? `연결됨 · 모델 ${status.aiModel}` : "미연결 — ANTHROPIC_API_KEY 설정 전까지 규칙 기반 분석(정확도 제한)"} />
+          <Row ok={status.ai} label="AI 분석 (Gemini)" detail={status.ai ? `API 키 설정됨 · 모델 ${status.aiModel}` : "미연결 — GEMINI_API_KEY 설정 전에는 보고서용 4줄 요약을 만들지 않음"} />
           <Row ok={status.supabase} label="데이터베이스 (Supabase)" detail={status.supabase ? "연결됨" : status.storage === "local" ? "미연결 — 로컬 파일(.data/db.json) 사용 중 (개발용)" : "미연결 — 임시 저장소 사용 중, 재배포 시 데이터 소실"} />
           <Row ok={status.cron} label="자동 수집 스케줄러" detail={status.cron ? "CRON_SECRET 설정됨 (vercel.json 매일 실행)" : "미연결 — CRON_SECRET 설정 필요"} />
           <Row ok={status.auth} label="접근 제어" detail={status.auth ? "비밀번호 보호 중" : "꺼짐 — APP_PASSWORD 설정 권장"} />
           {status.ai && <div className="pt-2"><Button size="sm" variant="outline" onClick={reanalyze}>규칙 기반 분석 기사 AI로 재분석</Button></div>}
+          <GeminiCheck />
         </CardContent>
       </Card>
 

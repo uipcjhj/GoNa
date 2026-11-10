@@ -32,13 +32,123 @@ export function CategoryText({ r, className }: { r: WeeklyRow; className?: strin
   return <span className={cn("text-[13px] font-medium", review ? "text-amber-700" : "text-slate-500", className)}>{label}</span>;
 }
 
+const AI_BADGE: Record<WeeklyRow["aiStatus"], { label: string; cls: string }> = {
+  done: { label: "원문 검증 완료", cls: "bg-sky-50 text-sky-700" },
+  needs_review: { label: "사용자 검토 필요", cls: "bg-amber-50 text-amber-700" },
+  insufficient_source: { label: "원문 부족", cls: "bg-amber-50 text-amber-700" },
+  failed: { label: "AI 분석 실패", cls: "bg-red-50 text-red-700" },
+  none: { label: "AI 분석 필요", cls: "bg-slate-100 text-slate-500" },
+  outdated: { label: "재분석 필요", cls: "bg-slate-100 text-slate-500" },
+};
+const TYPE_BADGE = { opportunity: "잠재 수주기회", competitor: "경쟁사 모니터링", trend: "기술·시장동향", exclude: "제외 후보" } as const;
+
 export function Markers({ r }: { r: WeeklyRow }) {
+  const ai = AI_BADGE[r.aiStatus];
+  const type = r.ai && r.ai.reportType ? r.ai.reportType : null;
   return (
     <>
-      {isOpportunity(r) && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">수주기회</span>}
-      {r.detail?.group === "competitor" && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">경쟁사</span>}
+      {type ? (
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", type === "opportunity" ? "bg-sky-100 text-sky-700" : type === "exclude" ? "bg-slate-100 text-slate-500" : "bg-slate-100 text-slate-600")}>{TYPE_BADGE[type]}</span>
+      ) : (
+        <>
+          {isOpportunity(r) && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-700">수주기회</span>}
+          {r.detail?.group === "competitor" && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">경쟁사</span>}
+        </>
+      )}
+      {!r.isDemo && r.analysis !== "pending" && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", ai.cls)}>{ai.label}</span>}
+      {r.detailBasis === "rules" && r.detail && <span className="text-xs text-slate-400">예비 분류</span>}
+      {r.approvedAt && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">승인됨</span>}
     </>
   );
+}
+
+const SOURCE_LEVEL = { body: "기사 본문", excerpt: "제목·발췌문만 (본문 미확보)", title: "제목만" } as const;
+const PURPOSE = { facility_capex: "시설 투자비", funding_round: "투자유치(펀딩)", acquisition: "인수 금액", total_program: "전체 투자계획", other: "기타", none: "—" } as Record<string, string>;
+const STAGE = { planned: "계획", approved: "승인", under_construction: "착공·건설 중", completed_operating: "준공·가동", organisation: "조직 신설", announcement: "발표", other: "기타" } as Record<string, string>;
+const FACILITY = { production_plant: "생산공장", warehouse_dc: "물류센터·창고", rnd_center: "연구소·기술센터", office_org: "조직·법인·사무소", product: "제품·광고", policy: "정책", other: "기타", none: "—" } as Record<string, string>;
+
+function Quote({ q }: { q: string }) {
+  return q ? <q className="mt-0.5 block text-xs italic leading-snug text-slate-500">{q}</q> : <span className="mt-0.5 block text-xs text-slate-400">원문 근거 구절 없음</span>;
+}
+
+/** Gemini facts with the verbatim source quote behind each one. */
+export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => void }) {
+  const a = r.ai;
+  const readOnly = useReadOnly();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function run(kind: "reanalyze" | "approve" | "unapprove") {
+    setBusy(kind);
+    setMsg(null);
+    try {
+      if (kind === "reanalyze") {
+        const d = await postJson("/api/weekly/reanalyze", { articleId: r.id });
+        setMsg(`재분석 결과: ${d.status === "done" ? "원문 검증 완료" : d.status === "needs_review" ? "검토 필요" : d.status === "insufficient_source" ? "원문 부족" : `실패 — ${d.error ?? ""}`}`);
+      } else await postJson("/api/weekly/item", { ...periodOf(), articleId: r.id, approved: kind === "approve" });
+      onRefresh();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-slate-900">Gemini 원문 검증 {a?.model ? <span className="font-normal text-slate-500">({a.model} · {a.analyzedAt.slice(0, 10)})</span> : null}</h4>
+        {!readOnly && !r.isDemo && (
+          <div className="flex gap-1.5">
+            {(r.aiStatus !== "done" || !a) && <button disabled={!!busy} onClick={() => run("reanalyze")} className="rounded-lg border border-slate-300 px-2.5 py-1 text-[13px] text-slate-700 hover:border-sky-200 disabled:opacity-50">{busy === "reanalyze" ? "분석 중…" : a ? "이 기사만 재분석" : "이 기사 AI 분석"}</button>}
+            {r.approvedAt
+              ? <button disabled={!!busy} onClick={() => run("unapprove")} className="rounded-lg border border-slate-300 px-2.5 py-1 text-[13px] text-slate-600 disabled:opacity-50">승인 취소</button>
+              : <button disabled={!!busy || (!r.summary4.length && !r.edits?.summary4?.some(Boolean))} onClick={() => run("approve")} className="rounded-lg bg-brand px-2.5 py-1 text-[13px] font-semibold text-brand-ink disabled:opacity-40">보고서 사용 승인</button>}
+          </div>
+        )}
+      </div>
+      {msg && <p className="mb-2 text-[13px] text-sky-700">{msg}</p>}
+      {r.gate.problems.length > 0 && (
+        <ul className="mb-2 space-y-0.5 rounded-lg bg-amber-50 p-2.5 text-[13px] text-amber-800">{r.gate.problems.map((p) => <li key={p}>• {p}</li>)}</ul>
+      )}
+      {!a ? (
+        <p className="text-[13px] text-slate-500">아직 Gemini 원문 검증 분석을 하지 않았습니다. 규칙 기반 문장은 보고서 요약으로 쓰지 않습니다.</p>
+      ) : a.status === "failed" || a.status === "insufficient_source" ? (
+        <p className="text-[13px] text-slate-500">{a.reviewReasons.join(" · ")}</p>
+      ) : (
+        <>
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+            <Fact k="원문 확보 수준" v={`${SOURCE_LEVEL[a.sourceLevel]}${a.sourceChars ? ` · ${a.sourceChars.toLocaleString()}자` : ""}`} warn={a.sourceLevel !== "body"} />
+            <Fact k="보고 유형" v={a.reportType ? TYPE_BADGE[a.reportType] : "—"} />
+            <Fact k="기업" v={<>{a.company.value || "—"}<Quote q={a.company.evidence} /></>} />
+            <Fact k="프로젝트 소재지" v={<>{[a.location.countryKo || a.location.country, a.location.city].filter(Boolean).join(" ") || "원문 미기재"}<Quote q={a.location.evidence} /></>} />
+            <Fact k="시설 유형" v={<>{FACILITY[a.facility.kind] ?? a.facility.kind}{a.facility.type ? ` · ${a.facility.type}` : ""}<Quote q={a.facility.evidence} /></>} />
+            <Fact k="추진 단계" v={<>{STAGE[a.stage.value] ?? a.stage.value}<Quote q={a.stage.evidence} /></>} />
+            <Fact k="금액 · 용도" v={<>{a.investment.amount ? `${a.investment.amount} (${PURPOSE[a.investment.purpose] ?? a.investment.purpose})` : "원문에 금액 없음"}{a.investment.amount && <Quote q={a.investment.evidence} />}</>} warn={a.investment.purpose === "funding_round"} />
+            <Fact k="일정" v={<>{a.schedule.value || "원문 미기재"}{a.schedule.value && <Quote q={a.schedule.evidence} />}</>} />
+            <Fact k="자동화 설비 언급" v={<>{a.automation.mentioned ? a.automation.items.join(", ") || "언급 있음" : "원문에 언급 없음"}{a.automation.mentioned && <Quote q={a.automation.evidence} />}</>} />
+            <Fact k="자동화 공급사" v={<>{a.supplier.status === "decided" ? `확정: ${a.supplier.name}` : a.supplier.status === "undecided" ? "미확정 (입찰·선정 예정)" : "원문 미기재"}{a.supplier.status !== "unknown" && <Quote q={a.supplier.evidence} />}{a.constructionCompany && <span className="block text-xs text-slate-500">시공사 {a.constructionCompany} (자동화 공급사와 별개)</span>}</>} />
+          </dl>
+          {a.summary.length === 4 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[13px] text-slate-600">요약 줄별 원문 근거 보기</summary>
+              <ol className="mt-2 space-y-2 text-sm text-slate-800">
+                {a.summary.map((l, i) => <li key={i}>{l}{i < 3 ? <Quote q={a.lineEvidence[i] ?? ""} /> : <span className="block text-xs text-slate-400">시사점 (분석가 판단)</span>}</li>)}
+              </ol>
+            </details>
+          )}
+          {a.reviewReasons.length > 0 && <p className="mt-2 text-xs text-amber-700">검토 사유: {a.reviewReasons.join(" · ")}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Period of the current weekly page (from the URL) for item updates made inside shared parts. */
+function periodOf(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const q = new URLSearchParams(window.location.search);
+  const out: Record<string, string> = {};
+  for (const k of ["p", "w", "start", "end"]) { const v = q.get(k); if (v) out[k] = v; }
+  return Object.keys(out).length ? out : { w: "-1" };
 }
 
 export function DateMeta({ r }: { r: WeeklyRow }) {
@@ -130,15 +240,17 @@ export function ArticleDetail({ r, reasons, rejectReason, onRefresh }: { r: Week
       <section>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-slate-900">보고서 요약 (4줄)</h4>
-          <span className={cn("text-xs", r.summary4Basis === "ai" ? "text-sky-700" : "text-amber-700")}>
-            {r.edits?.summary4 ? "사용자 수정본" : r.summary4Basis === "ai" ? "AI 요약" : r.summary4Basis ? "규칙 기반 (제목·발췌 근거 — 검토 필요)" : "미분석"}
+          <span className={cn("text-xs", r.aiStatus === "done" ? "text-sky-700" : "text-amber-700")}>
+            {r.edits?.summary4?.some(Boolean) ? "사용자 수정본" : r.summary4.length ? (r.aiStatus === "done" ? "Gemini 원문 검증 요약" : "Gemini 요약 — 검토 필요") : "요약 없음"}
           </span>
         </div>
         <ol className="space-y-1 rounded-lg bg-navy-900/60 p-3 text-sm leading-relaxed text-slate-800">
-          {(lines ?? []).length ? lines!.map((l, i) => <li key={i}>{l}</li>) : <li className="text-slate-500">요약 없음 (미분석)</li>}
+          {(lines ?? []).length ? lines!.map((l, i) => <li key={i}>{l}</li>) : <li className="text-slate-500">Gemini 원문 검증 요약이 없습니다 (AI 분석 필요). 키워드로 만든 문장은 보고서에 쓰지 않습니다.</li>}
         </ol>
-        {j?.basis === "title_only" && <p className="mt-1.5 text-xs text-amber-700">원문 본문을 확보하지 못해 제목·발췌문으로 확인 가능한 내용만 요약했습니다.</p>}
+        {r.ai?.sourceLevel === "excerpt" && r.summary4.length > 0 && <p className="mt-1.5 text-xs text-amber-700">기사 본문을 읽지 못해 제목·발췌문으로 확인되는 내용만 요약했습니다 (검증 수준 낮음).</p>}
       </section>
+
+      <AiEvidence r={r} onRefresh={onRefresh} />
 
       {(reasons?.length || rejectReason) && (
         <section>
@@ -150,7 +262,7 @@ export function ArticleDetail({ r, reasons, rejectReason, onRefresh }: { r: Week
 
       {j && (
         <section>
-          <h4 className="mb-2 text-sm font-semibold text-slate-900">수주기회 판단 <span className="font-normal text-slate-500">({j.basis === "body" ? "원문 근거" : "제목·발췌 근거"} · 추정 포함)</span></h4>
+          <h4 className="mb-2 text-sm font-semibold text-slate-900">수주기회 판단 <span className="font-normal text-slate-500">({r.ai && r.ai.status !== "failed" ? "Gemini 원문 분석 기반" : "키워드 예비 판단 — 확정 아님"} · 추정 포함)</span></h4>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
             <Fact k="현대무벡스 수주 가능성" v={LEVEL_LABEL[j.winPotential]} />
             <Fact k="신규 프로젝트" v={j.isNewProject === null ? "미확인" : j.isNewProject ? "예" : "아니오"} />
@@ -184,7 +296,7 @@ export function ArticleDetail({ r, reasons, rejectReason, onRefresh }: { r: Week
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
           <Fact k="업계동향 관련도" v={r.relevance ?? "미분석"} />
           <Fact k="수주기회 점수" v={r.oppScore != null ? `${r.oppScore}${r.oppPriority ? ` · ${r.oppPriority}` : ""}` : "—"} />
-          <Fact k="분석" v={r.analysis === "ai" ? "AI 분석" : r.analysis === "rules" ? "규칙 기반" : r.analysis === "demo" ? "DEMO" : "미분석"} />
+          <Fact k="보고서 분석" v={AI_BADGE[r.aiStatus].label} warn={r.aiStatus !== "done"} />
         </dl>
         {r.relevanceBreakdown && (
           <details className="mt-2">

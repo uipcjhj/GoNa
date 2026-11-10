@@ -78,6 +78,10 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
       return `추천 기사 ${d.selected}건을 보고서에 선정했습니다. '보고서 편집'에서 순서와 문구를 확인하세요.`;
     });
   async function download(kind: "excel" | "pptx" | "both" | "analysis") {
+    // warn before exporting articles that are not verified (AI analysis, publication date, source, user approval)
+    const doc = await postJson("/api/weekly/report-doc", pq).catch(() => null);
+    const bad = ((doc?.doc?.items ?? []) as { order: number; title: string; quality: { problems: string[]; approved: boolean } }[]).filter((a) => a.quality.problems.length || !a.quality.approved);
+    if (bad.length && !window.confirm(`검증되지 않은 선정 기사 ${bad.length}건이 있습니다.\n\n${bad.slice(0, 8).map((a) => `${a.order}. ${a.title.slice(0, 40)} — ${a.quality.problems[0] ?? "사용자 승인 전"}`).join("\n")}${bad.length > 8 ? `\n… 외 ${bad.length - 8}건` : ""}\n\n그래도 내려받을까요? (요약이 없는 기사는 '[검토 필요]'로 표시됩니다)`)) return;
     await act(kind, async () => {
       const files: ("excel" | "pptx" | "analysis")[] = kind === "both" ? ["excel", "pptx"] : [kind];
       for (const f of files) await downloadReport(f, pq);
@@ -87,7 +91,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
 
   const kpis = [
     { label: "수집 기사", value: view.counts.collected, sub: `분석 ${rows.filter((r) => r.analysis !== "pending").length}건` },
-    { label: "AI 추천", value: view.curation.picks.length, sub: `기준 ${view.target}건`, accent: true },
+    { label: "AI 추천", value: view.curation.picks.length, sub: (view.curation.shortfall ?? 0) > 0 ? `기준 ${view.target}건 · ${view.curation.shortfall}건 부족 (억지로 채우지 않음)` : `기준 ${view.target}건`, accent: true },
     { label: "보고서 선정", value: selected, sub: selected === view.target ? "기준 충족" : `기준 ${view.target}건` },
     { label: "후보 탈락", value: view.curation.rejects.length, sub: "참고 기사" },
     { label: "확인 필요", value: view.curation.needsCheck.length, sub: "발행일·구분 미확인", warn: view.curation.needsCheck.length > 0 },
@@ -168,7 +172,8 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
             {menu === "more" && (
               <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="분류 다시 적용 (무료)" desc="새 분류체계·판단 규칙을 저장된 기사에 적용합니다. 원문 링크·발행일·선정 상태는 그대로 유지되며 AI를 호출하지 않습니다." onClick={() => regenerate()} />
-                <MenuItem icon={<Sparkles className="h-4 w-4" />} title={view.ai ? "AI 분석 (추천 후보만)" : "AI 분석 (AI 미연결 — 규칙 기반)"} desc={view.ai ? "미분석·규칙 기반 기사 중 관련도 상위 후보만 AI로 분석해 사용량을 아낍니다." : "GEMINI_API_KEY 또는 ANTHROPIC_API_KEY가 없어 규칙 기반으로 분류합니다."} onClick={() => startJob("analyze", "/api/weekly/analyze", {}, view.ai ? "AI 분석" : "규칙 기반 분류")} />
+                <MenuItem icon={<Sparkles className="h-4 w-4" />} title="Gemini 원문 검증 분석 (보고서 후보만)" desc="선정 기사·관련도 상위 후보의 원문을 읽고 사실·근거·4줄 요약을 만듭니다. 이미 분석된 기사는 재사용해 무료 사용량을 아낍니다." onClick={() => startJob("analyze", "/api/weekly/analyze", {}, "Gemini 원문 검증 분석")} />
+                <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="실패·원문 부족 기사만 재분석" desc="AI 분석 실패 또는 원문 부족으로 끝난 기사만 다시 분석합니다." onClick={() => startJob("analyze", "/api/weekly/analyze", { retryFailed: true }, "실패 기사 재분석")} />
               </div>
             )}
           </div>
@@ -177,7 +182,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
       </header>
 
       {msg && <div role="status" className={cn("rounded-lg px-4 py-2.5 text-sm", msg.error ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-800")}>{msg.text}</div>}
-      {!view.ai && !readOnly && <p className="text-[13px] text-amber-700">AI 미연결 — 구분·판단·4줄 요약은 규칙 기반(제목·발췌 근거)입니다. 보고서 편집에서 문장을 검토하세요.</p>}
+      {!view.ai && !readOnly && <p className="text-[13px] text-amber-700">Gemini 미연결 — 보고서용 4줄 요약을 만들지 않습니다 (키워드 기반 문장은 보고서에 쓰지 않음). .env.local에 GEMINI_API_KEY를 설정한 뒤 ‘Gemini 원문 검증 분석’을 실행하세요.</p>}
 
       {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="요약 지표">

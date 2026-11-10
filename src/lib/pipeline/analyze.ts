@@ -13,10 +13,12 @@ import { MOVEX_SOLUTIONS, PROJECT_STAGES } from "@/lib/config/defaults";
 import { canonicalCountry, regionOf } from "@/lib/config/countries";
 import { containsAny, isUnknown } from "@/lib/util/text";
 import { computeScore } from "./scoring";
+import { normalizeNumbers } from "@/lib/report/validate";
+import { GeminiError, currentModelName, generateJSON, geminiStats } from "@/lib/ai/gemini";
 import type { Analysis, ArticleCategory, HistoryEventType, ScoreBreakdown, Settings, SourceType } from "@/lib/types";
 
 export const aiConfigured = () => Boolean(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
-export const aiModel = () => process.env.GEMINI_API_KEY ? (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite") : (process.env.ANTHROPIC_MODEL || "claude-opus-5-5");
+export const aiModel = () => process.env.GEMINI_API_KEY ? currentModelName() : (process.env.ANTHROPIC_MODEL || "claude-opus-5-5");
 
 export interface AnalysisInput {
   title: string;
@@ -151,38 +153,15 @@ export async function analyzeWithAI(input: AnalysisInput, settings: Settings): P
 
   let o: z.infer<typeof AnalysisSchema>;
   if (process.env.GEMINI_API_KEY) {
-    // Gemini Developer API, free-tier compatible. No billing upgrade or paid fallback.
-    // Do not pass the secret in a URL, log it, or expose it to client components.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 40_000);
-    try {
-      const response = await fetch(
-        `${process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"}/v1beta/models/${encodeURIComponent(aiModel())}:generateContent`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
-          signal: controller.signal,
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM + "\nReturn exactly one valid JSON object. All keys defined by the requested schema must be present; no markdown or prose outside JSON." }] },
-            contents: [{ role: "user", parts: [{ text: body + "\n\nReturn a JSON object with ALL of these fields and their documented types. Do not add fields:\n" + JSON.stringify(z.toJSONSchema(AnalysisSchema)) }] }],
-            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 12000, temperature: 0.1 },
-          }),
-        }
-      );
-      if (!response.ok) {
-        // Free-tier exhaustion is a clean error; never silently switch to a paid provider.
-        const reason = response.status === 429 ? "Gemini 무료 API 사용량 또는 호출 속도 제한 초과" :
-          response.status === 403 ? "Gemini API 접근 권한 또는 무료 등급 설정 확인 필요" :
-          `Gemini API HTTP ${response.status}`;
-        throw new Error(reason);
-      }
-      const json = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-      const raw = json.candidates?.[0]?.content?.parts?.map(p => p.text ?? "").join("") ?? "";
-      if (!raw) throw new Error("Gemini returned an empty response");
-      o = AnalysisSchema.parse(JSON.parse(raw));
-    } finally {
-      clearTimeout(timeout);
-    }
+    // Gemini Developer API (free tier). Model is verified via ListModels; errors are classified (see lib/ai/gemini).
+    const r = await generateJSON<unknown>({
+      system: SYSTEM + "\nReturn exactly one valid JSON object. All keys defined by the requested schema must be present; no markdown or prose outside JSON.",
+      user: body + "\n\nReturn a JSON object with ALL of these fields and their documented types. Do not add fields:\n" + JSON.stringify(z.toJSONSchema(AnalysisSchema)),
+      maxOutputTokens: 12000,
+    });
+    const parsed = AnalysisSchema.safeParse(r.data);
+    if (!parsed.success) throw new GeminiError("parse", 200, `필드 누락: ${parsed.error.issues.slice(0, 3).map((x) => x.path.join(".")).join(", ")}`);
+    o = parsed.data;
   } else {
     const res = await client!.messages.parse({
       model: aiModel(),
@@ -315,8 +294,8 @@ function guessCompany(rawTitle: string): string {
 }
 
 export function analyzeWithRules(input: AnalysisInput, settings: Settings): Analysis {
-  const text = `${input.title}\n${input.description ?? ""}\n${input.text ?? ""}`;
-  const head = `${input.title} ${input.description ?? ""}`;
+  const text = normalizeNumbers(`${input.title}\n${input.description ?? ""}\n${input.text ?? ""}`);
+  const head = normalizeNumbers(`${input.title} ${input.description ?? ""}`);
   const rule = FACILITY_RULES.find((r) => r.re.test(head)) ?? FACILITY_RULES.find((r) => r.re.test(text));
 
   const korean = /[가-힣]/.test(input.title);
@@ -420,12 +399,17 @@ export function analyzeWithRules(input: AnalysisInput, settings: Settings): Anal
 
 export async function analyzeArticle(input: AnalysisInput, settings: Settings): Promise<{ analysis: Analysis; warning: string | null; weeklyAI?: WeeklyAIRaw }> {
   if (!aiConfigured()) return { analysis: analyzeWithRules(input, settings), warning: null };
+  // circuit breaker: after a key / permission / model / daily-quota error, stop calling Gemini for 15 minutes
+  const last = process.env.GEMINI_API_KEY ? geminiStats().lastError : null;
+  if (last && ["auth", "permission", "model_not_found", "quota_daily", "not_configured"].includes(last.kind) && Date.now() - Date.parse(last.at) < 15 * 60_000) {
+    return { analysis: analyzeWithRules(input, settings), warning: `Gemini 사용 불가 (${last.message}) — 수주기회 점수만 규칙 기반으로 계산 (보고서 요약은 만들지 않음)` };
+  }
   try {
     const r = await analyzeWithAI(input, settings);
     return { analysis: r.analysis, weeklyAI: r.weekly, warning: null };
   } catch (e) {
     const msg = e instanceof Anthropic.APIError ? `Anthropic API ${e.status ?? ""}: ${e.message}` : e instanceof Error ? e.message : String(e);
     // fail soft: keep the pipeline running with rules, but report the AI error
-    return { analysis: analyzeWithRules(input, settings), warning: `AI 분석 실패 → 규칙 기반 대체: ${msg.slice(0, 200)}` };
+    return { analysis: analyzeWithRules(input, settings), warning: `AI 분석 실패 (${msg.slice(0, 200)}) — 수주기회 점수만 규칙 기반, 보고서 요약은 만들지 않음` };
   }
 }

@@ -8,8 +8,10 @@ import { dateStatus, weeklyRules } from "./classify";
 import { withV2 } from "./taxonomy";
 import { daysOf, type Period } from "./period";
 import { getReport, previousReports, saveReport } from "./report";
-import { curate } from "./curate";
-import type { AccessType, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportItem, ReportStatus, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
+import { CURATION_VERSION, curate } from "./curate";
+import type { AccessType, Article, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportAIStatus, ReportAnalysis, ReportItem, ReportStatus, SourceLevel, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
+import { REPORT_ANALYSIS_VERSION } from "@/lib/report/factcheck";
+import { labelOf } from "./taxonomy";
 
 export interface WeeklyRow {
   id: string; url: string; title: string; titleKo: string | null; sourceName: string; sourceType: SourceType;
@@ -23,6 +25,14 @@ export interface WeeklyRow {
   reportStatus: ReportStatus; recommended: boolean; isDemo: boolean; dupGroup: string | null; excerpt: string | null; policyNote: string | null;
   detail: DetailCategory | null; judgment: WeeklyJudgment | null; summary4: string[]; summary4Basis: WeeklyAnalysis["summary4Basis"] | null;
   order: number | null; edits: ReportItem["edits"] | null; image: ReportItem["image"] | null; sourceDomain: string; publishedAtBasis: string; competitorChecks: { name: string; confirmed: boolean; note: string }[];
+  /** detail category basis: "ai" = Gemini 원문 검증, "rules" = 키워드 예비 분류 (보고서 확정 전) */
+  detailBasis: "ai" | "rules";
+  /** Gemini report analysis (null = not analysed with the current version) */
+  ai: ReportAnalysis | null;
+  aiStatus: ReportAIStatus | "none" | "outdated";
+  /** report gates — all must pass (or the user approves) before an article goes into Excel/PPT without a warning */
+  gate: { aiDone: boolean; dateVerified: boolean; sourceLevel: SourceLevel | null; linkDirect: boolean; approved: boolean; problems: string[] };
+  approvedAt: string | null;
 }
 
 export interface WeeklyView {
@@ -59,10 +69,13 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     const w = a.status !== "analyzed" ? null : a.weekly?.mode === "ai" ? withV2(a, a.weekly, opp) : { ...weeklyRules(a, settings, opp), ...(a.weekly?.summaryLines.length ? { summaryLines: a.weekly.summaryLines } : {}) };
     const item = report.items[a.id];
     const auto = w?.primaryCategory ?? null;
+    const ai = a.report && a.report.version === REPORT_ANALYSIS_VERSION ? a.report : null;
+    const aiOk = ai && (ai.status === "done" || ai.status === "needs_review") && ai.summary.length === 4 ? ai : null;
+    const aiDetail = ai && ai.status !== "failed" && ai.category.group !== "review" ? { group: ai.category.group, country: ai.category.group === "global" ? ai.category.countryKo || null : null, sub: ai.category.sub } as Omit<DetailCategory, "label"> : null;
     const ds = dateStatus(a);
     const others = a.altSourceIds?.length ? "found" : a.altSearchedAt ? "none" : a.verification.access === "paywall" ? "not_searched" : null;
     rows.push({
-      id: a.id, url: a.url, title: a.title, titleKo: w?.titleKo ?? null, sourceName: a.sourceName, sourceType: a.sourceType,
+      id: a.id, url: a.url, title: a.title, titleKo: ai?.titleKo || w?.titleKo || null, sourceName: a.sourceName, sourceType: a.sourceType,
       publishedAt: a.publishedAt, dateStatus: ds, dateBasis: a.publishedAtBasis, kstDate: a.publishedAt ? localDateStr(a.publishedAt, tz) : null,
       inPeriod: inP(a.publishedAt), eventDate: w?.eventDate ?? a.analysis?.eventDate ?? null, reReport: Boolean(a.analysis?.flags.reReport),
       country: w?.country ?? a.analysis?.country ?? "Unknown", industry: w?.industry ?? a.analysis?.industry ?? "Unknown",
@@ -76,7 +89,11 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
       competitors: a.competitors, competitorNotes: (w?.competitorChecks ?? []).filter((c) => !c.confirmed).map((c) => `${c.name}: ${c.note}`),
       competitorActivity: a.analysis?.competitorActivity ?? "",
       reportStatus: item?.status ?? "unreviewed", recommended: Boolean(item?.recommended), isDemo: a.isDemo, dupGroup: null,
-      detail: w?.detail ?? null, judgment: w?.judgment ?? null, summary4: w?.summary4 ?? [], summary4Basis: w?.summary4Basis ?? null,
+      // report summary = validated Gemini result only (rule-generated sentences are never used as a report summary)
+      detail: aiDetail ? { ...aiDetail, label: labelOf(aiDetail) } : w?.detail ?? null, judgment: ai && ai.status !== "failed" ? judgmentFromAI(ai, a) : w?.judgment ?? null,
+      summary4: aiOk ? aiOk.summary : [], summary4Basis: aiOk ? "ai" : null,
+      detailBasis: aiDetail ? "ai" : "rules", ai, aiStatus: ai ? ai.status : a.report ? "outdated" : "none",
+      gate: gateOf(a, ai, item, ds), approvedAt: item?.approvedAt ?? null,
       order: item?.order ?? null, edits: item?.edits ?? null, image: item?.image ?? null, sourceDomain: a.sourceDomain, publishedAtBasis: a.publishedAtBasis, competitorChecks: w?.competitorChecks ?? [],
       excerpt: a.excerpt, policyNote: w?.policy ? `${w.policy.kind === "law" ? "법령" : w.policy.kind === "enforcement" ? "시행" : w.policy.kind === "government_announcement" ? "정부 발표" : "기타"}${w.policy.effectiveDate ? ` · 시행일 ${w.policy.effectiveDate}` : ""}` : null,
     });
@@ -86,6 +103,12 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
   const groups = new Map<string, Set<string>>();
   const add = (k: string, id: string) => { if (!groups.has(k)) groups.set(k, new Set()); groups.get(k)!.add(id); };
   for (const r of rows) if (r.opportunityId) add(`opp:${r.opportunityId}`, r.id);
+  // same project per Gemini facts: company + project site (+ amount when stated)
+  for (const r of rows) {
+    const f = r.ai && r.ai.status !== "failed" ? r.ai : null;
+    if (!f || !f.company.value || !["production_plant", "warehouse_dc", "rnd_center"].includes(f.facility.kind)) continue;
+    add(`ai:${f.company.value.toLowerCase().replace(/[^a-z0-9가-힣]/g, "")}|${f.location.countryKo || f.location.country}|${f.investment.amount ? f.investment.amount.replace(/\s/g, "").toLowerCase() : f.location.city.toLowerCase()}`, r.id);
+  }
   for (const a of arts) if (a.status === "duplicate" && a.duplicateOf && rows.some((r) => r.id === a.duplicateOf)) add(`dup:${a.duplicateOf}`, a.duplicateOf);
   // same story from different outlets: near-identical titles, or the same key figure (e.g. "420억원") with overlapping words
   const titles = rows.map((r) => ({ id: r.id, t: normalizeTitle(r.titleKo ?? r.title), nums: storyNumbers(`${r.title} ${r.titleKo ?? ""}`) }));
@@ -115,7 +138,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
 
   // weekly curation: computed once per period and saved (recomputed on request via "AI 추천 다시 생성")
   const target = Math.max(5, Math.min(30, settings.weekly.recommendCount || 12));
-  let curation = report.curation ?? null;
+  // saved curations from older rules (rule-summary era) are discarded and recomputed — no stale recommendations
+  let curation = report.curation && report.curation.version === CURATION_VERSION ? report.curation : null;
   if (!report.v2) {
     // one-time migration: release v1 automatic picks the user never touched (manual choices and edits are kept)
     let released = 0;
@@ -182,4 +206,47 @@ export function recommend(rows: WeeklyRow[], target: number): string[] {
   }
   for (const r of cands) { if (picked.length >= target) break; take(r); } // fill with best remaining; never pad with irrelevant items
   return picked.map((r) => r.id);
+}
+
+const DATE_OK = (d: DateStatus) => d === "verified";
+
+/** Gates for using an article in the company report without warnings. */
+function gateOf(a: Article, ai: ReportAnalysis | null, item: ReportItem | undefined, ds: DateStatus): WeeklyRow["gate"] {
+  const problems: string[] = [];
+  const edited = Boolean(item?.edits?.summary4?.some(Boolean));
+  const aiDone = ai?.status === "done";
+  if (!ai) problems.push(a.report ? "이전 버전 분석 — Gemini 재분석 필요" : "Gemini 원문 검증 분석 전 (AI 분석 필요)");
+  else if (ai.status === "failed") problems.push(`AI 분석 실패: ${ai.error?.message ?? ""}`);
+  else if (ai.status === "insufficient_source") problems.push("원문 부족 — 본문·발췌를 읽지 못함");
+  else if (ai.status === "needs_review") problems.push(`사용자 검토 필요: ${ai.reviewReasons.slice(0, 2).join("; ")}`);
+  if (!DATE_OK(ds)) problems.push("발행일 미확인 (원문 메타데이터로 확인되지 않음)");
+  const linkDirect = !a.viaGoogleNews && !/news\.google\.com/.test(a.url);
+  if (!linkDirect) problems.push("Google News 경유 링크 — 발행 매체 원문 URL 미확인");
+  if (ai && ai.sourceLevel === "excerpt") problems.push("본문 미확보 — 제목·발췌문 기준 분석 (검증 수준 낮음)");
+  if (edited && !aiDone) problems.push("요약은 사용자 수정본 사용");
+  const approved = Boolean(item?.approvedAt);
+  return { aiDone, dateVerified: DATE_OK(ds), sourceLevel: ai?.sourceLevel ?? null, linkDirect, approved, problems };
+}
+
+/** Internal judgment items from the Gemini facts (replaces keyword guesses when available). */
+function judgmentFromAI(ai: ReportAnalysis, _a: Article): WeeklyJudgment {
+  void _a;
+  const facility = ["production_plant", "warehouse_dc"].includes(ai.facility.kind);
+  const early = ["planned", "approved", "under_construction"].includes(ai.stage.value);
+  const completed = ai.stage.value === "completed_operating";
+  const isNewProject = facility && early ? true : completed ? false : null;
+  const supplierStatus: WeeklyJudgment["supplierStatus"] = ai.supplier.status === "decided" ? "decided" : ai.supplier.status === "undecided" ? "undecided" : isNewProject && !ai.automation.mentioned ? "order_unconfirmed" : "unknown";
+  return {
+    winPotential: ai.reportType === "opportunity" ? ai.orderPotential : "low",
+    isNewProject,
+    completed,
+    supplierStatus,
+    supplierNote: ai.supplier.name ? `${ai.supplier.name}${ai.supplier.evidence ? " (원문 명시)" : ""}` : ai.constructionCompany ? `시공사 ${ai.constructionCompany} — 자동화 공급사와 별개` : "원문에 자동화 공급사 언급 없음",
+    orderRoom: completed || ai.supplier.status === "decided" ? "no" : ai.reportType === "opportunity" && isNewProject ? "yes" : "unknown",
+    directRelevance: ai.reportType === "opportunity" || ai.reportType === "competitor" ? "high" : ai.reportType === "trend" ? "medium" : "low",
+    competitorValue: ai.reportType === "competitor" ? "high" : "none",
+    lowValueType: ai.reportType === "exclude" ? ai.excludeReason || "보고 가치 낮음 (광고·홍보 등)" : null,
+    basis: ai.sourceLevel === "body" ? "body" : "title_only",
+    automationMentioned: ai.automation.mentioned,
+  };
 }

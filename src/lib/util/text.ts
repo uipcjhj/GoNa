@@ -52,7 +52,8 @@ export function containsAny(hay: string, needles: string[]): string[] {
   const h = hay.toLowerCase();
   return needles.filter((n) => {
     const k = n.toLowerCase();
-    if (k.length <= 4) return new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(h);
+    // Latin words always match whole words ("India" must not match "Indiana"); short tokens too
+    if (k.length <= 4 || /^[a-z][a-z .&'’-]*$/i.test(k)) return new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(h);
     return h.includes(k);
   });
 }

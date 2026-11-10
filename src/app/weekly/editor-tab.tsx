@@ -83,7 +83,9 @@ function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps 
               <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-slate-500 hover:text-sky-700">{r.sourceName} · 원문</a>
               <span className={r.dateStatus === "verified" ? "text-slate-500" : "text-amber-700"}>{r.dateStatus === "verified" ? r.kstDate : "발행일 미확인"}</span>
               <button onClick={() => setShowOrig(!showOrig)} className="text-slate-500 underline-offset-2 hover:underline">{showOrig ? "원본 숨기기" : "원본 보기"}</button>
-              {r.edits && <span className="text-sky-700">수정본 사용 중</span>}
+              {r.edits?.summary4?.some(Boolean) || r.edits?.titleKo ? <span className="text-sky-700">수정본 사용 중</span> : null}
+              <span className={r.gate.aiDone ? "text-sky-700" : "text-amber-700"}>{r.gate.aiDone ? "원문 검증 완료" : r.gate.problems[0] ?? "검토 필요"}</span>
+              <button onClick={async () => { await postJson("/api/weekly/item", { ...pq, articleId: r.id, approved: !r.approvedAt }); onSaved(); }} className={r.approvedAt ? "rounded-lg bg-sky-50 px-2 py-0.5 font-semibold text-sky-700" : "rounded-lg border border-slate-300 px-2 py-0.5 text-slate-600 hover:border-sky-200"}>{r.approvedAt ? "승인됨 ✓" : "최종 승인"}</button>
             </div>
             <div className="flex items-center gap-2">
               {msg && <span className="text-xs text-slate-500">{msg}</span>}
@@ -96,7 +98,7 @@ function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps 
           </div>
           {showOrig && (
             <div className="rounded-lg bg-navy-900/60 p-3 text-[13px] text-slate-600">
-              <div className="mb-1 text-xs text-slate-500">원본 (기사 데이터 · {r.summary4Basis === "ai" ? "AI 요약" : "규칙 기반 요약"})</div>
+              <div className="mb-1 text-xs text-slate-500">원본 (기사 데이터 · {r.summary4.length ? (r.aiStatus === "done" ? "Gemini 원문 검증 요약" : "Gemini 요약 — 검토 필요") : "요약 없음 — AI 분석 필요"})</div>
               <div className="font-medium text-slate-800">{original.titleKo}</div>
               <div className="text-xs">{original.label}</div>
               <ol className="mt-1 list-decimal pl-5">{original.lines.map((l, i) => <li key={i}>{l}</li>)}</ol>

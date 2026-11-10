@@ -2,6 +2,7 @@
 // AI (Gemini/Claude) supplies the same fields when connected; these rules are the free fallback and fill gaps
 // for older records. Only facts found in the title/excerpt are used; inference is labelled as such.
 import type { Article, DetailCategory, Opportunity, WeeklyAnalysis, WeeklyJudgment } from "@/lib/types";
+import { normalizeNumbers } from "@/lib/report/validate";
 
 export const TAXONOMY = {
   global: { label: "글로벌시장", subs: ["투자·확장", "제조물류 투자", "스마트창고 투자", "콜드체인 투자", "자동화 운영확대", "Industry"] },
@@ -68,18 +69,16 @@ const RE = {
   award: /(표창|수상|시상|선정 기업|인증 획득|award|wins? .*award|recognized|honou?red)/i,
   earnings: /(실적|매출|영업이익|순이익|적자|흑자|분기|earnings|revenue|quarterly|profit|loss)/i,
   tender: /(입찰|발주|공고|사업자 선정|RFP|tender|procurement|bid)/i,
+  // not a production / warehouse project even if "manufacturing" or "invest" appears
+  nonFacility: /(research|R&D|\blab\b|laborator|innovation (hub|center|centre)|technology (center|centre)|tech center|engineering center|organi[sz]ation|new (division|unit|team|department)|robotics (division|unit|team|organi[sz]ation)|연구소|연구센터|기술센터|조직 ?(신설|개편)|사업부 ?신설|전담 ?조직)/i,
+  advert: /(campaign|diwali|festive|festival offer|advert|\bad film\b|\bTVC\b|brand ambassador|commercial (film|spot)|광고|캠페인|브랜드 모델|홍보대사)/i,
+  funding: /(raises?|raised|funding|series [a-h]\b|valuation|venture|investors? led|투자 ?유치|시리즈 ?[A-H])/i,
   constructionCo: /(시공사|건설사|시공|general contractor|construction (firm|company) (selected|named))/i,
 };
 
-const FACILITY_KO: [RegExp, string][] = [
-  [RE.cold, "냉동냉장 물류센터"], [/자동창고|AS\/RS|automated (storage|warehouse)/i, "자동창고"], [RE.warehouse, "물류센터"], [/(배터리|이차전지|battery|gigafactory)/i, "배터리 공장"],
-  [/(반도체|semiconductor|fab\b)/i, "반도체 공장"], [/(타이어|tire|tyre)/i, "타이어 공장"], [/(자동차|완성차|vehicle|automotive|car plant)/i, "자동차 공장"], [/(공항|수하물|항공화물|airport|air cargo|baggage)/i, "공항 물류시설"],
-  [RE.port, "항만 터미널"], [RE.plant, "생산공장"],
-];
-
 function bodyOf(a: Article) {
   // "셔틀버스" (shuttle bus) is not shuttle automation
-  return `${a.title}\n${a.excerpt ?? ""}`.replace(/셔틀\s?버스|shuttle bus(es)?/gi, "버스");
+  return normalizeNumbers(`${a.title}\n${a.excerpt ?? ""}`).replace(/셔틀\s?버스|shuttle bus(es)?/gi, "버스");
 }
 
 /** Hierarchical category by rules. */
@@ -95,7 +94,7 @@ export function detailByRules(a: Article, w: WeeklyAnalysis): DetailCategory {
       : has(text, RE.ma) ? "M&A·사업확장"
       : has(text, RE.product) ? "제품·솔루션 공개"
       : has(text, RE.pilot) ? "실증·도입"
-      : has(text, RE.physicalAI) || /R&D|연구개발/.test(text) ? "R&D·피지컬 AI"
+      : has(text, RE.physicalAI) || /R&D|연구개발/.test(text) || has(a.title, RE.nonFacility) ? "R&D·피지컬 AI"
       : "사업전략";
     d = { group: "competitor", country: null, sub };
   } else if (w.scope === "domestic") {
@@ -105,11 +104,11 @@ export function detailByRules(a: Article, w: WeeklyAnalysis): DetailCategory {
       : has(text, RE.autonomous) ? "자율물류"
       : has(text, RE.smartFactory) ? "스마트팩토리"
       : has(text, RE.mfgAutomation) ? "제조자동화"
-      : has(text, RE.invest) && (has(text, RE.warehouse) || has(text, RE.plant)) ? "투자·확장"
+      : has(text, RE.invest) && !has(a.title, RE.nonFacility) && !has(a.title, RE.funding) && (has(text, RE.warehouse) || has(text, RE.plant)) ? "투자·확장"
       : "Industry";
     d = { group: "domestic", country: null, sub };
   } else {
-    const investing = has(text, RE.invest);
+    const investing = has(text, RE.invest) && !has(a.title, RE.nonFacility) && !has(a.title, RE.funding) && !has(text, RE.advert);
     const sub = has(text, RE.cold) && investing ? "콜드체인 투자"
       : has(text, RE.automationDeploy) && has(text, RE.automationWords) ? "자동화 운영확대"
       : has(text, RE.warehouse) && investing ? "스마트창고 투자"
@@ -129,7 +128,7 @@ export function judgmentByRules(a: Article, w: WeeklyAnalysis, d: DetailCategory
   const confirmed = (w.competitorChecks ?? []).filter((c) => c.confirmed);
   const completed = has(a.title, RE.completed) && !/(예정|계획|추진|목표|will|plans?|set to)/i.test(a.title);
   const automationMentioned = has(text, RE.automationWords);
-  const facility = has(text, RE.warehouse) || has(text, RE.plant) || has(text, RE.port);
+  const facility = (has(text, RE.warehouse) || has(text, RE.plant) || has(text, RE.port)) && !has(a.title, RE.nonFacility) && !has(text, RE.advert);
   const isNewProject = has(text, RE.invest) && facility && !completed ? true : completed ? false : null;
 
   // supplier: only "decided" when the article names an automation vendor contract; construction firm ≠ automation supplier
@@ -148,12 +147,14 @@ export function judgmentByRules(a: Article, w: WeeklyAnalysis, d: DetailCategory
   if (has(text, RE.constructionCo) && supplierStatus !== "decided") supplierNote += " · 시공사 선정은 자동화 공급사 선정과 별개";
 
   const investTitle = has(a.title, /(신설|증설|건설|착공|투자|건립|build|construct|invest|expan)/i);
-  const lowValueType = has(text, RE.realEstate) && !has(a.title, /(신설|건설|착공|build|construct)/i) ? "물류부동산 매입·매각·임대"
+  const lowValueType = has(text, RE.advert) ? "광고·홍보"
+    : has(a.title, RE.funding) && !has(a.title, /(공장|plant|factory|facility|warehouse|센터)/i) ? "투자유치(펀딩) — 시설 투자 아님"
+    : has(text, RE.realEstate) && !has(a.title, /(신설|건설|착공|build|construct)/i) ? "물류부동산 매입·매각·임대"
     : has(text, RE.exhibition) ? "전시회·행사"
     : has(a.title, RE.award) && !investTitle ? "수상·표창"
     : has(a.title, RE.event) && !investTitle ? "간담회·행사"
     : has(a.title, RE.earnings) && !investTitle ? "실적 발표"
-    : has(text, RE.rndCenter) ? "R&D센터·연구소 개설"
+    : has(text, RE.rndCenter) || has(a.title, RE.nonFacility) ? "R&D센터·연구소·조직 신설"
     : has(a.title, RE.mou) && !has(text, /(\d[\d,.]*\s?(억|조)|\$\s?\d|billion|million)/i) ? "실투자 근거 부족한 MOU"
     : has(a.title, RE.product) && !confirmed.length ? "제품 출시 중심"
     : has(a.title, RE.outlook) && !isNewProject ? "시장 전망·통계"
@@ -171,72 +172,15 @@ export function judgmentByRules(a: Article, w: WeeklyAnalysis, d: DetailCategory
   return { winPotential, isNewProject, completed, supplierStatus, supplierNote, orderRoom, directRelevance, competitorValue, lowValueType, basis: a.analysis && a.excerpt && a.excerpt.length > 120 ? "body" : "title_only", automationMentioned };
 }
 
-// ---- 4-line report summary from facts found in the article (no invented names, amounts or suppliers)
-const KO_ACTION: [RegExp, string][] = [[/착공|break(s)? ground|groundbreaking/i, "착공"], [/증설|expan/i, "증설 추진"], [/신설|건립|짓|new (plant|factory|facility)|build/i, "신설 추진"], [/입찰|발주|tender/i, "입찰·발주 진행"], [/수주|계약|contract|wins|selects|order/i, "수주·계약"], [/인수|acquir|merger/i, "인수 추진"], [/출시|공개|launch|unveil/i, "신규 솔루션 공개"], [/도입|deploy|adopt|roll/i, "도입 확대"], [/투자|invest/i, "투자 추진"], [/구축/i, "구축 추진"]];
+// ---- 4-line report summary: NOT generated by rules any more.
+// Template sentences ("관련 소식", "업계 동향 참고", "원문 미기재", "$1 규모" …) were misleading in the company report,
+// so report summaries now come only from the validated Gemini analysis (lib/report/factcheck) or the user's own edit.
 
-function amountOf(text: string): string | null {
-  const ko = text.match(/\d[\d,.]*\s?조(?:\s?\d[\d,.]*\s?억)?\s?원?|\d[\d,.]*\s?억\s?(?:원|달러|유로)?|\d[\d,.]*\s?만\s?달러/);
-  if (ko) return ko[0].replace(/\s+/g, "");
-  const en = text.match(/(?:US\$|\$|€|£|A\$|AU\$|RM|S\$)\s?\d[\d,.]*\s?(?:billion|million|bn|mn|mln|m|b)?\b|\d[\d,.]*\s?(?:billion|million)\s?(?:dollars|euros|won|USD|EUR)?/i);
-  return en ? en[0].trim() : null;
-}
-
-function automationTermsOf(text: string): string[] {
-  const terms: [RegExp, string][] = [[/자동창고|AS\/RS|ASRS|automated storage/i, "자동창고"], [/셔틀|shuttle/i, "셔틀"], [/AGV/i, "AGV"], [/AMR|autonomous mobile/i, "AMR"], [/무인지게차|autonomous forklift/i, "무인지게차"],
-    [/컨베이어|conveyor/i, "컨베이어"], [/소터|분류기|sorter|sortation/i, "소터"], [/피킹|picking/i, "피킹"], [/팔레타이징|palletiz/i, "팔레타이징"], [/WMS/i, "WMS"], [/WCS/i, "WCS"], [/WES/i, "WES"], [/GTP|goods-to-person/i, "GTP"], [/휴머노이드|humanoid/i, "휴머노이드"], [/로봇|robot/i, "로봇"]];
-  return terms.filter(([re]) => re.test(text)).map(([, n]) => n).slice(0, 3);
-}
-
-const IMPLICATION: Record<string, string> = {
-  "투자·확장": "신규 거점 투자에 따른 물류설비 수요 주목",
-  "제조물류 투자": "공정물류·자동창고·AGV 발주 가능성 주목",
-  "스마트창고 투자": "물류센터 자동화 설비 수요 주목",
-  "콜드체인 투자": "저온 자동보관·출하 설비 수요 주목",
-  "자동화 운영확대": "물류자동화 도입 확산 흐름 부각",
-  "스마트팩토리": "제조 AX 확산에 따른 공정물류 수요 부각",
-  "제조자동화": "생산 자동화 투자 확대 흐름 부각",
-  "자율물류": "AMR·AGV 등 자율물류 시장 확대",
-  "피지컬 AI": "피지컬 AI의 물류·제조 적용 확대",
-  "정책·지원": "정책 지원에 따른 자동화 투자 여건 변화",
-  "항만자동화": "항만 자동화 인프라 발주 동향 주목",
-  "수주·계약": "경쟁사 수주 동향 및 고객사 확보 현황",
-  "사업전략": "경쟁사 사업 방향 변화 모니터링",
-  "M&A·사업확장": "경쟁 구도 변화 및 사업 확장 주목",
-  "제품·솔루션 공개": "경쟁 솔루션의 기술 방향 참고",
-  "실증·도입": "경쟁사 솔루션 현장 적용 확대",
-  "R&D·피지컬 AI": "경쟁사 차세대 기술 개발 동향",
-  "국내시장 진출": "국내 시장 경쟁 심화 가능성 주목",
-  Industry: "업계 동향 참고",
-};
-
-const clip = (s: string, n = 34) => (s.length > n ? s.slice(0, n - 1).trim() + "…" : s);
-
-/** Rule-based 4-line summary (facts from title/excerpt only; line 4 is an industry implication). */
-export function summary4ByRules(a: Article, w: WeeklyAnalysis, d: DetailCategory): { lines: string[]; basis: "rules_title" | "rules_excerpt" } {
-  const text = bodyOf(a);
-  const korean = /[가-힣]/.test(a.title);
-  const company = a.analysis?.company && a.analysis.company !== "Unknown" ? a.analysis.company : null;
-  const place = a.analysis?.city && a.analysis.city !== "Unknown" ? a.analysis.city : d.country ?? (w.country === "South Korea" ? null : COUNTRY_KO[w.country] ?? null);
-  const facility = FACILITY_KO.find(([re]) => re.test(text))?.[1] ?? null;
-  const action = KO_ACTION.find(([re]) => re.test(a.title))?.[1] ?? null;
-  const amount = amountOf(text);
-  const year = text.match(/20[2-4]\d년|(?:by|in) 20[2-4]\d/i)?.[0]?.replace(/^(by|in) /i, "") ?? null;
-  const terms = automationTermsOf(text);
-
-  const l1 = company || facility || action ? clip([company && `${company},`, place, facility, action ?? (d.group === "competitor" ? "관련 동향" : "관련 소식")].filter(Boolean).join(" ")) : clip(korean ? a.title.replace(/^\[[^\]]+\]\s*/, "") : `원문: ${a.title}`);
-  const l2 = amount || year || place ? clip([amount && `${amount} 규모`, year && `${year} 목표`, !amount && !year && place ? `${place} 소재` : null].filter(Boolean).join(" · ")) : "투자규모·일정 원문 미기재";
-  const l3 = terms.length ? clip(`${terms.join("·")} 관련 내용 언급`) : "자동화 설비 도입 여부 원문 미확인";
-  const l4 = IMPLICATION[d.sub] ?? IMPLICATION.Industry;
-  return { lines: [l1, l2, l3, l4], basis: a.excerpt && a.excerpt.length > 80 ? "rules_excerpt" : "rules_title" };
-}
-
-/** Fill the v2 fields (category hierarchy, judgments, 4-line summary) for a weekly analysis that lacks them. */
+/** Fill the v2 fields (preliminary category hierarchy + judgments) by rules. No report summary is generated here. */
 export function withV2(a: Article, w: WeeklyAnalysis, opp: Opportunity | null): WeeklyAnalysis {
   const detail = w.detail ?? detailByRules(a, w);
   const judgment = w.judgment ?? judgmentByRules(a, w, detail, opp);
-  if (w.summary4?.length === 4) return { ...w, detail, judgment };
-  const s = summary4ByRules(a, w, detail);
-  return { ...w, detail, judgment, summary4: s.lines, summary4Basis: s.basis };
+  return { ...w, detail, judgment, summary4: [], summary4Basis: undefined };
 }
 
 export const SUPPLIER_LABEL: Record<WeeklyJudgment["supplierStatus"], string> = {

@@ -20,6 +20,9 @@ import type { RawArticle } from "@/lib/news/types";
 import { classifySource, verifyAndFetch } from "./verify";
 import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
 import { analyzeArticle, aiConfigured } from "./analyze";
+import { analyzeForReport, needsAnalysis } from "@/lib/report/factcheck";
+import { geminiConfigured } from "@/lib/ai/gemini";
+import type { WeeklyReport } from "@/lib/types";
 import { findMatch, mergeInto, newOpportunityFrom } from "./cluster";
 import { hashId, isHttpUrl, normalizeUrl, domainOf } from "@/lib/util/url";
 import { containsAny, jaccard, normalizeTitle } from "@/lib/util/text";
@@ -45,7 +48,7 @@ export async function latestJob(): Promise<Job | null> {
 }
 
 /** Start a new job, or return the running one (prevents duplicate concurrent runs). */
-export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "collect", range: WeeklyRange | null = null): Promise<{ job: Job; created: boolean; resumed: boolean }> {
+export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "collect", range: WeeklyRange | null = null, options: Job["options"] = {}): Promise<{ job: Job; created: boolean; resumed: boolean }> {
   const recent = await listJobs(5);
   const running = recent.find((j) => j.status === "running");
   if (running) {
@@ -85,11 +88,13 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     log: [],
     error: null,
     slices: 0,
+    options,
+    haltReason: null,
   };
   const label = mode === "quick" ? `빠른 테스트 시작 — 국내 ${QUICK.perSide}건 + 글로벌 ${QUICK.perSide}건 목표, 검색 ${queries.length}건, 제한시간 ${QUICK.totalSeconds}초 (GDELT는 8초 1회만 시도)`
     : mode === "collect" ? `전체 탐색 시작 — 제한시간 ${Math.max(5, settings.maxJobMinutes || 20)}분, `+`수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정`
     : mode === "weekly" ? `주간 업계동향 수집 시작 — ${range?.startDate} ~ ${range?.endDate}${range?.days?.length ? ` (누락 날짜 ${range.days.join(", ")})` : ""}, 검색 ${queries.length}건 예정`
-    : mode === "weekly-analyze" ? `주간 업계동향 관련도 분석 — ${range?.startDate} ~ ${range?.endDate}` : "규칙 기반 분석 기사 AI 재분석 시작";
+    : mode === "weekly-analyze" ? `주간 업계동향 보고서용 Gemini 원문 검증 분석 — ${range?.startDate} ~ ${range?.endDate}${options?.retryFailed ? " (실패·원문 부족 기사 재분석 포함)" : ""}` : "규칙 기반 분석 기사 AI 재분석 시작";
   log(job, "info", label);
   if (mode === "reanalyze") {
     const rules = (await listArticles({ sinceDays: 60 })).filter((a) => !a.isDemo && a.analysis?.mode === "rules" && a.status === "analyzed");
@@ -102,13 +107,24 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     // queued articles always; with an AI key, only the most relevant non-AI candidates (protects the API quota).
     // Without a key, rule-based classification is recomputed on read for free, so nothing else needs a job.
     const queued = inRange.filter((a) => a.status === "queued").sort((a, b) => b.preScore - a.preScore);
-    const aiCands = aiConfigured()
-      ? inRange.filter((a) => a.status === "analyzed" && a.weekly?.mode !== "ai").sort((a, b) => (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0)).slice(0, Math.max(5, settings.weekly.aiPerRun ?? 30))
+    // Gemini report analysis only for report candidates: selected items first, then date-verified, most relevant.
+    // Articles with a current-version result are reused (free quota); failed / 원문 부족 only when asked.
+    const rep = await getStore().get<WeeklyReport>("reports", `${range.startDate}_${range.endDate}`);
+    const selected = new Set(Object.entries(rep?.items ?? {}).filter(([, it]) => it.status === "selected").map(([id]) => id));
+    const verifiedDate = (a: Article) => /^(원문 메타데이터|발행 매체 RSS|RSS pubDate)/.test(a.publishedAtBasis ?? "") && Boolean(a.publishedAt);
+    const aiCands = geminiConfigured()
+      ? inRange
+          .filter((a) => a.status === "analyzed" && needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) }) && (selected.has(a.id) || (a.weekly?.relevance ?? 0) >= 35))
+          .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || Number(verifiedDate(b)) - Number(verifiedDate(a)) || (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0))
+          .slice(0, Math.max(5, settings.weekly.aiPerRun ?? 30))
       : [];
     const need = [...queued.slice(0, settings.weekly.maxAnalyzePerRun), ...aiCands];
     job.analyzeQueue = need.map((a) => a.id);
     job.stats.queued = job.analyzeQueue.length;
-    log(job, "info", `분석 대상 ${job.analyzeQueue.length}건 (미분석 ${need.filter((a) => a.status === "queued").length}건 포함)${aiConfigured() ? "" : " — AI 미연결: 규칙 기반 분류"}`);
+    const reused = inRange.filter((a) => a.report && !needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) })).length;
+    log(job, geminiConfigured() ? "info" : "error", geminiConfigured()
+      ? `Gemini 원문 검증 분석 대상 ${aiCands.length}건 (이미 분석된 ${reused}건은 재사용 — 무료 사용량 절약)${queued.length ? `, 미분류 ${Math.min(queued.length, settings.weekly.maxAnalyzePerRun)}건 분류` : ""}`
+      : "GEMINI_API_KEY가 없어 보고서용 AI 분석을 할 수 없습니다. 규칙 기반 문장은 보고서 요약으로 쓰지 않습니다 (.env.local에 GEMINI_API_KEY 설정 필요).");
   }
   await saveJob(job);
   if (mode === "weekly" || mode === "weekly-analyze" || mode === "quick") return { job, created: true, resumed: false };
@@ -350,7 +366,25 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
   const [article] = await getArticles([id]);
   if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly" || job.mode === "quick"))) return;
   try {
-    if (job.mode === "weekly-analyze" && article.status === "analyzed" && !aiConfigured()) {
+    if (job.mode === "weekly-analyze" && article.status === "analyzed" && geminiConfigured()) {
+      if (job.haltReason) return;
+      const r = await analyzeForReport(article, settings);
+      article.report = r;
+      await saveArticles([article]);
+      const label = article.title.slice(0, 60);
+      if (r.status === "failed") {
+        job.stats.errors++;
+        log(job, "warn", `AI 분석 실패: ${label} — ${r.error?.message ?? ""}`);
+        if (r.error && ["not_configured", "auth", "permission", "model_not_found", "quota_daily", "rate_limit"].includes(r.error.kind)) {
+          job.haltReason = `${r.error.message} — 나머지 기사는 분석하지 않고 중단했습니다 (다음 실행에서 이어서 처리).`;
+        }
+      } else {
+        job.stats.analyzed++;
+        log(job, "info", `${r.status === "done" ? "분석 완료" : r.status === "needs_review" ? "검토 필요" : "원문 부족"} [${r.sourceLevel === "body" ? "본문" : r.sourceLevel === "excerpt" ? "발췌" : "제목"}]: ${label}${r.reviewReasons.length ? ` — ${r.reviewReasons.slice(0, 2).join("; ")}` : ""}`);
+      }
+      return;
+    }
+    if (job.mode === "weekly-analyze" && article.status === "analyzed") {
       // no AI: (re)classify for the weekly report from stored data only — no network, no cost
       const opp = article.opportunityId ? ctx.opps.find((o) => o.id === article.opportunityId) ?? null : null;
       article.weekly = weeklyRules(article, settings, opp);
@@ -571,9 +605,10 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
 
     if (job.phase === "analyze") {
       const ctx = { opps: await listOpportunities(), articles: (await listArticles({ sinceDays: 400 })).filter((a) => a.opportunityId) };
-      const CONCURRENCY = quick ? 4 : 3;
+      // Gemini free tier: one report analysis at a time (calls are also paced inside the client)
+      const CONCURRENCY = job.mode === "weekly-analyze" && geminiConfigured() ? 1 : quick ? 4 : 3;
       const margin = quick ? 3_000 : 20_000;
-      while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin) {
+      while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin && !job.haltReason) {
         const batch = job.analyzeQueue.slice(job.analyzeIndex, job.analyzeIndex + CONCURRENCY);
         job.step = `원문 확인·분석 중 (${Math.min(job.analyzeIndex + batch.length, job.analyzeQueue.length)}/${job.analyzeQueue.length})`;
         await saveJob(job);
@@ -582,7 +617,11 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
         job.analyzeIndex += batch.length;
         await beat();
       }
-      if (job.analyzeIndex < job.analyzeQueue.length && overLimit()) {
+      if (job.haltReason) {
+        log(job, "error", job.haltReason);
+        job.phase = "done";
+        await beat();
+      } else if (job.analyzeIndex < job.analyzeQueue.length && overLimit()) {
         job.timeLimited = true;
         log(job, "warn", `전체 제한시간 도달 — 분석하지 못한 ${job.analyzeQueue.length - job.analyzeIndex}건은 '분석 대기'로 저장되어 다음 실행에서 이어서 처리됩니다.`);
         job.phase = "done";
@@ -610,6 +649,11 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
 
     if (job.phase === "done") {
       job.status = job.stats.errors > 0 ? "completed_with_errors" : "completed";
+      if (job.mode === "weekly-analyze" && job.range) {
+        // new Gemini results → the saved recommendation is recomputed on the next page load
+        const rep = await getStore().get<WeeklyReport>("reports", `${job.range.startDate}_${job.range.endDate}`);
+        if (rep?.curation) { rep.curation = null; rep.updatedAt = new Date().toISOString(); await getStore().upsert("reports", [rep]); }
+      }
       job.finishedAt = new Date().toISOString();
       job.lease = null;
       job.step = job.timeLimited ? "제한시간 도달 — 수집된 결과까지 저장하고 종료" : "완료";

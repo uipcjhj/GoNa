@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "hash-password": "node scripts/hash-password.mjs"
+    "hash-password": "node scripts/hash-password.mjs",
+    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
+    "gemini:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts --check",
+    "report:compare": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

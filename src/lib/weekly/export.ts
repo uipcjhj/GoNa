@@ -7,17 +7,20 @@ import { ORDER_ROOM_LABEL, SUPPLIER_LABEL } from "./taxonomy";
 export interface ExportRow {
   id: string; order: number; label: string; date: string; dateWarning: boolean; title: string; media: string; url: string;
   summary: string[]; summaryNote: string | null; isDemo: boolean;
+  quality: { aiStatus: WeeklyRow["aiStatus"]; aiDone: boolean; dateVerified: boolean; sourceLevel: WeeklyRow["gate"]["sourceLevel"]; linkDirect: boolean; approved: boolean; edited: boolean; problems: string[] };
   reason?: string; score?: number | null; supplier?: string; orderRoom?: string; solutions?: string;
 }
 export interface ExportData { report: ExportRow[]; rejects: ExportRow[]; opportunities: ExportRow[]; warnings: string[] }
 
 const dateOf = (r: WeeklyRow) => (r.dateStatus === "verified" && r.kstDate ? { date: r.kstDate, warn: false } : { date: "미확인", warn: true });
 
-/** The 4 report lines, user edits first. Always exactly 4 lines. */
+export const NO_SUMMARY = "[검토 필요] Gemini 원문 검증 요약 없음 — 원문 확인 후 요약 입력";
+
+/** The 4 report lines: the user's edit first, then the validated Gemini summary. Rule-generated text is never used. */
 export function reportLines(r: WeeklyRow): string[] {
-  const src = r.edits?.summary4?.some(Boolean) ? r.edits.summary4 : r.summary4;
-  const lines = (src ?? []).map((l) => l.trim());
-  return [...lines, "", "", "", ""].slice(0, 4).map((l, i) => l || (i === 0 && r.analysis === "pending" ? "미분석 기사" : "—"));
+  const src = r.edits?.summary4?.some(Boolean) ? r.edits.summary4 : r.summary4.length === 4 ? r.summary4 : null;
+  if (!src) return [NO_SUMMARY, "", "", ""];
+  return [...src.map((l) => l.trim()), "", "", "", ""].slice(0, 4);
 }
 export const reportTitle = (r: WeeklyRow) => r.edits?.titleKo || r.titleKo || r.title;
 export const reportLabel = (r: WeeklyRow) => r.edits?.detailLabel || r.detail?.label || "확인 필요";
@@ -26,7 +29,8 @@ function base(r: WeeklyRow, order: number): ExportRow {
   const d = dateOf(r);
   return {
     id: r.id, order, label: reportLabel(r), date: d.date, dateWarning: d.warn, title: reportTitle(r), media: r.sourceName, url: r.url,
-    summary: reportLines(r), summaryNote: r.edits?.summary4 ? "사용자 수정" : r.summary4Basis && r.summary4Basis !== "ai" ? "규칙 기반 요약 (제목·발췌 근거)" : null, isDemo: r.isDemo,
+    summary: reportLines(r), summaryNote: r.edits?.summary4 ? "사용자 수정" : r.summary4.length === 4 ? (r.aiStatus === "done" ? "Gemini 원문 검증" : "Gemini 요약 — 검토 필요") : "요약 없음 (AI 분석 필요)", isDemo: r.isDemo,
+    quality: { aiStatus: r.aiStatus, aiDone: r.gate.aiDone, dateVerified: r.gate.dateVerified, sourceLevel: r.gate.sourceLevel, linkDirect: r.gate.linkDirect, approved: r.gate.approved, edited: Boolean(r.edits?.summary4?.some(Boolean)), problems: r.gate.problems },
   };
 }
 
@@ -61,8 +65,12 @@ export function buildExport(rows: WeeklyRow[], curation: Curation | null): Expor
   if (undated.length) warnings.push(`발행일 미확인 기사 ${undated.length}건이 선정되어 있습니다 — 원문에서 날짜를 확인하세요: ${undated.map((r) => reportTitle(r).slice(0, 24)).join(" / ")}`);
   const outside = selected.filter((r) => r.publishedAt && !r.inPeriod);
   if (outside.length) warnings.push(`조사 기간 밖에 발행된 기사 ${outside.length}건이 선정되어 있습니다.`);
-  const rules = selected.filter((r) => !r.edits?.summary4 && r.summary4Basis && r.summary4Basis !== "ai");
-  if (rules.length) warnings.push(`AI 요약이 아닌 규칙 기반 요약 ${rules.length}건 — 보고서 편집에서 문장을 검토하세요.`);
+  const noAi = selected.filter((r) => !r.gate.aiDone);
+  if (noAi.length) warnings.push(`Gemini 원문 검증이 완료되지 않은 기사 ${noAi.length}건 (분석 전·실패·원문 부족·검토 필요) — 요약 확인 후 승인하세요.`);
+  const noSummary = selected.filter((r) => !r.edits?.summary4?.some(Boolean) && r.summary4.length !== 4);
+  if (noSummary.length) warnings.push(`4줄 요약이 없는 기사 ${noSummary.length}건 — Excel/PPT에 '[검토 필요]'로 표시됩니다.`);
+  const unapproved = selected.filter((r) => !r.gate.approved);
+  if (unapproved.length) warnings.push(`사용자 최종 승인 전 기사 ${unapproved.length}건.`);
   const unknownCat = selected.filter((r) => reportLabel(r) === "확인 필요");
   if (unknownCat.length) warnings.push(`구분이 '확인 필요'인 기사 ${unknownCat.length}건.`);
   if (selected.some((r) => r.isDemo)) warnings.push("DEMO 데이터가 포함되어 있습니다 (실제 기사 아님).");

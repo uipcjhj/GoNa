@@ -60,7 +60,7 @@ export const KW = {
     "로봇·피지컬AI": ["로봇", "피지컬 AI", "휴머노이드", "robot", "humanoid", "physical ai"],
   } as Record<string, string[]>,
   noise: ["주가", "증시", "코스피", "코스닥", "연예", "드라마", "축구", "야구", "선거", "대통령실", "부고", "stock price", "shares rose", "shares fell", "earnings call", "football", "celebrity"],
-  logisticsContext: ["물류", "자동화", "창고", "로봇", "logistic", "automation", "warehouse", "intralogistics", "material handling", "conveyor", "sorting", "storage", "airport", "baggage", "distribution"],
+  logisticsContext: ["물류", "자동화", "창고", "로봇", "logistic", "automation", "robot", "warehouse", "intralogistics", "material handling", "conveyor", "sorting", "storage", "airport", "baggage", "distribution"],
 };
 
 // Competitor alias rules: names that are also common surnames/words need logistics context (and exact case)

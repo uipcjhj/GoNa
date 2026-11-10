@@ -1,6 +1,8 @@
 // Weekly Market Intelligence: category classification + Industry Relevance Score.
 // Separate from the Opportunity Score: a policy change or a competitor contract can be highly
 // relevant to the weekly report even when it is not a sales opportunity.
+import { containsAny } from "@/lib/util/text";
+import { normalizeNumbers } from "@/lib/report/validate";
 import { COMPETITOR_RULES, KW } from "./categories";
 import { REVIEW_LABEL, TAXONOMY, labelOf, withV2 } from "./taxonomy";
 import type { Article, CompetitorCheck, DateStatus, DetailCategory, Opportunity, RelevanceBreakdown, Settings, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment } from "@/lib/types";
@@ -43,7 +45,14 @@ export function checkCompetitors(text: string, settings: Settings): CompetitorCh
       const exact = rule.caseSensitive.some((k) => text.includes(k));
       const loose = c.aliases.some((k) => t.includes(lc(k))) || t.includes(lc(c.name));
       if (exact || koHit) out.push({ name: c.name, confirmed: context, note: context ? "회사명 일치 + 물류·자동화 문맥 확인" : "회사명은 일치하나 물류 문맥 없음 — 확인 필요" });
-      else if (loose) out.push({ name: c.name, confirmed: false, note: "유사 명칭(인명·일반어 가능성) — 경쟁사로 보지 않음" });
+      else if (loose) {
+        // "Knapp opens robotics hub" (company, headline case) vs "Sean Knapp's Ascend.io" (person): a capitalised
+        // given name right before the word means a person; otherwise logistics/robotics context confirms the company
+        const word = c.name.charAt(0) + c.name.slice(1).toLowerCase();
+        const person = new RegExp(`\\b[A-Z][a-z]{1,15}\\s+${word}\\b`).test(text.replace(new RegExp(`(^|[.!?]\\s+)${word}\\b`, "g"), "$1"));
+        const ok = context && !person;
+        out.push({ name: c.name, confirmed: ok, note: ok ? "회사명(대소문자 차이) + 물류·로봇 문맥 확인" : person ? "인명으로 보임 — 경쟁사로 보지 않음" : "유사 명칭(인명·일반어 가능성) — 경쟁사로 보지 않음" });
+      }
       continue;
     }
     const hit = koHit || [c.name, ...c.aliases].some((k) => (k.length <= 4 ? new RegExp(`(^|[^A-Za-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`).test(text) : t.includes(lc(k))));
@@ -59,12 +68,27 @@ export function checkCompetitors(text: string, settings: Settings): CompetitorCh
   return out;
 }
 
+const US_STATE_RE = /\b(Alabama|Arizona|Arkansas|California|Colorado|Georgia|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Michigan|Minnesota|Mississippi|Missouri|Nevada|New Jersey|New York|North Carolina|Ohio|Oklahoma|Oregon|Pennsylvania|South Carolina|Tennessee|Texas|Utah|Virginia|Wisconsin|Connecticut|Massachusetts|Maryland|Florida)\b/;
+
+// sub-national regions that identify the project country (Andhra Pradesh = India, Indiana = USA …)
+const REGION_COUNTRY: [RegExp, string][] = [
+  [/\b(Andhra Pradesh|Tamil Nadu|Gujarat|Maharashtra|Karnataka|Telangana|Uttar Pradesh|Haryana|Rajasthan|Odisha|West Bengal|Kerala|Punjab|Madhya Pradesh|Chennai|Bengaluru|Bangalore|Pune|Hyderabad|Noida|Gurugram|Mumbai)\b/, "India"],
+  [/\b(Bavaria|Saxony|Baden-Württemberg|North Rhine-Westphalia|Lower Saxony)\b/, "Germany"],
+  [/\b(Ontario|Quebec|Alberta|British Columbia|Nova Scotia)\b/, "Canada"],
+  [/\b(Nuevo León|Nuevo Leon|Coahuila|Guanajuato|Querétaro|Queretaro|Jalisco|Monterrey)\b/, "Mexico"],
+  [/\b(New South Wales|Victoria, Australia|Queensland|Western Australia)\b/, "Australia"],
+];
+
 function detectCountry(title: string, body: string, settings: Settings, korean: boolean): string {
+  // whole-word matching: "Indiana" is a US state, not India
   for (const [ko, en] of Object.entries(KO_COUNTRIES)) if (title.includes(ko)) return en;
-  for (const c of settings.countries) if (hits(title, [c.name, ...c.aliases.filter((x) => x.length > 2)]).length) return c.name;
+  for (const [re, c] of REGION_COUNTRY) if (re.test(title)) return c;
+  for (const c of settings.countries) if (containsAny(title, [c.name, ...c.aliases.filter((x) => x.length > 2)]).length) return c.name;
+  if (!korean && US_STATE_RE.test(title)) return "United States";
   if (korean) return "South Korea";
   for (const [ko, en] of Object.entries(KO_COUNTRIES)) if (body.includes(ko)) return en;
-  for (const c of settings.countries) if (hits(body.slice(0, 1500), [c.name]).length) return c.name;
+  for (const c of settings.countries) if (containsAny(body.slice(0, 1500), [c.name]).length) return c.name;
+  if (US_STATE_RE.test(body.slice(0, 1500))) return "United States";
   return "Unknown";
 }
 
@@ -114,10 +138,12 @@ export function isMarketResearchPR(title: string, domain: string, source: string
 
 /** Rule-based weekly analysis (used when no AI key, and for articles analysed before this feature). */
 export function weeklyRules(a: Article, settings: Settings, opp: Opportunity | null, bodyText?: string | null): WeeklyAnalysis {
-  const body = `${a.excerpt ?? ""}\n${bodyText ?? ""}`;
-  const text = `${a.title}\n${body}`;
+  const body = normalizeNumbers(`${a.excerpt ?? ""}\n${bodyText ?? ""}`);
+  const text = normalizeNumbers(`${a.title}\n${body}`);
   const korean = isKoreanArticle(a);
-  const country = a.analysis && a.analysis.country !== "Unknown" && !korean ? a.analysis.country : detectCountry(a.title, body, settings, korean);
+  // AI-extracted country is kept; rule-extracted ones are recomputed (older stored values had the India/Indiana bug)
+  const detected = detectCountry(a.title, body, settings, korean);
+  const country = a.analysis?.mode === "ai" && a.analysis.country !== "Unknown" && !korean ? a.analysis.country : detected !== "Unknown" ? detected : a.analysis && a.analysis.mode !== "rules" && a.analysis.country !== "Unknown" ? a.analysis.country : detected;
   const scope: "domestic" | "global" = country === "South Korea" || (korean && country === "Unknown") ? "domestic" : "global";
   const industry = detectIndustry(text) !== "Unknown" ? detectIndustry(text) : a.analysis?.industry ?? "Unknown";
   const comps = checkCompetitors(text, settings);
@@ -256,7 +282,7 @@ export function weeklyFromAI(a: Article, raw: import("@/lib/pipeline/analyze").W
 
 const LV = ["high", "medium", "low"] as const;
 const lv = <T extends string>(v: string | undefined, allowed: readonly T[]): T | undefined => allowed.find((x) => x === (v ?? "").trim().toLowerCase());
-const cleanLine = (l: string) => l.replace(/^\s*([§⇒•\-*·]|\d+[.)]|①|②|③|④)\s*/u, "").trim();
+const cleanLine = (l: string) => l.replace(/^\s*([§⇒•\-*·]|\d{1,2}[.)](?!\d)|①|②|③|④)\s*/u, "").trim();
 
 /** Map the AI's v2 fields (taxonomy, judgment, 4-line report summary) onto the analysis; invalid/missing parts fall back to rules. */
 function applyAiV2(a: Article, w: WeeklyAnalysis, raw: import("@/lib/pipeline/analyze").WeeklyAIRaw, opp: Opportunity | null): WeeklyAnalysis {

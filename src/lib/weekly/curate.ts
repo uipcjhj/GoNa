@@ -62,11 +62,16 @@ function rejectReason(r: WeeklyRow, why: "duplicate" | "balance" | "rank"): stri
   return "우선순위 차순위";
 }
 
+/** v3: only Gemini-verified (or user-approved) articles are recommended. */
+export const CURATION_VERSION = "c3";
+
 export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
   const same = storyMatcher([...rows.map((r) => r.titleKo ?? r.title), ...o.previous.map((p) => p.title)]);
   const titleOf = (r: WeeklyRow) => r.titleKo ?? r.title;
   const needsCheck: Curation["needsCheck"] = [];
+  const aiExcluded: Curation["rejects"] = [];
   let excludedPrevious = 0;
+  let pendingAI = 0;
 
   const pool = rows.filter((r) => !r.isDemo && r.analysis !== "pending" && r.detail && r.reportStatus !== "excluded");
   const eligible: (WeeklyRow & { _p: ReturnType<typeof curationPriority> })[] = [];
@@ -78,6 +83,20 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
       continue;
     }
     if (r.publishedAt && !r.inPeriod) { if (p.score >= 55) needsCheck.push({ articleId: r.id, reason: "조사 기간 외 발행" }); continue; }
+    // only Gemini-verified articles (or ones the user reviewed and approved) can be recommended for the report
+    if (!r.gate.aiDone && !(r.gate.approved && (r.summary4.length === 4 || r.edits?.summary4?.some(Boolean)))) {
+      pendingAI++;
+      const reason = r.aiStatus === "failed" ? `AI 분석 실패 — 재분석 필요 (${r.ai?.error?.message.slice(0, 60) ?? ""})`
+        : r.aiStatus === "insufficient_source" ? "원문 부족 — 발행 매체 원문 URL 확인 후 재분석"
+        : r.aiStatus === "needs_review" ? `사용자 검토 필요 — ${r.ai?.reviewReasons[0] ?? ""}`
+        : "AI 분석 필요 (Gemini 원문 검증 전)";
+      if ((r.relevance ?? 0) >= 40 || r.ai) needsCheck.push({ articleId: r.id, reason });
+      continue;
+    }
+    if (r.ai?.reportType === "exclude") {
+      aiExcluded.push({ articleId: r.id, reason: `보고 제외 (AI 판단): ${r.ai.excludeReason || "광고·홍보·관련성 낮음"}`, detail: r.ai.titleKo || r.title, monitoring: false });
+      continue;
+    }
     // previously reported story: only a real follow-up (tender / groundbreaking) may be selected again
     const prev = o.previous.find((x) => x.id === r.id || same(titleOf(r), x.title));
     if (prev) {
@@ -152,7 +171,13 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
     }
   }
 
+  for (const x of aiExcluded) { if (rejects.length >= 10) break; rejects.push(x); }
+  const typeOf = (r: (typeof picks)[number]) => r.ai?.reportType ?? (r.detail?.group === "competitor" ? "competitor" : "trend");
   return {
+    version: CURATION_VERSION,
+    shortfall: Math.max(0, o.target - picks.length),
+    pendingAI,
+    types: { opportunity: picks.filter((r) => typeOf(r) === "opportunity").length, competitor: picks.filter((r) => typeOf(r) === "competitor").length, trend: picks.filter((r) => typeOf(r) === "trend").length },
     generatedAt: new Date().toISOString(),
     target: o.target,
     includeUnverified: o.includeUnverified,

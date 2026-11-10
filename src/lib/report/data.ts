@@ -20,6 +20,7 @@ export interface ReportArticle {
   caption: string;
   image: ReportImage | null; // only "approved" images are placed in the PPT
   reason?: string; // 후보 탈락 사유
+  quality: ExportRow["quality"]; // AI 분석 완료 · 발행일 확인 · 원문 검증 수준 · 사용자 승인
 }
 
 export interface ReportDoc {
@@ -87,6 +88,7 @@ function toArticle(e: ExportRow, row: WeeklyRow | undefined): ReportArticle {
     caption: row?.edits?.caption ?? img?.caption ?? "",
     image: img,
     reason: e.reason,
+    quality: e.quality,
   };
 }
 

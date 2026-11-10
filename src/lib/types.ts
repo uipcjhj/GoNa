@@ -208,6 +208,42 @@ export interface ReportItem {
   order?: number; // 보고서 순서 (보고서 편집에서 드래그)
   edits?: { titleKo?: string; detailLabel?: string; summary4?: string[]; caption?: string }; // 사용자 수정본 (원본 기사 데이터와 별도 저장)
   image?: ReportImage | null; // PPT 기사 이미지 (출처·사용 조건 기록)
+  approvedAt?: string | null; // 사용자 최종 승인 (보고서에 그대로 사용해도 됨)
+}
+
+// ---------------------------------------------------------------- 보고서용 원문 검증 분석 (Gemini, v3)
+/** done = Gemini 분석 완료 · insufficient_source = 원문 부족 · failed = AI 분석 실패 · needs_review = 사용자 검토 필요 */
+export type ReportAIStatus = "done" | "insufficient_source" | "failed" | "needs_review";
+export type ReportType = "opportunity" | "competitor" | "trend" | "exclude";
+export type SourceLevel = "body" | "excerpt" | "title";
+export interface ReportFact { value: string; evidence: string } // evidence = verbatim quote from the source text ("" = not stated)
+export interface ReportAnalysis {
+  version: string; // prompt/validation version — older versions are re-analysed, current ones reused (quota)
+  status: ReportAIStatus;
+  analyzedAt: string;
+  model: string | null;
+  sourceLevel: SourceLevel; // what the analysis could read
+  sourceChars: number;
+  sourceUrl: string | null; // page actually read
+  error: { kind: string; message: string; status: number | null } | null;
+  reviewReasons: string[]; // why the result needs a human check (validation guards + model's own doubts)
+  reportType: ReportType | null;
+  excludeReason: string;
+  titleKo: string;
+  company: ReportFact;
+  location: { country: string; countryKo: string; city: string; evidence: string }; // project site, not company nationality
+  facility: { kind: string; type: string; evidence: string }; // kind: production_plant | warehouse_dc | rnd_center | office_org | product | policy | other | none
+  stage: { value: string; evidence: string }; // planned | approved | under_construction | completed_operating | organisation | announcement | other
+  investment: { amount: string; purpose: string; evidence: string }; // purpose: facility_capex | funding_round | acquisition | total_program | other | none
+  schedule: ReportFact;
+  automation: { mentioned: boolean; items: string[]; evidence: string };
+  supplier: { status: "decided" | "undecided" | "unknown"; name: string; evidence: string };
+  constructionCompany: string;
+  orderPotential: "high" | "medium" | "low";
+  category: { group: "global" | "domestic" | "competitor" | "review"; sub: string; countryKo: string };
+  summary: string[]; // 4 lines (empty when the source cannot support a reliable summary)
+  lineEvidence: string[]; // verbatim quote supporting each summary line ("" for the implication line)
+  confidence: "high" | "medium" | "low";
 }
 
 /** PPT article image. Never auto-inserted unless its source and usage basis are recorded; unclear rights → needs user approval. */
@@ -243,6 +279,10 @@ export interface Curation {
   needsCheck: { articleId: string; reason: string }[];
   excludedPrevious: number; // stories already reported in previous weeks
   balance: { global: number; domestic: number; competitor: number };
+  version?: string; // curation rules version — older saved curations are recomputed (no stale picks)
+  shortfall?: number; // target − picks (never padded)
+  pendingAI?: number; // candidates waiting for Gemini 원문 검증 / review
+  types?: { opportunity: number; competitor: number; trend: number }; // 잠재 수주기회 · 경쟁사 모니터링 · 기술·시장동향
 }
 
 export interface WeeklyReport {
@@ -289,6 +329,7 @@ export interface Article {
   feedback: "useful" | "not_useful" | null;
   feedbackAt: string | null;
   weekly?: WeeklyAnalysis | null;
+  report?: ReportAnalysis | null; // 보고서용 Gemini 원문 검증 분석 (v3) — 규칙 기반 요약과 분리
   viaGoogleNews?: boolean; // link is a Google News redirect; original URL not machine-resolvable
   altSearchedAt?: string | null; // paywalled article: free/official alternative search performed
   altSourceIds?: string[]; // free/official articles covering the same story
@@ -403,6 +444,8 @@ export interface Job {
   log: JobLog[];
   error: string | null;
   slices: number;
+  options?: { retryFailed?: boolean }; // weekly-analyze: also re-run failed / 원문 부족 articles
+  haltReason?: string | null; // stopped early (e.g. Gemini key / quota error) — remaining articles untouched
 }
 
 export interface CountrySetting {

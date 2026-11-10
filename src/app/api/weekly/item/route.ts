@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     };
   }
   let report;
-  for (const id of ids) report = await setItem(period, id, { status, category, edits });
+  const approved = typeof body.approved === "boolean" ? body.approved : undefined; // 사용자 최종 승인
+  for (const id of ids) report = await setItem(period, id, { status, category, edits, approved });
   return NextResponse.json({ ok: true, items: Object.fromEntries(ids.map((id) => [id, report!.items[id]])) });
 }
