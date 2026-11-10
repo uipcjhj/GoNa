@@ -55,9 +55,11 @@ export function Markers({ r }: { r: WeeklyRow }) {
           {r.detail?.group === "competitor" && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">경쟁사</span>}
         </>
       )}
-      {!r.isDemo && r.analysis !== "pending" && <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", ai.cls)}>{ai.label}</span>}
-      {r.detailBasis === "rules" && r.detail && <span className="text-xs text-slate-400">예비 분류</span>}
-      {r.approvedAt && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">승인됨</span>}
+      {/* status only when something is needed; verified = small mint check */}
+      {!r.isDemo && r.analysis !== "pending" && (r.aiStatus === "done"
+        ? <span className="text-xs font-medium text-sky-700" title="Gemini 원문 검증 완료">✓ 검증</span>
+        : <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", ai.cls)}>{ai.label}</span>)}
+      {r.approvedAt && <span className="text-xs font-medium text-sky-700">· 승인</span>}
     </>
   );
 }

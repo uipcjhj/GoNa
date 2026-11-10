@@ -2,7 +2,7 @@ import "server-only";
 import { ensureInitialized } from "@/lib/data";
 import { getArticles, getSettings, listArticles, listOpportunities } from "@/lib/db/repo";
 import { aiConfigured } from "@/lib/pipeline/analyze";
-import { jaccard, normalizeTitle } from "@/lib/util/text";
+import { normalizeTitle, tokens } from "@/lib/util/text";
 import { localDateStr } from "@/lib/util/week";
 import { dateStatus, weeklyRules } from "./classify";
 import { withV2 } from "./taxonomy";
@@ -59,6 +59,7 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
   const arts = all.filter((a) => (settings.showDemoData || !a.isDemo) && inP(a.publishedAt ?? a.discoveredAt));
   const collected = arts.filter((a) => a.status !== "duplicate");
 
+  const settingsKey = hashOf(JSON.stringify(settings));
   const rows: WeeklyRow[] = [];
   for (const a of arts) {
     if (a.status === "duplicate" || a.status === "filtered" || a.status === "error") continue;
@@ -66,7 +67,7 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     // AI results are stored; rule-based classification is cheap and deterministic, so it is recomputed on read
     // (older records and rule improvements apply immediately, no network / API cost)
     // AI results are stored (v2 fields filled by rules if the AI run predates them); rule-based results are recomputed on read
-    const w = a.status !== "analyzed" ? null : a.weekly?.mode === "ai" ? withV2(a, a.weekly, opp) : { ...weeklyRules(a, settings, opp), ...(a.weekly?.summaryLines.length ? { summaryLines: a.weekly.summaryLines } : {}) };
+    const w = a.status !== "analyzed" ? null : memoRules(a, settingsKey, () => a.weekly?.mode === "ai" ? withV2(a, a.weekly, opp) : { ...weeklyRules(a, settings, opp), ...(a.weekly?.summaryLines.length ? { summaryLines: a.weekly.summaryLines } : {}) }, opp);
     const item = report.items[a.id];
     const auto = w?.primaryCategory ?? null;
     const ai = a.report && a.report.version === REPORT_ANALYSIS_VERSION ? a.report : null;
@@ -111,16 +112,19 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
   }
   for (const a of arts) if (a.status === "duplicate" && a.duplicateOf && rows.some((r) => r.id === a.duplicateOf)) add(`dup:${a.duplicateOf}`, a.duplicateOf);
   // same story from different outlets: near-identical titles, or the same key figure (e.g. "420억원") with overlapping words
-  const titles = rows.map((r) => ({ id: r.id, t: normalizeTitle(r.titleKo ?? r.title), nums: storyNumbers(`${r.title} ${r.titleKo ?? ""}`) }));
+  const titles = rows.map((r) => { const t = normalizeTitle(r.titleKo ?? r.title); return { id: r.id, t, set: new Set(tokens(t)), nums: storyNumbers(`${r.title} ${r.titleKo ?? ""}`) }; });
+  // token sets computed once (was re-tokenising both titles for every pair)
+  const jac = (x: Set<string>, y: Set<string>) => { if (!x.size || !y.size) return 0; let n = 0; for (const w of x) if (y.has(w)) n++; return n / (x.size + y.size - n); };
   const parent = new Map<string, string>();
   const find = (x: string): string => (parent.get(x) ?? x) === x ? x : find(parent.get(x)!);
   for (let i = 0; i < titles.length; i++) for (let j = i + 1; j < titles.length; j++) {
     const a = titles[i], b = titles[j];
-    const sim = jaccard(a.t, b.t);
+    const sim = jac(a.set, b.set);
     const sharedNum = a.nums.some((n) => b.nums.includes(n));
     if ((a.t.length > 10 && sim >= 0.6) || (sharedNum && sim >= 0.15)) parent.set(find(b.id), find(a.id));
   }
-  for (const t of titles) if (parent.has(t.id) || [...parent.values()].includes(t.id)) add(`t:${find(t.id)}`, t.id);
+  const parentVals = new Set(parent.values());
+  for (const t of titles) if (parent.has(t.id) || parentVals.has(t.id)) add(`t:${find(t.id)}`, t.id);
   const dupGroups = [...groups.entries()].filter(([, ids]) => ids.size > 1).map(([key, ids]) => ({ key, ids: [...ids] }));
   for (const g of dupGroups) for (const id of g.ids) { const r = rows.find((x) => x.id === id); if (r && !r.dupGroup) r.dupGroup = g.key; }
 
@@ -128,12 +132,15 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
   for (const c of ["domestic", "global", "competitor", "policy", "tech", "opportunity"] as WeeklyCategory[]) counts[c] = rows.filter((r) => r.categories.includes(c) || r.category === c).length;
 
   const today = localDateStr(new Date(), tz);
-  const dayCounts = daysOf(p).filter((d) => d <= today).map((date) => ({ date, n: collected.filter((a) => a.publishedAt && localDateStr(a.publishedAt, tz) === date).length }));
+  const perDay = new Map<string, number>();
+  for (const a of collected) if (a.publishedAt) { const d = localDateStr(a.publishedAt, tz); perDay.set(d, (perDay.get(d) ?? 0) + 1); }
+  const dayCounts = daysOf(p).filter((d) => d <= today).map((date) => ({ date, n: perDay.get(date) ?? 0 }));
   const missingDays = dayCounts.filter((d) => d.n === 0).map((d) => d.date);
 
+  const rowIds = new Set(rows.map((r) => r.id));
   const hotWatch = opps
-    .filter((o) => (settings.showDemoData || !o.isDemo) && o.priority !== "GENERAL" && o.articleIds.some((id) => rows.some((r) => r.id === id)))
-    .map((o) => ({ id: o.id, company: o.company, projectName: o.projectName, country: o.country, score: o.score, priority: o.priority, articleId: o.articleIds.find((id) => rows.some((r) => r.id === id))!, inPeriod: true, isDemo: o.isDemo }))
+    .filter((o) => (settings.showDemoData || !o.isDemo) && o.priority !== "GENERAL" && o.articleIds.some((id) => rowIds.has(id)))
+    .map((o) => ({ id: o.id, company: o.company, projectName: o.projectName, country: o.country, score: o.score, priority: o.priority, articleId: o.articleIds.find((id) => rowIds.has(id))!, inPeriod: true, isDemo: o.isDemo }))
     .sort((a, b) => b.score - a.score);
 
   // weekly curation: computed once per period and saved (recomputed on request via "AI 추천 다시 생성")
@@ -249,4 +256,21 @@ function judgmentFromAI(ai: ReportAnalysis, _a: Article): WeeklyJudgment {
     basis: ai.sourceLevel === "body" ? "body" : "title_only",
     automationMentioned: ai.automation.mentioned,
   };
+}
+
+// ---- rule classification memo (pure function of article + settings): avoids recomputing ~1,000 articles per request
+const RULE_MEMO = new Map<string, WeeklyAnalysis>();
+function hashOf(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return String(h >>> 0);
+}
+function memoRules(a: Article, settingsKey: string, compute: () => WeeklyAnalysis, opp: { score: number; priority: string } | null): WeeklyAnalysis {
+  const key = [a.id, settingsKey, a.analysis?.analyzedAt ?? "", a.weekly?.analyzedAt ?? "", a.excerpt?.length ?? 0, a.publishedAt ?? "", a.verification.status, a.viaGoogleNews ? 1 : 0, opp ? `${opp.score}${opp.priority}` : "", new Date().toISOString().slice(0, 10)].join("|");
+  const hit = RULE_MEMO.get(key);
+  if (hit) return hit;
+  const w = compute();
+  if (RULE_MEMO.size > 5000) RULE_MEMO.clear();
+  RULE_MEMO.set(key, w);
+  return w;
 }

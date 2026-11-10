@@ -295,7 +295,11 @@ export interface WeeklyReport {
   recommendedAt: string | null;
   curation?: Curation | null;
   v2?: boolean; // v2 curation applied (old v1 auto-recommendations released once)
-  pptMeta?: { vol?: number; coverDate?: string; weekTitle?: string }; // PPT 표지 Vol.·월/연도, 주차 제목 (사용자 수정값)
+  pptMeta?: {
+    vol?: number; coverDate?: string; weekTitle?: string; // PPT 표지 Vol.·월/연도, 주차 제목 (사용자 수정값)
+    coverAssetId?: string | null; // 표지 배경 이미지 (선택된 후보) — 로고·제목·Vol.·날짜는 템플릿 그대로
+    coverCandidates?: { assetId: string; name: string; addedAt: string }[]; // 업로드한 표지 후보 (기사 사진과 별도)
+  };
   updatedAt: string;
 }
 
@@ -444,7 +448,7 @@ export interface Job {
   log: JobLog[];
   error: string | null;
   slices: number;
-  options?: { retryFailed?: boolean }; // weekly-analyze: also re-run failed / 원문 부족 articles
+  options?: { retryFailed?: boolean; ids?: string[]; scope?: "selected" }; // weekly-analyze: explicit articles / 보고서 선정 전체 // weekly-analyze: also re-run failed / 원문 부족 articles
   haltReason?: string | null; // stopped early (e.g. Gemini key / quota error) — remaining articles untouched
 }
 

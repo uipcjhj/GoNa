@@ -111,7 +111,7 @@ function EditorItem({ r, index, total, pq, onMove, onRemove, onSaved, dragProps 
   );
 }
 
-export function EditorTab({ rows, target, pq, onSet, onRefresh }: { rows: WeeklyRow[]; target: number; pq: PeriodQuery; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void }) {
+export function EditorTab({ rows, target, pq, onSet, onRefresh, onAnalyzeSelected }: { rows: WeeklyRow[]; target: number; pq: PeriodQuery; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyzeSelected?: () => void }) {
   const initial = useMemo(() => rows.filter((r) => r.reportStatus === "selected").sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999)).map((r) => r.id), [rows]);
   const [order, setOrder] = useState<string[] | null>(null);
   const ids = order && order.length === initial.length && order.every((id) => initial.includes(id)) ? order : initial;
@@ -163,7 +163,11 @@ export function EditorTab({ rows, target, pq, onSet, onRefresh }: { rows: Weekly
           선정 기사 <b className={cn("text-lg tabular", ids.length === target ? "text-sky-700" : "text-slate-900")}>{ids.length}</b> / 기준 {target}건
           <span className="ml-2 text-[13px] text-slate-500">순서는 드래그 또는 ↑↓로 변경 · 수정 내용은 원본과 별도로 저장됩니다</span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {onAnalyzeSelected && (() => {
+            const pending = rows.filter((r) => r.reportStatus === "selected" && r.aiStatus !== "done").length;
+            return <button onClick={onAnalyzeSelected} disabled={!pending || !!busy} title="검증 완료 기사는 다시 호출하지 않습니다" className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-3.5 py-2 text-sm text-sky-700 disabled:opacity-40">선정 기사 AI 검증 ({pending}건)</button>;
+          })()}
           <button onClick={openPreview} disabled={!ids.length || !!busy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-800 hover:border-sky-200 disabled:opacity-40">
             {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}미리보기
           </button>

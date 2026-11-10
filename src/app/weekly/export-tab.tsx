@@ -97,6 +97,8 @@ export function ExportTab({ pq, selected, onDownload, busy }: { pq: Record<strin
         )}
       </section>
 
+      <CoverPanel doc={doc} pq={pq} onChanged={load} />
+
       {shots && (
         <section>
           <div className="mb-2 flex items-center justify-between"><h3 className="text-base font-semibold text-slate-900">실제 PPT 렌더링 ({shots.length}장)</h3><button onClick={() => setShots(null)} className="text-sm text-slate-500">닫기</button></div>
@@ -119,7 +121,10 @@ export function ExportTab({ pq, selected, onDownload, busy }: { pq: Record<strin
             </div>
             <div className="mt-3 text-sm">{doc.coverDate}</div>
           </div>
-          <div className="mx-[6%] mt-[4%] flex aspect-[1.02] items-center justify-center rounded bg-gradient-to-b from-[#0b2a57] to-[#123d73] text-center text-xs text-white/80">원본 표지 그림·로고·배경은<br />그대로 유지됩니다</div>
+          {doc.coverAssetId
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={`/api/weekly/asset/${doc.coverAssetId}`} alt="표지 배경" className="mx-[6%] mt-[4%] aspect-[1.02] w-[88%] rounded object-cover" />
+            : <div className="mx-[6%] mt-[4%] flex aspect-[1.02] items-center justify-center rounded bg-gradient-to-b from-[#0b2a57] to-[#123d73] text-center text-xs text-white/80">원본 표지 그림 사용<br />(아래 ‘표지 이미지’에서 교체)</div>}
           <Footer />
         </SlideFrame>
         {lists.map((chunk, li) => (
@@ -299,5 +304,70 @@ function Mini({ children, onClick, busy, icon, disabled }: { children: React.Rea
     <button onClick={onClick} disabled={busy || disabled} className="inline-flex h-7 items-center gap-1 rounded border border-[#cbd5e1] bg-white px-2 text-[12px] text-[#1e293b] hover:border-[#38bdf8] disabled:opacity-40">
       {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : icon}{children}
     </button>
+  );
+}
+
+/** 표지 배경 이미지: 생성 API가 연결돼 있지 않으므로 프롬프트 작성 → 외부 도구로 생성 → 업로드·선택. 기사 사진과 별도. */
+function CoverPanel({ doc, pq, onChanged }: { doc: ReportDoc; pq: Record<string, string>; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+  async function upload(files: FileList) {
+    setBusy("upload");
+    setMsg(null);
+    for (const f of [...files].slice(0, 3)) {
+      const fd = new FormData();
+      Object.entries(pq).forEach(([k, v]) => fd.append(k, v));
+      fd.append("file", f);
+      const r = await fetch("/api/weekly/cover", { method: "POST", body: fd });
+      if (!r.ok) setMsg((await r.json().catch(() => ({}))).error ?? "업로드 실패");
+    }
+    setBusy(null);
+    onChanged();
+  }
+  async function act(action: "select" | "remove", assetId: string | null) {
+    setBusy(`${action}:${assetId}`);
+    try { await postJson("/api/weekly/cover", { ...pq, action, assetId }); onChanged(); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+  }
+  return (
+    <section className="space-y-3 rounded-2xl border border-line bg-surface/90 p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-slate-950">표지 이미지</h3>
+          <p className="text-[13px] text-slate-500">표지의 로고·제목·Vol.·날짜·레이아웃은 그대로 두고 배경 그림만 교체합니다. 이미지 생성 API는 연결돼 있지 않아 생성하지 않습니다 — 아래 프롬프트로 외부 도구에서 만든 이미지를 업로드하세요 (최대 3장씩, 후보 6장 보관).</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => navigator.clipboard?.writeText(doc.coverPrompt).then(() => setMsg("프롬프트를 복사했습니다."))} className="h-9 rounded-lg border border-slate-300 px-3 text-sm text-slate-800 hover:border-sky-200">프롬프트 복사</button>
+          <button onClick={() => file.current?.click()} disabled={!!busy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-brand-ink disabled:opacity-50">{busy === "upload" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}이미지 업로드</button>
+          <input ref={file} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { if (e.target.files?.length) upload(e.target.files); e.target.value = ""; }} />
+        </div>
+      </div>
+      <details>
+        <summary className="cursor-pointer text-[13px] text-slate-600">이번 주 선정 기사 기반 생성 프롬프트 보기</summary>
+        <p className="mt-2 rounded-lg bg-navy-900/60 p-3 text-[13px] leading-relaxed text-slate-700">{doc.coverPrompt}</p>
+      </details>
+      {msg && <p className="text-[13px] text-sky-700">{msg}</p>}
+      <div className="flex flex-wrap gap-3">
+        <CoverThumb active={!doc.coverAssetId} label="원본 표지" onSelect={() => act("select", null)} />
+        {doc.coverCandidates.map((c) => (
+          <CoverThumb key={c.assetId} src={`/api/weekly/asset/${c.assetId}`} label={c.name} active={doc.coverAssetId === c.assetId} onSelect={() => act("select", c.assetId)} onRemove={() => act("remove", c.assetId)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CoverThumb({ src, label, active, onSelect, onRemove }: { src?: string; label: string; active: boolean; onSelect: () => void; onRemove?: () => void }) {
+  return (
+    <div className={cn("w-28 overflow-hidden rounded-lg border", active ? "border-brand shadow-[0_0_0_1px_rgba(46,242,196,0.4)]" : "border-line")}>
+      <button onClick={onSelect} className="block aspect-square w-full bg-gradient-to-b from-[#0b2a57] to-[#123d73]" aria-pressed={active} title={label}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {src ? <img src={src} alt={label} className="h-full w-full object-cover" /> : <span className="text-xs text-white/80">원본</span>}
+      </button>
+      <div className="flex items-center justify-between gap-1 px-1.5 py-1 text-xs text-slate-500">
+        <span className="truncate">{active ? "적용 중" : label}</span>
+        {onRemove && <button onClick={onRemove} aria-label="삭제" className="shrink-0 hover:text-slate-900"><X className="h-3.5 w-3.5" /></button>}
+      </div>
+    </div>
   );
 }

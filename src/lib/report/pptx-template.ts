@@ -209,7 +209,21 @@ export async function buildTemplateDeck(doc: ReportDoc): Promise<DeckResult> {
     if (volShape) edits.push({ s: volShape, xml: setSimpleText(volShape.xml, String(doc.vol)) });
     else issues.push({ order: null, slide: 1, level: "warn", message: "표지의 Vol. 번호를 찾지 못했습니다." });
     xml = applyEdits(xml, edits);
-    out.push({ xml, rels: cover.rels.map((r) => ({ ...r })), notes: [`업계동향 ${doc.weekTitle} (${doc.startDate} ~ ${doc.endDate}) · Vol.${doc.vol}`] });
+    const coverRels = cover.rels.map((r) => ({ ...r }));
+    // optional cover background: only the large artwork picture is swapped; logo, title, Vol., date stay as designed
+    if (doc.coverAssetId) {
+      const art = shapesOf(xml).filter((s) => s.tag === "pic").sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      const asset = art ? await getAsset(doc.coverAssetId) : null;
+      if (art && asset) {
+        const px = (emu: number) => Math.min(2000, Math.round((emu / EMU_PER_PX) * 2));
+        const buf = await sharp(asset.buf).resize(px(art.w), px(art.h), { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 88 }).toBuffer();
+        const name = `gor_cover.jpeg`;
+        media.push({ name, buf });
+        const rid = addRel(coverRels, T.image, `../media/${name}`);
+        xml = applyEdits(xml, [{ s: art, xml: art.xml.replace(/r:embed="rId\d+"/, `r:embed="${rid}"`) }]);
+      } else issues.push({ order: null, slide: 1, level: "warn", message: "표지 배경 이미지를 적용하지 못했습니다 (원본 표지 그림 유지)." });
+    }
+    out.push({ xml, rels: coverRels, notes: [`업계동향 ${doc.weekTitle} (${doc.startDate} ~ ${doc.endDate}) · Vol.${doc.vol}`] });
     layout.push({ slide: 1, kind: "cover", articles: [] });
   }
 

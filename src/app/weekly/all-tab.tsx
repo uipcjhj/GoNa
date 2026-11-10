@@ -9,9 +9,10 @@ import { cn } from "@/lib/utils";
 import { ArticleDetail, CategoryText, Markers, STATUS_LABEL, SourceButton, StatusButtons, useReadOnly } from "./parts";
 
 const PAGE = 25;
-const FILTERS: { key: "all" | WeeklyCategory | "review"; label: string }[] = [
-  { key: "all", label: "전체" }, { key: "domestic", label: "국내" }, { key: "global", label: "글로벌" }, { key: "competitor", label: "경쟁사" },
-  { key: "policy", label: "정책" }, { key: "tech", label: "기술·시장" }, { key: "opportunity", label: "수주기회" }, { key: "review", label: "확인 필요" },
+const FILTERS: { key: "all" | WeeklyCategory | "review" | "selected" | "unverified"; label: string }[] = [
+  { key: "all", label: "전체" }, { key: "selected", label: "보고서 선정" }, { key: "review", label: "확인 필요" }, { key: "unverified", label: "AI 미검증" },
+  { key: "domestic", label: "국내" }, { key: "global", label: "글로벌" }, { key: "competitor", label: "경쟁사" },
+  { key: "policy", label: "정책" }, { key: "tech", label: "기술·시장" }, { key: "opportunity", label: "수주기회" },
 ];
 
 export function DetailPanel({ r, curation, onClose, onSet, onRefresh }: { r: WeeklyRow; curation: Curation; onClose: () => void; onSet: (s: ReportStatus) => void; onRefresh: () => void }) {
@@ -49,10 +50,10 @@ export function DetailPanel({ r, curation, onClose, onSet, onRefresh }: { r: Wee
   );
 }
 
-export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void }) {
+export function AllTab({ rows, curation, onSet, onRefresh, onAnalyze, initialFilter = "all" }: { rows: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyze?: (ids: string[]) => void; initialFilter?: string }) {
   const readOnly = useReadOnly();
   const [q, setQ] = useState("");
-  const [f, setF] = useState<(typeof FILTERS)[number]["key"]>("all");
+  const [f, setF] = useState<(typeof FILTERS)[number]["key"]>(FILTERS.some((x) => x.key === initialFilter) ? (initialFilter as (typeof FILTERS)[number]["key"]) : "all");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState<"date" | "relevance">("date");
   const [page, setPage] = useState(0);
@@ -61,7 +62,8 @@ export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]
   const review = useMemo(() => new Set(curation.needsCheck.map((x) => x.articleId)), [curation]);
 
   const matches = (r: WeeklyRow, key: (typeof FILTERS)[number]["key"]) =>
-    key === "all" ? true : key === "review" ? review.has(r.id) || r.detail?.group === "review" || r.analysis === "pending" : r.categories.includes(key) || r.category === key;
+    key === "all" ? true : key === "selected" ? r.reportStatus === "selected" : key === "unverified" ? !r.isDemo && r.analysis !== "pending" && r.aiStatus !== "done"
+      : key === "review" ? review.has(r.id) || r.detail?.group === "review" || r.analysis === "pending" : r.categories.includes(key) || r.category === key;
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -107,6 +109,7 @@ export function AllTab({ rows, curation, onSet, onRefresh }: { rows: WeeklyRow[]
           <button className="rounded-lg bg-brand px-3 py-1 text-sm font-semibold text-brand-ink" onClick={() => { onSet([...checked], "selected"); setChecked(new Set()); }}>보고서 선정</button>
           <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm" onClick={() => { onSet([...checked], "hold"); setChecked(new Set()); }}>보류</button>
           <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm" onClick={() => { onSet([...checked], "excluded"); setChecked(new Set()); }}>제외</button>
+          {onAnalyze && <button className="rounded-lg border border-sky-200 px-3 py-1 text-sm text-sky-700" onClick={() => { onAnalyze([...checked].slice(0, 30)); setChecked(new Set()); }}>AI 원문 검증{checked.size > 30 ? " (최대 30건)" : ""}</button>}
           <button className="ml-auto text-[13px] text-slate-500" onClick={() => setChecked(new Set())}>선택 해제</button>
         </div>
       )}

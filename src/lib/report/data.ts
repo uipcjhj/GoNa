@@ -30,6 +30,9 @@ export interface ReportDoc {
   coverDate: string; // "Nov, 2026"
   vol: number;
   volAuto: boolean;
+  coverAssetId: string | null; // 표지 배경 교체 이미지 (없으면 템플릿 원본 표지 그림)
+  coverPrompt: string; // 표지 이미지 생성용 프롬프트 (외부 생성 도구에 붙여넣기)
+  coverCandidates: { assetId: string; name: string; addedAt: string }[];
   items: ReportArticle[];
   rejects: ReportArticle[];
   warnings: string[];
@@ -107,6 +110,9 @@ export async function buildReportDoc(period: Period, view: WeeklyView, report: W
     endDate: period.endDate,
     weekTitle: report.pptMeta?.weekTitle || weekTitleOf(period.startDate),
     coverDate: report.pptMeta?.coverDate || coverDateOf(period.startDate),
+    coverAssetId: report.pptMeta?.coverAssetId ?? null,
+    coverPrompt: coverPromptOf(items),
+    coverCandidates: report.pptMeta?.coverCandidates ?? [],
     vol,
     volAuto: auto,
     items,
@@ -116,3 +122,27 @@ export async function buildReportDoc(period: Period, view: WeeklyView, report: W
 }
 
 
+
+// ---- 표지 이미지 프롬프트: 이번 주 선정 기사 주제를 반영한 매거진 표지 배경 (텍스트·로고 없는 배경만)
+const THEMES: [RegExp, string][] = [
+  [/휴머노이드|humanoid|피지컬 ?AI/i, "humanoid robots working alongside automated systems"],
+  [/AMR|AGV|자율|무인|mobile robot/i, "autonomous mobile robots moving through aisles"],
+  [/자동창고|AS\/RS|셔틀|스마트창고|물류센터|warehouse|fulfil/i, "a high-bay automated warehouse with shuttle racks and conveyors"],
+  [/콜드체인|냉동|냉장|cold/i, "a cold-chain logistics hub with frosted blue lighting"],
+  [/배터리|battery|이차전지/i, "an EV battery gigafactory production line"],
+  [/자동차|완성차|vehicle|automotive/i, "an automotive assembly plant with robotic arms"],
+  [/반도체|semiconductor/i, "a clean semiconductor fab with automated transport"],
+  [/스마트팩토리|제조|공장|factory|plant/i, "a smart factory floor with robotic cells"],
+  [/항만|공항|port|airport|cargo/i, "an automated cargo terminal with sorters"],
+];
+export function coverPromptOf(items: { label: string; title: string }[]): string {
+  const text = items.map((a) => `${a.label} ${a.title}`).join(" ");
+  const scored = THEMES.map(([re, t]) => ({ t, n: (text.match(new RegExp(re.source, "gi")) ?? []).length })).filter((x) => x.n).sort((a, b) => b.n - a.n).slice(0, 3).map((x) => x.t);
+  const scene = (scored.length ? scored : ["a modern automated logistics center with robots and conveyors"]).join(", ");
+  return [
+    `Editorial B2B magazine cover background illustration about logistics automation: ${scene}.`,
+    "Deep dark navy palette (#0B1E3F to #050C18) with subtle neon mint accents (#2EF2C4), cinematic lighting, clean and premium industrial look, slight depth of field.",
+    "Square composition (1:1), important subject in the lower two thirds, calm empty area at the top.",
+    "No text, no letters, no logos, no watermarks, no real company brands, not a photo of a real site.",
+  ].join(" ");
+}

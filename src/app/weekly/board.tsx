@@ -21,7 +21,10 @@ function periodQuery(p: Period): Record<string, string> {
 }
 
 export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { period: Period; view: WeeklyView; tab: Tab; readOnly?: boolean }) {
-  const tab: Tab = readOnly && (tabIn === "edit" || tabIn === "export") ? "rec" : tabIn;
+  // tab switching is client-side only (URL kept in sync without a server round trip / full re-render)
+  const [tabState, setTabState] = useState<Tab>(tabIn);
+  const tab: Tab = readOnly && (tabState === "edit" || tabState === "export") ? "rec" : tabState;
+  const [allFilter, setAllFilter] = useState<{ key: string; n: number }>({ key: "all", n: 0 });
   const router = useRouter();
   const pq = periodQuery(period);
   const [overrides, setOverrides] = useState<Record<string, ReportStatus>>({});
@@ -36,7 +39,11 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
   const refresh = () => { setOverrides({}); router.refresh(); };
 
   const go = (params: Record<string, string>) => router.push(`/weekly?${new URLSearchParams({ ...params, tab })}`);
-  const setTab = (t: Tab) => router.replace(`/weekly?${new URLSearchParams({ ...pq, tab: t })}`, { scroll: false });
+  const setTab = (t: Tab, filter?: string) => {
+    setTabState(t);
+    if (filter) setAllFilter((f) => ({ key: filter, n: f.n + 1 }));
+    window.history.replaceState(null, "", `/weekly?${new URLSearchParams({ ...pq, tab: t })}`);
+  };
 
   async function act(key: string, fn: () => Promise<string | void>) {
     setBusy(key);
@@ -89,13 +96,18 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
     });
   }
 
-  const kpis = [
-    { label: "수집 기사", value: view.counts.collected, sub: `분석 ${rows.filter((r) => r.analysis !== "pending").length}건` },
-    { label: "AI 추천", value: view.curation.picks.length, sub: (view.curation.shortfall ?? 0) > 0 ? `기준 ${view.target}건 · ${view.curation.shortfall}건 부족 (억지로 채우지 않음)` : `기준 ${view.target}건`, accent: true },
-    { label: "보고서 선정", value: selected, sub: selected === view.target ? "기준 충족" : `기준 ${view.target}건` },
-    { label: "후보 탈락", value: view.curation.rejects.length, sub: "참고 기사" },
-    { label: "확인 필요", value: view.curation.needsCheck.length, sub: "발행일·구분 미확인", warn: view.curation.needsCheck.length > 0 },
+  // KPI cards double as filters: click → matching list (tab + filter kept in sync)
+  const kpis: { label: string; value: number; sub: string; accent?: boolean; warn?: boolean; tab: Tab; filter?: string }[] = [
+    { label: "수집 기사", value: view.counts.collected, sub: `분석 ${rows.filter((r) => r.analysis !== "pending").length}건`, tab: "all", filter: "all" },
+    { label: "AI 추천", value: view.curation.picks.length, sub: (view.curation.shortfall ?? 0) > 0 ? `기준 ${view.target}건 · ${view.curation.shortfall}건 부족` : `기준 ${view.target}건`, accent: true, tab: "rec" },
+    { label: "보고서 선정", value: selected, sub: selected === view.target ? "기준 충족" : `기준 ${view.target}건`, tab: readOnly ? "all" : "edit", filter: readOnly ? "selected" : undefined },
+    { label: "후보 탈락", value: view.curation.rejects.length, sub: "참고 기사", tab: "rejects" },
+    { label: "확인 필요", value: view.curation.needsCheck.length, sub: "발행일·AI 검증·구분", warn: view.curation.needsCheck.length > 0, tab: "all", filter: "review" },
   ];
+  const kpiActive = (k: (typeof kpis)[number]) => tab === k.tab && (k.tab !== "all" || (k.filter ?? "all") === allFilter.key);
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set([tab]));
+  if (!visited.has(tab)) setVisited(new Set([...visited, tab]));
+  const analyze = (body: object, label: string) => startJob("analyze", "/api/weekly/analyze", body, label);
   const tabs: { key: Tab; label: string; n?: number }[] = [
     { key: "rec", label: "AI 추천 기사", n: view.curation.picks.length },
     { key: "all", label: "전체 수집 기사", n: rows.length },
@@ -173,6 +185,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
               <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="분류 다시 적용 (무료)" desc="새 분류체계·판단 규칙을 저장된 기사에 적용합니다. 원문 링크·발행일·선정 상태는 그대로 유지되며 AI를 호출하지 않습니다." onClick={() => regenerate()} />
                 <MenuItem icon={<Sparkles className="h-4 w-4" />} title="Gemini 원문 검증 분석 (보고서 후보만)" desc="선정 기사·관련도 상위 후보의 원문을 읽고 사실·근거·4줄 요약을 만듭니다. 이미 분석된 기사는 재사용해 무료 사용량을 아낍니다." onClick={() => startJob("analyze", "/api/weekly/analyze", {}, "Gemini 원문 검증 분석")} />
+                <MenuItem icon={<Sparkles className="h-4 w-4" />} title="보고서 선정 기사 전체 분석" desc="보고서에 선정한 기사 중 아직 검증되지 않은 기사만 분석합니다 (완료된 기사는 재호출 안 함)." onClick={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} />
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="실패·원문 부족 기사만 재분석" desc="AI 분석 실패 또는 원문 부족으로 끝난 기사만 다시 분석합니다." onClick={() => startJob("analyze", "/api/weekly/analyze", { retryFailed: true }, "실패 기사 재분석")} />
               </div>
             )}
@@ -187,11 +200,12 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
       {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="요약 지표">
         {kpis.map((k) => (
-          <div key={k.label} className={cn("rounded-2xl border bg-surface/90 px-4 py-3.5", k.accent ? "border-sky-200" : "border-line")}>
+          <button key={k.label} type="button" onClick={() => setTab(k.tab, k.tab === "all" ? k.filter ?? "all" : undefined)} aria-pressed={kpiActive(k)}
+            className={cn("rounded-2xl border bg-surface/90 px-4 py-3.5 text-left transition-colors hover:border-sky-200", kpiActive(k) ? "border-brand shadow-[0_0_0_1px_rgba(46,242,196,0.35)]" : "border-line")}>
             <div className="text-[13px] text-slate-500">{k.label}</div>
             <div className={cn("mt-1 text-[28px] font-bold leading-none tabular", k.warn ? "text-amber-700" : k.accent ? "text-sky-700" : "text-slate-950")}>{k.value}</div>
             <div className="mt-1.5 text-xs text-slate-500">{k.sub}</div>
-          </div>
+          </button>
         ))}
       </section>
 
@@ -204,11 +218,12 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
         ))}
       </nav>
 
-      {tab === "rec" && <RecommendTab rows={byId} curation={view.curation} target={view.target} busy={!!busy} onSet={setStatus} onSelectAll={selectAll} onRegenerate={(inc) => regenerate(inc)} onRefresh={refresh} />}
-      {tab === "all" && <AllTab rows={rows} curation={view.curation} onSet={setStatus} onRefresh={refresh} />}
-      {tab === "rejects" && <RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} />}
-      {tab === "edit" && !readOnly && <EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} />}
-      {tab === "export" && !readOnly && <ExportTab pq={pq} selected={selected} onDownload={download} busy={busy} />}
+      {/* visited tabs stay mounted (hidden) so switching back is instant and keeps filters / pages / loaded data */}
+      {visited.has("rec") && <div hidden={tab !== "rec"}><RecommendTab rows={byId} curation={view.curation} target={view.target} busy={!!busy} onSet={setStatus} onSelectAll={selectAll} onRegenerate={(inc) => regenerate(inc)} onRefresh={refresh} /></div>}
+      {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
+      {visited.has("rejects") && <div hidden={tab !== "rejects"}><RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} /></div>}
+      {visited.has("edit") && !readOnly && <div hidden={tab !== "edit"}><EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} onAnalyzeSelected={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} /></div>}
+      {visited.has("export") && !readOnly && <div hidden={tab !== "export"}><ExportTab pq={pq} selected={selected} onDownload={download} busy={busy} /></div>}
     </div>
     </ReadOnlyContext.Provider>
   );

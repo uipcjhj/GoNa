@@ -266,3 +266,14 @@ describe("Gemini 모델 확인", () => {
     assert.equal(r.model, "gemini-2.0-flash");
   });
 });
+
+describe("PPT 표지 프롬프트", () => {
+  test("선정 기사 주제 반영 + 텍스트·로고 금지 문구 포함", async () => {
+    const { coverPromptOf } = await import("@/lib/report/data");
+    const p = coverPromptOf([{ label: "글로벌시장(미국) / 스마트창고 투자", title: "OO, 자동창고 물류센터 신설" }, { label: "경쟁사 / R&D·피지컬 AI", title: "휴머노이드 로봇 공개" }]);
+    assert.match(p, /automated warehouse/);
+    assert.match(p, /humanoid/);
+    assert.match(p, /No text, no letters, no logos/);
+    assert.match(p, /dark navy/i);
+  });
+});
