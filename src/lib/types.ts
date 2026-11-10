@@ -244,6 +244,8 @@ export interface ReportAnalysis {
   summary: string[]; // 4 lines (empty when the source cannot support a reliable summary)
   lineEvidence: string[]; // verbatim quote supporting each summary line ("" for the implication line)
   confidence: "high" | "medium" | "low";
+  promptRev?: string; // prompt revision used (older results are kept, re-run only on request)
+  autoFixes?: string[]; // deterministic corrections applied (e.g. 금액 단위 환산)
 }
 
 /** PPT article image. Never auto-inserted unless its source and usage basis are recorded; unclear rights → needs user approval. */
@@ -333,6 +335,7 @@ export interface Article {
   feedback: "useful" | "not_useful" | null;
   feedbackAt: string | null;
   weekly?: WeeklyAnalysis | null;
+  manualBody?: string | null; // 사용자가 직접 입력한 원문 본문 (원문 접근 실패 시)
   report?: ReportAnalysis | null; // 보고서용 Gemini 원문 검증 분석 (v3) — 규칙 기반 요약과 분리
   viaGoogleNews?: boolean; // link is a Google News redirect; original URL not machine-resolvable
   altSearchedAt?: string | null; // paywalled article: free/official alternative search performed

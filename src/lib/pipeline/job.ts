@@ -115,7 +115,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     // explicit request (checked articles / 보고서 선정 전체): only those articles; failed ones are retried, completed ones reused
     const explicit = options?.ids?.length ? options.ids : options?.scope === "selected" ? [...selected] : null;
     const aiCands = !geminiConfigured() ? []
-      : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: true }))
+      : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: true, upgrade: Boolean(options?.ids?.length) }))
       : inRange
           .filter((a) => a.status === "analyzed" && needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) }) && (selected.has(a.id) || (a.weekly?.relevance ?? 0) >= 35))
           .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || Number(verifiedDate(b)) - Number(verifiedDate(a)) || (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0))

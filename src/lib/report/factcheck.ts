@@ -8,10 +8,12 @@ import type { Article, ReportAnalysis, Settings, SourceLevel } from "@/lib/types
 import { GeminiError, generateJSON, geminiConfigured } from "@/lib/ai/gemini";
 import { verifyAndFetch } from "@/lib/pipeline/verify";
 import { TAXONOMY } from "@/lib/weekly/taxonomy";
-import { normalizeNumbers, validateSummary } from "./validate";
+import { amountTable, fixAmountScale, normalizeNumbers, validateSummary } from "./validate";
 
 /** Bump when the prompt or the validation rules change: older results are re-analysed, current ones reused. */
 export const REPORT_ANALYSIS_VERSION = "r3.1";
+/** Prompt / post-processing revision. Older results stay valid (no automatic overwrite) but can be re-run on request. */
+export const PROMPT_REV = "p2";
 
 const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동창고 AS/RS·셔틀·AGV/AMR·컨베이어·소터·WMS/WCS, 제조물류, 공항 수하물·화물 시스템) 주간 업계동향 보고서 담당 애널리스트입니다.
 기사 1건을 [SOURCE]만 근거로 분석해 JSON으로 답합니다.
@@ -20,7 +22,7 @@ const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동
 1. 사실은 [SOURCE]에 적힌 것만 사용. 기업명·금액·수치·연도·장소·설비·공급사를 지어내지 않는다. 모르면 빈 문자열.
 2. 각 사실의 evidence에는 [SOURCE]의 원문 구절을 그대로(번역 없이, 40~200자) 인용한다. 인용할 구절이 없으면 그 사실은 빈 값.
 3. 소재지(location)는 프로젝트·시설이 실제로 있는 곳. 기업 국적과 혼동 금지. Indiana/Indianapolis = 미국(인디애나주), Andhra Pradesh = 인도. 한국 소재 시설이면 국내.
-4. 투자금액 용도(investment.purpose)를 구분: facility_capex(공장·센터 건설/증설 비용) · funding_round(투자유치·펀딩·시리즈 투자) · acquisition(인수) · total_program(그룹 전체 투자계획) · other · none. 투자유치 금액을 시설 투자비로 쓰지 않는다.
+4. 금액 성격(investment.purpose)을 구분: facility_capex(시설 건설·증설 투자) · funding_round(투자유치·펀딩) · conditional_loan(조건부 대출·융자) · equity(자기자본 투입) · valuation(기업가치) · contract_value(계약·수주액) · acquisition(인수) · total_program(전체 투자계획) · other · none. 서로 다른 금액(예: 대출+자기자본=총사업비)을 섞지 않는다.
 5. 시설 유형(facility.kind): production_plant(생산공장) · warehouse_dc(물류센터·창고) · rnd_center(연구소·R&D센터·innovation hub·lab·technology center) · office_org(조직 신설·법인·사무소) · product(제품·광고·캠페인) · policy · other · none. 연구소·기술센터·조직 신설을 '생산공장 신설'로 쓰지 않는다. 'manufacturing technology center'는 rnd_center.
 6. 단계(stage): planned · approved · under_construction · completed_operating · organisation · announcement · other. 계획·착공·준공·가동을 구분한다.
 7. 자동화(automation): 원문에 명시된 설비·기술만 items에 넣는다. 없으면 mentioned=false, items=[]. 원문에 없는 AGV·AMR·자동창고·컨베이어 등을 요약에 쓰지 않는다.
@@ -30,24 +32,44 @@ const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동
 ${Object.entries(TAXONOMY).map(([k, v]) => `   - ${k}: ${v.subs.join(" | ")}`).join("\n")}
    - review: 판단 불가
 
-4줄 요약(summary) — 현대무벡스 주간 업계동향 보고서 문체(명사형 종결, 각 줄 20~40자, 기호 없음)
- 1줄: 기업·기관의 실제 움직임 (누가, 어디서, 무엇을)
- 2줄: 원문에서 확인된 핵심 수치(투자금액과 용도, 규모, 일정). 수치가 없으면 확인된 다른 핵심 사실
- 3줄: 실제 사업 내용·기술·설비·추진 단계 (원문에 있는 내용만)
- 4줄: 현대무벡스 사업 관점 시사점 (단정 금지, '…가능성 주목', '…동향 참고 필요' 등 완곡 표현. 원문에 없는 설비명 금지)
- - 기업명은 1줄에만. 줄끼리 같은 내용 반복 금지. 기사마다 고유한 사실과 수치 반영.
- - 금액은 원문 통화로: "$1.5 billion" → "15억 달러", "$650 million" → "6.5억 달러", "€39 million" → "3,900만 유로", "Rs 4,000 crore" → "4,000크로르 루피". '천만' 같은 혼합 단위는 쓰지 않는다.
- - 금지 문장: "업계 동향 참고", "원문 미기재", "관련 내용 언급", "○○ 소재", "자동화 설비 도입 여부 미확인"처럼 정보가 없는 문장.
- - 4줄을 원문 사실로 신뢰성 있게 채울 수 없으면 summary=[]로 두고 review_reasons에 이유를 쓴다.
+4줄 요약(summary) — 요약 작성은 수주 가능성·관련성 판단과 완전히 별개
+ - [SOURCE]에 사실이 충분하면 수주 가능성이 낮아도 반드시 4줄을 쓴다. 경쟁사 동향, 피지컬 AI, 서비스로봇, 드론·방산 제조, 시장·정책동향도 정상 요약한다.
+ - 관련성이 낮다는 판단은 report_type / order_potential에만 반영하고, 요약을 비우는 이유가 될 수 없다.
+ - summary를 비우는 경우는 [SOURCE]가 제목 한 줄뿐이거나 확인 가능한 사실이 2개 미만일 때만이며, 그때 summary_status="insufficient_source".
+ 형식: 정확히 4줄, 각 줄 20~40자, 명사형 보고서체(…추진/확대/계획/예정/부각), 기호·번호·따옴표 없음
+ 1줄: 주체와 핵심 사업 (누가, 어디서, 무엇을)
+ 2줄: 규모·금액·일정 (원문 수치. 금액은 성격을 함께: 시설 투자 / 투자유치 / 조건부 대출 / 자기자본 / 기업가치 / 계약액). 수치가 없으면 확인된 다른 핵심 사실
+ 3줄: 실제 설비·기술·사업범위 (원문에 확정된 내용만)
+ 4줄: 시사점 — 수주 가능성이 있으면 현대무벡스 관점의 잠재 수요(추정임을 드러내는 '…가능성', '잠재 수요' 표현), 없으면 해당 산업·경쟁사·기술 관점의 구체적 시사점
+ - 네 줄은 서로 다른 핵심 정보. 같은 내용 반복·기업명 반복 금지(기업명은 1줄에만).
+ - 원문 확정 사실(1~3줄)과 현대무벡스 관점 추정(4줄)을 섞지 않는다. 원문에 없는 AGV·AMR·자동창고·컨베이어 도입을 사실처럼 쓰지 않는다.
+ - 금액은 [AMOUNTS]에 주어진 한국어 환산값을 그대로 쓴다 (직접 환산 금지: "$21.5 billion"은 "215억 달러"이지 "21.5억 달러"가 아님).
+ - 금지 문장: "업계 동향 참고", "관련 설비 수요 동향 참고 필요", "자동화 설비 도입 여부 원문 미확인", "원문 미기재", "관련 내용 언급", "○○ 소재" 등 정보 없는 상투문구.
  line_evidence: 1~3줄 각각을 뒷받침하는 원문 구절(그대로 인용), 4줄은 "".
 
-형식 예시(가상의 'OO사' — 문체만 참고하고 내용·수치는 반드시 이 기사에서만):
- OO사, 미국 텍사스 물류센터 신설 추진
- 5억 달러 투자·2027년 가동 목표
- 자동창고·소터 도입 계획 원문 명시
- 대형 물류거점 자동화 설비 수요 주목
- (자동화 언급이 없는 기사라면 3줄에 원문에 있는 실제 사업 내용을 쓰고, 4줄도 설비명 없이 작성)`;
+문장 밀도 예시 — 현대무벡스 실제 보고서. 문체·밀도만 참고하고, 예시의 기업명·금액·설비·지명은 절대 다른 기사에 쓰지 말 것:
+ [예시1 신규 투자]
+ Worldpac, 美 조지아 포레스트파크에 41.3만ft² 물류센터 추진
+ AutoStore 로봇 기반 자동보관·피킹 시스템 도입 계획
+ 2027년 상반기 가동 예정, 기존 센터 대비 25만ft² 이상 확대
+ 자동차 부품 유통망의 고밀도 보관·자동피킹 투자 확대 부각
+ [예시2 경쟁사 M&A]
+ 노르웨이 AutoStore, 네덜란드 Logiqs 인수 합의
+ 최대 3,000만 유로 거래, 2026년 4분기 종결 예정
+ Logiqs 팔레트 이송·보관 로봇 기술, 약 30개 고객 현장 적용
+ 박스형 자동창고에서 팔레트 AS/RS로 솔루션 확장 가속
+ [예시3 경쟁사 수주]
+ 티로보틱스, 포드에너지 ESS 자동화 설비 약 40억원 추가 수주
+ 포트 컨베이어·전기제어·설치·테스트까지 공급 범위 확대
+ 기존 AMR·랙 자동화 포함 누적 수주 약 230억원 기록
+ 북미 배터리 제조물류 자동화 경쟁 심화
+ [예시4 기술·시장 동향]
+ LG CNS, 로봇 전환 플랫폼 피지컬웍스 기반 사업화 추진
+ 로봇 학습 포지·통합운영 바통 활용, 제조·물류 PoC 확대
+ 포스코DX, 제철소 크레인·원료이송 설비 AI 지능화 추진
+ 제조·물류 설비와 다종 로봇 통합관제 시장 경쟁 심화 부각`;
 
+const PURPOSES = ["facility_capex", "funding_round", "conditional_loan", "equity", "valuation", "contract_value", "acquisition", "total_program", "other", "none"] as const;
 const S = { type: "STRING" } as const;
 const fact = { type: "OBJECT", properties: { value: S, evidence: S }, required: ["value", "evidence"] } as const;
 const RESPONSE_SCHEMA = {
@@ -60,19 +82,20 @@ const RESPONSE_SCHEMA = {
     location: { type: "OBJECT", properties: { country: S, country_ko: S, city: S, evidence: S }, required: ["country", "country_ko", "city", "evidence"] },
     facility: { type: "OBJECT", properties: { kind: { type: "STRING", enum: ["production_plant", "warehouse_dc", "rnd_center", "office_org", "product", "policy", "other", "none"] }, type: S, evidence: S }, required: ["kind", "type", "evidence"] },
     stage: { type: "OBJECT", properties: { value: { type: "STRING", enum: ["planned", "approved", "under_construction", "completed_operating", "organisation", "announcement", "other"] }, evidence: S }, required: ["value", "evidence"] },
-    investment: { type: "OBJECT", properties: { amount: S, purpose: { type: "STRING", enum: ["facility_capex", "funding_round", "acquisition", "total_program", "other", "none"] }, evidence: S }, required: ["amount", "purpose", "evidence"] },
+    investment: { type: "OBJECT", properties: { amount: S, purpose: { type: "STRING", enum: PURPOSES as unknown as string[] }, evidence: S }, required: ["amount", "purpose", "evidence"] },
     schedule: fact,
     automation: { type: "OBJECT", properties: { mentioned: { type: "BOOLEAN" }, items: { type: "ARRAY", items: S }, evidence: S }, required: ["mentioned", "items", "evidence"] },
     supplier: { type: "OBJECT", properties: { status: { type: "STRING", enum: ["decided", "undecided", "unknown"] }, name: S, evidence: S }, required: ["status", "name", "evidence"] },
     construction_company: S,
     order_potential: { type: "STRING", enum: ["high", "medium", "low"] },
     category: { type: "OBJECT", properties: { group: { type: "STRING", enum: ["global", "domestic", "competitor", "review"] }, sub: S, country_ko: S }, required: ["group", "sub", "country_ko"] },
+    summary_status: { type: "STRING", enum: ["written", "insufficient_source"] },
     summary: { type: "ARRAY", items: S },
     line_evidence: { type: "ARRAY", items: S },
     confidence: { type: "STRING", enum: ["high", "medium", "low"] },
     review_reasons: { type: "ARRAY", items: S },
   },
-  required: ["report_type", "exclude_reason", "title_ko", "company", "location", "facility", "stage", "investment", "schedule", "automation", "supplier", "construction_company", "order_potential", "category", "summary", "line_evidence", "confidence", "review_reasons"],
+  required: ["report_type", "exclude_reason", "title_ko", "company", "location", "facility", "stage", "investment", "schedule", "automation", "supplier", "construction_company", "order_potential", "category", "summary_status", "summary", "line_evidence", "confidence", "review_reasons"],
 };
 
 interface Raw {
@@ -87,7 +110,7 @@ interface Raw {
   supplier?: { status?: string; name?: string; evidence?: string };
   construction_company?: string; order_potential?: string;
   category?: { group?: string; sub?: string; country_ko?: string };
-  summary?: string[]; line_evidence?: string[]; confidence?: string; review_reasons?: string[];
+  summary_status?: string; summary?: string[]; line_evidence?: string[]; confidence?: string; review_reasons?: string[];
 }
 
 export interface SourceText { level: SourceLevel; text: string; chars: number; url: string | null; publishedAt: string | null; publishedAtBasis: string | null }
@@ -99,12 +122,18 @@ export async function readSource(a: Article): Promise<SourceText> {
   let url: string | null = null;
   let publishedAt: string | null = null;
   let basis: string | null = null;
-  if (!a.viaGoogleNews && !/news\.google\.com/.test(a.url)) {
-    try {
-      const page = await verifyAndFetch(a.url, 15000);
-      if (page.text && page.text.length > 200) { body = page.text; url = page.verification.finalUrl || a.url; }
-      if (page.publishedAt) { publishedAt = page.publishedAt; basis = page.publishedAtBasis; }
-    } catch { /* unreadable → excerpt level */ }
+  if (a.manualBody && a.manualBody.trim().length > 100) {
+    body = a.manualBody.trim(); // 사용자가 직접 붙여넣은 원문 본문
+    url = null;
+  } else if (!a.viaGoogleNews && !/news\.google\.com/.test(a.url)) {
+    for (const timeout of [15000, 30000]) { // one retry with a longer timeout
+      try {
+        const page = await verifyAndFetch(a.url, timeout);
+        if (page.publishedAt) { publishedAt = page.publishedAt; basis = page.publishedAtBasis; }
+        if (page.text && page.text.length > 200) { body = page.text; url = page.verification.finalUrl || a.url; break; }
+        if (page.verification.status === "verified") break; // page read fine, just no article text
+      } catch { /* retry once */ }
+    }
   }
   const text = normalizeNumbers([`TITLE: ${a.title}`, excerpt ? `EXCERPT: ${excerpt}` : "", body ? `BODY:\n${body.slice(0, 9000)}` : ""].filter(Boolean).join("\n\n"));
   const level: SourceLevel = body.length >= 600 ? "body" : excerpt.length >= 100 || body.length > 200 ? "excerpt" : "title";
@@ -128,13 +157,15 @@ export function quoteInSource(quote: string, source: string): boolean {
 export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | null): ReportAnalysis {
   const reasons: string[] = [...(raw.review_reasons ?? []).map((x) => str(x, 160)).filter(Boolean)];
   const ev = (q: unknown) => { const s = str(q, 400); return s && quoteInSource(s, src.text) ? s : ""; };
-  const summary = (raw.summary ?? []).map((l) => str(l, 80).replace(/^\s*([§⇒•\-*·]|\d{1,2}[.)](?!\d))\s*/u, "")).filter(Boolean);
+  const cleaned = (raw.summary ?? []).map((l) => str(l, 80).replace(/^\s*([§⇒•\-*·]|\d{1,2}[.)](?!\d))\s*/u, "").replace(/^["'“‘]|["'”’]$/g, "")).filter(Boolean);
+  const scale = fixAmountScale(cleaned, src.text); // "21.5억 달러" for "$21.5 billion" → "215억 달러"
+  const summary = scale.lines;
   const lineEvidence = [0, 1, 2, 3].map((i) => (i < 3 ? ev(raw.line_evidence?.[i]) : ""));
   const group = oneOf(raw.category?.group, ["global", "domestic", "competitor", "review"] as const, "review");
   const subs = group === "review" ? [] : (TAXONOMY[group].subs as readonly string[]);
   const sub = subs.includes(str(raw.category?.sub)) ? str(raw.category?.sub) : "";
   const location = { country: str(raw.location?.country, 60), countryKo: str(raw.location?.country_ko, 30), city: str(raw.location?.city, 60), evidence: ev(raw.location?.evidence) };
-  const investment = { amount: str(raw.investment?.amount, 80), purpose: oneOf(raw.investment?.purpose, ["facility_capex", "funding_round", "acquisition", "total_program", "other", "none"] as const, "none"), evidence: ev(raw.investment?.evidence) };
+  const investment = { amount: str(raw.investment?.amount, 80), purpose: oneOf(raw.investment?.purpose, PURPOSES, "none"), evidence: ev(raw.investment?.evidence) };
   const r: ReportAnalysis = {
     version: REPORT_ANALYSIS_VERSION,
     status: "done",
@@ -165,7 +196,9 @@ export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | n
   };
 
   // ---- guards
-  if (!summary.length) reasons.unshift("AI가 원문만으로 4줄 요약을 작성할 수 없다고 판단");
+  // summarising does not depend on relevance: an empty summary is only acceptable when the source is too thin
+  const refused = !summary.length && src.level !== "title" && src.chars >= 400;
+  if (!summary.length) reasons.unshift(refused ? "원문이 충분한데 AI가 요약을 비움 (관련성 판단과 혼동) — 재분석 필요" : "원문 정보 부족으로 요약 보류");
   else reasons.push(...validateSummary(summary, src.text, { countryKo: location.countryKo || r.category.countryKo, investmentPurpose: investment.purpose }));
   if (summary.length && lineEvidence.slice(0, 3).filter(Boolean).length < 2) reasons.push("요약 근거 원문 구절 확인 부족 (1~3줄 중 2줄 이상 인용 필요)");
   if (investment.amount && !investment.evidence) reasons.push("투자금액의 원문 근거 구절 없음");
@@ -175,7 +208,9 @@ export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | n
   if (r.supplier.status === "decided" && !r.supplier.evidence) { r.supplier = { status: "unknown", name: "", evidence: "" }; reasons.push("공급사 확정 근거 없음 → 확인 불가로 변경"); }
   if (r.automation.mentioned && !r.automation.evidence) { r.automation = { mentioned: false, items: [], evidence: "" }; reasons.push("자동화 언급 근거 없음 → 미언급으로 변경"); }
   r.reviewReasons = [...new Set(reasons)];
-  r.status = !summary.length && src.level === "title" ? "insufficient_source" : r.reviewReasons.length ? "needs_review" : "done";
+  r.autoFixes = scale.fixes;
+  r.promptRev = PROMPT_REV;
+  r.status = !summary.length && !refused ? "insufficient_source" : r.reviewReasons.length ? "needs_review" : "done";
   return r;
 }
 
@@ -198,10 +233,13 @@ export function insufficientAnalysis(src: SourceText): ReportAnalysis {
 }
 
 /** Reuse policy (protects the free quota): current-version results are kept; failed / insufficient / old ones may be re-run. */
-export function needsAnalysis(a: Article, opts: { retryFailed: boolean }): boolean {
+export function needsAnalysis(a: Article, opts: { retryFailed: boolean; upgrade?: boolean }): boolean {
   const r = a.report;
   if (!r || r.version !== REPORT_ANALYSIS_VERSION) return true;
   if (r.status === "failed" || r.status === "insufficient_source") return opts.retryFailed;
+  // summary left empty although the source was readable (old prompt refused low-relevance articles)
+  if (!r.summary.length && r.sourceLevel !== "title") return opts.retryFailed;
+  if (opts.upgrade && r.promptRev !== PROMPT_REV) return true; // explicit re-run with the newer prompt
   return false;
 }
 
@@ -221,6 +259,10 @@ export async function analyzeForReport(a: Article, settings: Settings): Promise<
     `발행일(메타데이터): ${a.publishedAt ?? "미확인"}`,
     `원문 확보 수준: ${src.level === "body" ? "기사 본문" : "제목·발췌문만 (본문 미확보 — 발췌에 없는 사실은 쓰지 말 것)"}`,
     `경쟁사 목록: ${comps}. ESR·Prologis·GLP 등 물류부동산 개발사는 경쟁사가 아님. LG CNS·포스코DX·삼성SDS·LX판토스는 물류자동화 사업 기사일 때만 경쟁사.`,
+    "",
+    "[AMOUNTS] 원문 금액 → 한국어 환산 (요약에는 이 환산값만 사용, 성격은 원문 문맥 기준 추정):",
+    ...(amountTable(src.text).map((x) => `- ${x.raw} = ${x.ko} (${x.nature})`) || []),
+    "[/AMOUNTS]",
     "",
     "[SOURCE]",
     src.text,

@@ -64,8 +64,9 @@ export function Markers({ r }: { r: WeeklyRow }) {
   );
 }
 
+const AI_PROMPT_REV = "p2"; // keep in sync with PROMPT_REV (lib/report/factcheck)
 const SOURCE_LEVEL = { body: "기사 본문", excerpt: "제목·발췌문만 (본문 미확보)", title: "제목만" } as const;
-const PURPOSE = { facility_capex: "시설 투자비", funding_round: "투자유치(펀딩)", acquisition: "인수 금액", total_program: "전체 투자계획", other: "기타", none: "—" } as Record<string, string>;
+const PURPOSE = { facility_capex: "시설 투자비", funding_round: "투자유치(펀딩)", conditional_loan: "조건부 대출", equity: "자기자본", valuation: "기업가치", contract_value: "계약·수주액", acquisition: "인수 금액", total_program: "전체 투자계획", other: "기타", none: "—" } as Record<string, string>;
 const STAGE = { planned: "계획", approved: "승인", under_construction: "착공·건설 중", completed_operating: "준공·가동", organisation: "조직 신설", announcement: "발표", other: "기타" } as Record<string, string>;
 const FACILITY = { production_plant: "생산공장", warehouse_dc: "물류센터·창고", rnd_center: "연구소·기술센터", office_org: "조직·법인·사무소", product: "제품·광고", policy: "정책", other: "기타", none: "—" } as Record<string, string>;
 
@@ -79,12 +80,13 @@ export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => vo
   const readOnly = useReadOnly();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  async function run(kind: "reanalyze" | "approve" | "unapprove") {
+  const [body, setBody] = useState("");
+  async function run(kind: "reanalyze" | "approve" | "unapprove" | "manual") {
     setBusy(kind);
     setMsg(null);
     try {
-      if (kind === "reanalyze") {
-        const d = await postJson("/api/weekly/reanalyze", { articleId: r.id });
+      if (kind === "reanalyze" || kind === "manual") {
+        const d = await postJson("/api/weekly/reanalyze", kind === "manual" ? { articleId: r.id, body } : { articleId: r.id });
         setMsg(`재분석 결과: ${d.status === "done" ? "원문 검증 완료" : d.status === "needs_review" ? "검토 필요" : d.status === "insufficient_source" ? "원문 부족" : `실패 — ${d.error ?? ""}`}`);
       } else await postJson("/api/weekly/item", { ...periodOf(), articleId: r.id, approved: kind === "approve" });
       onRefresh();
@@ -100,7 +102,7 @@ export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => vo
         <h4 className="text-sm font-semibold text-slate-900">Gemini 원문 검증 {a?.model ? <span className="font-normal text-slate-500">({a.model} · {a.analyzedAt.slice(0, 10)})</span> : null}</h4>
         {!readOnly && !r.isDemo && (
           <div className="flex gap-1.5">
-            {(r.aiStatus !== "done" || !a) && <button disabled={!!busy} onClick={() => run("reanalyze")} className="rounded-lg border border-slate-300 px-2.5 py-1 text-[13px] text-slate-700 hover:border-sky-200 disabled:opacity-50">{busy === "reanalyze" ? "분석 중…" : a ? "이 기사만 재분석" : "이 기사 AI 분석"}</button>}
+            {(r.aiStatus !== "done" || !a || a.promptRev !== AI_PROMPT_REV) && <button disabled={!!busy} onClick={() => run("reanalyze")} title="원문을 다시 읽고 분석합니다 (선정 상태·사용자 수정·승인은 유지)" className="rounded-lg border border-slate-300 px-2.5 py-1 text-[13px] text-slate-700 hover:border-sky-200 disabled:opacity-50">{busy === "reanalyze" ? "분석 중…" : !a ? "이 기사 AI 분석" : r.aiStatus === "done" ? "새 기준으로 재분석" : "원문 재시도·재분석"}</button>}
             {r.approvedAt
               ? <button disabled={!!busy} onClick={() => run("unapprove")} className="rounded-lg border border-slate-300 px-2.5 py-1 text-[13px] text-slate-600 disabled:opacity-50">승인 취소</button>
               : <button disabled={!!busy || (!r.summary4.length && !r.edits?.summary4?.some(Boolean))} onClick={() => run("approve")} className="rounded-lg bg-brand px-2.5 py-1 text-[13px] font-semibold text-brand-ink disabled:opacity-40">보고서 사용 승인</button>}
@@ -108,6 +110,13 @@ export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => vo
         )}
       </div>
       {msg && <p className="mb-2 text-[13px] text-sky-700">{msg}</p>}
+      {!readOnly && !r.isDemo && a && (a.status === "insufficient_source" || a.status === "failed" || a.sourceLevel !== "body") && (
+        <details className="mb-2">
+          <summary className="cursor-pointer text-[13px] text-slate-600">원문 본문 직접 입력 (원문 접근 실패·발췌만 확보된 경우)</summary>
+          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} placeholder="발행 매체 기사 본문을 그대로 붙여넣으세요 (200자 이상). 이 본문으로 Gemini가 다시 분석합니다." className="mt-2 w-full rounded-lg border border-slate-300 bg-surface-2 p-2 text-[13px] text-slate-900" />
+          <button disabled={!!busy || body.trim().length < 200} onClick={() => run("manual")} className="mt-1 rounded-lg bg-brand px-3 py-1 text-[13px] font-semibold text-brand-ink disabled:opacity-40">{busy === "manual" ? "분석 중…" : "이 본문으로 분석"}</button>
+        </details>
+      )}
       {r.gate.problems.length > 0 && (
         <ul className="mb-2 space-y-0.5 rounded-lg bg-amber-50 p-2.5 text-[13px] text-amber-800">{r.gate.problems.map((p) => <li key={p}>• {p}</li>)}</ul>
       )}
@@ -138,6 +147,7 @@ export function AiEvidence({ r, onRefresh }: { r: WeeklyRow; onRefresh: () => vo
             </details>
           )}
           {a.reviewReasons.length > 0 && <p className="mt-2 text-xs text-amber-700">검토 사유: {a.reviewReasons.join(" · ")}</p>}
+          {a.autoFixes?.length ? <p className="mt-1 text-xs text-slate-500">자동 보정: {a.autoFixes.join(" · ")}</p> : null}
         </>
       )}
     </section>

@@ -10,10 +10,16 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   const deny = await requireAdmin();
   if (deny) return deny;
-  const { articleId } = (await req.json().catch(() => ({}))) as { articleId?: string };
+  const { articleId, body } = (await req.json().catch(() => ({}))) as { articleId?: string; body?: string };
   if (!articleId) return NextResponse.json({ error: "articleId 필요" }, { status: 400 });
   const a = await getArticle(articleId);
   if (!a) return NextResponse.json({ error: "기사를 찾을 수 없습니다." }, { status: 404 });
+  // 원문 접근 실패 시 사용자가 붙여넣은 본문으로 분석 (빈 문자열 → 다시 원문 페이지 사용)
+  if (typeof body === "string") {
+    const text = body.replace(/\s+\n/g, "\n").trim().slice(0, 20000);
+    if (text && text.length < 200) return NextResponse.json({ error: "본문은 200자 이상 붙여넣어 주세요." }, { status: 400 });
+    a.manualBody = text || null;
+  }
   const r = await analyzeForReport(a, await getSettings());
   a.report = r;
   await saveArticles([a]);

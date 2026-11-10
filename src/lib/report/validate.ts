@@ -115,13 +115,16 @@ const AUTOMATION_TERMS: [RegExp, RegExp, string][] = [
 /** Automation equipment named in the summary but absent from the source. Line 4 may only use generic "자동화". */
 export function unsupportedAutomation(lines: string[], source: string): string[] {
   const bad: string[] = [];
-  for (const [inSummary, inSource, name] of AUTOMATION_TERMS) if (lines.some((l) => inSummary.test(l)) && !inSource.test(source)) bad.push(name);
+  // facts (lines 1–3) never; line 4 only as a hedged potential-demand statement ("…수요 가능성", "잠재 수요")
+  const hedged = (l: string) => /(가능성|잠재|기대|여지|수요 ?전망)/.test(l);
+  const checked = lines.filter((l, i) => i < 3 || !hedged(l));
+  for (const [inSummary, inSource, name] of AUTOMATION_TERMS) if (checked.some((l) => inSummary.test(l)) && !inSource.test(source)) bad.push(name);
   // "자동화 설비 도입/구축" stated as fact in lines 1–3 without any automation wording in the source
-  if (lines.slice(0, 3).some((l) => /자동화 ?(설비|시스템|라인)/.test(l)) && !/automat|robot|자동화|로봇/i.test(source)) bad.push("자동화 설비");
+  if (checked.slice(0, 3).some((l) => /자동화 ?(설비|시스템|라인)/.test(l)) && !/automat|robot|자동화|로봇/i.test(source)) bad.push("자동화 설비");
   return bad;
 }
 
-const FILLER = /(업계 ?동향 ?참고|원문 ?미기재|원문 ?미확인|관련 ?내용 ?언급|관련 ?소식$|^\S{1,8} ?소재$|정보 ?없음|확인 ?불가|미공개$|내용 ?없음|해당 ?없음|N\/A|Unknown|Not Disclosed)/i;
+const FILLER = /(업계 ?동향 ?참고|동향 ?참고 ?필요|수요 ?동향 ?참고|참고 ?필요$|원문 ?미기재|원문 ?미확인|도입 ?여부 ?(원문 ?)?미확인|관련 ?내용 ?언급|관련 ?소식$|^\S{1,8} ?소재$|정보 ?없음|확인 ?불가|미공개$|내용 ?없음|해당 ?없음|N\/A|Unknown|Not Disclosed)/i;
 export function fillerLines(lines: string[]): string[] {
   return lines.filter((l) => FILLER.test(l.trim()));
 }
@@ -131,11 +134,15 @@ export function validateSummary(lines: string[], source: string, ctx: { countryK
   const reasons: string[] = [];
   const clean = lines.map((l) => l.trim()).filter(Boolean);
   if (clean.length !== 4) reasons.push(`요약이 4줄이 아님 (${clean.length}줄)`);
-  const short = clean.filter((l) => l.length < 8);
-  const long = clean.filter((l) => l.length > 48);
+  const short = clean.filter((l) => l.length < 10);
+  const long = clean.filter((l) => l.length > 46);
   if (short.length) reasons.push(`너무 짧은 줄: ${short.join(" / ")}`);
-  if (long.length) reasons.push(`너무 긴 줄 (48자 초과) ${long.length}개`);
-  if (new Set(clean).size !== clean.length) reasons.push("같은 문장이 반복됨");
+  if (long.length) reasons.push(`너무 긴 줄 (46자 초과, 20~40자 권장) ${long.length}개`);
+  if (new Set(clean).size !== clean.length || similarPairs(clean).length) reasons.push(`비슷한 내용 반복: ${similarPairs(clean).map(([a, b]) => `${a + 1}·${b + 1}줄`).join(", ") || "같은 문장"}`);
+  const leaked = EXAMPLE_ENTITIES.filter((e) => clean.some((l) => l.includes(e)) && !source.includes(e));
+  if (leaked.length) reasons.push(`예시 문장의 고유명사가 섞임: ${leaked.join(", ")}`);
+  const nature = amountNatureIssues(clean, source);
+  if (nature.length) reasons.push(...nature);
   const filler = fillerLines(clean);
   if (filler.length) reasons.push(`의미 없는 문장: ${filler.join(" / ")}`);
   if (clean.some((l) => /[§⇒•]/.test(l))) reasons.push("기호(§, ⇒ 등) 포함");
@@ -147,3 +154,109 @@ export function validateSummary(lines: string[], source: string, ctx: { countryK
   if (ctx.investmentPurpose === "funding_round" && clean.some((l) => /(공장|시설|설비|센터|생산).{0,12}투자/.test(l) && amountsIn(l).length)) reasons.push("투자유치 금액을 시설 투자금액으로 표현");
   return reasons;
 }
+
+// ---------------------------------------------------------------- amount conversion / nature
+
+const CUR_KO: Record<string, string> = { USD: "달러", EUR: "유로", GBP: "파운드", KRW: "원", INR: "루피", JPY: "엔", CNY: "위안", AUD: "호주달러", CAD: "캐나다달러", SGD: "싱가포르달러", PLN: "즐로티", HUF: "포린트" };
+const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+/** 21.5e9 USD → "215억 달러", 6.15e8 → "6.15억 달러", 3.9e7 EUR → "3,900만 유로", 1.2e12 KRW → "1조 2,000억 원". */
+export function koreanAmount(value: number, currency: string | null): string {
+  const unit = currency ? ` ${CUR_KO[currency] ?? currency}` : "";
+  if (value >= 1e12) {
+    const jo = Math.floor(value / 1e12);
+    const eok = Math.round((value - jo * 1e12) / 1e8);
+    return `${jo.toLocaleString("en-US")}조${eok ? ` ${eok.toLocaleString("en-US")}억` : ""}${unit}`;
+  }
+  if (value >= 1e8) return `${fmt(value / 1e8)}억${unit}`;
+  if (value >= 1e4) return `${fmt(value / 1e4)}만${unit}`;
+  return `${fmt(value)}${unit}`;
+}
+
+/** Source amounts with their Korean form — given to the model so it copies instead of converting. */
+export function amountTable(source: string): { raw: string; ko: string; nature: AmountNature }[] {
+  const seen = new Set<string>();
+  return amountsIn(source).filter((a) => !seen.has(a.raw) && (seen.add(a.raw), true)).slice(0, 12).map((a) => ({ raw: a.raw, ko: koreanAmount(a.value, a.currency), nature: natureAt(source, a.raw) }));
+}
+
+/** Fix decimal-scale slips in Korean amounts ("$21.5 billion" written as "21.5억 달러" → "215억 달러"). */
+export function fixAmountScale(lines: string[], source: string): { lines: string[]; fixes: string[] } {
+  const src = amountsIn(normalizeNumbers(source));
+  const fixes: string[] = [];
+  const out = lines.map((line) => {
+    let l = line;
+    for (const a of amountsIn(normalizeNumbers(line))) {
+      if (src.some((s) => near(s.value, a.value) && sameCur(a, s))) continue;
+      const hit = src.find((s) => (s.currency === a.currency || !s.currency) && [10, 100, 1000, 0.1, 0.01, 0.001].some((k) => near(s.value, a.value * k)));
+      if (!hit) continue;
+      const right = koreanAmount(hit.value, hit.currency ?? a.currency);
+      l = l.replace(a.raw, right);
+      fixes.push(`금액 단위 자동 보정: ${a.raw} → ${right} (원문 ${hit.raw})`);
+    }
+    return l;
+  });
+  return { lines: out, fixes };
+}
+
+export type AmountNature = "loan" | "equity" | "valuation" | "funding" | "contract" | "capex" | "unknown";
+const NATURE_SRC: [AmountNature, RegExp][] = [
+  ["valuation", /valuation|valued at|value of the company|기업가치|몸값/i],
+  ["loan", /\bloan|credit facility|debt|대출|융자/i],
+  ["equity", /\bequity\b|own capital|자기자본|자본금/i],
+  ["funding", /raise[sd]?|funding|round|series [a-h]|investors|venture|투자 ?유치|펀딩/i],
+  ["contract", /contract|order|deal worth|awarded|계약|수주/i],
+  ["capex", /invest|build|construct|plant|facility|factory|expan|투자|건설|증설/i],
+];
+/** What an amount in the source is (by the words right before/after it). */
+export function natureAt(source: string, raw: string): AmountNature {
+  const i = normalizeNumbers(source).indexOf(raw);
+  if (i < 0) return "unknown";
+  const t = normalizeNumbers(source);
+  const start = Math.max(0, i - 90);
+  const win = t.slice(start, i + raw.length + 60);
+  const pos = i - start;
+  // the keyword closest to the amount wins ("…$165 million in equity, bringing the investment amount to $615 million")
+  let best: { n: AmountNature; d: number } = { n: "unknown", d: Infinity };
+  for (const [n, re] of NATURE_SRC) {
+    for (const m of win.matchAll(new RegExp(re.source, "gi"))) {
+      const d = m.index! < pos ? pos - (m.index! + m[0].length) : m.index! - (pos + raw.length);
+      if (d < best.d) best = { n, d };
+    }
+  }
+  return best.n;
+}
+const NATURE_KO: [AmountNature, RegExp][] = [
+  ["valuation", /기업가치|가치 ?평가|몸값/], ["loan", /대출|융자|차입/], ["equity", /자기자본|자본 ?투입|지분 ?출자/],
+  ["funding", /투자 ?유치|펀딩|유치/], ["contract", /계약|수주|주문/],
+];
+/** Summary describes an amount as something else than the source does (valuation → 투자, loan → 투자 유치 …). */
+export function amountNatureIssues(lines: string[], source: string): string[] {
+  const src = amountsIn(normalizeNumbers(source));
+  const issues: string[] = [];
+  for (const line of lines) for (const a of amountsIn(normalizeNumbers(line))) {
+    const s = src.find((x) => near(x.value, a.value) && sameCur(a, x));
+    if (!s) continue;
+    const n = natureAt(source, s.raw);
+    const said = NATURE_KO.find(([, re]) => re.test(line))?.[0] ?? null;
+    if (n === "valuation" && said !== "valuation") issues.push(`기업가치(${a.raw})를 투자·거래 금액처럼 표현`);
+    else if (n === "loan" && said !== "loan" && /투자|유치/.test(line)) issues.push(`조건부 대출·융자(${a.raw})를 투자로 표현`);
+    else if (n === "funding" && said !== "funding" && /(공장|시설|설비|센터|생산).{0,12}투자/.test(line)) issues.push(`투자유치(${a.raw})를 시설 투자로 표현`);
+  }
+  return [...new Set(issues)];
+}
+
+// ---------------------------------------------------------------- repetition / few-shot leakage
+const toks = (l: string) => new Set(l.replace(/[^가-힣A-Za-z0-9]+/g, " ").split(" ").filter((w) => w.length >= 2));
+export function similarPairs(lines: string[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
+    const a = toks(lines[i]!), b = toks(lines[j]!);
+    if (!a.size || !b.size) continue;
+    let n = 0;
+    for (const w of a) if (b.has(w)) n++;
+    if (n / Math.min(a.size, b.size) >= 0.6) out.push([i, j]);
+  }
+  return out;
+}
+/** Proper nouns of the few-shot examples in the prompt — must never appear unless the article itself has them. */
+export const EXAMPLE_ENTITIES = ["Worldpac", "포레스트파크", "AutoStore", "Logiqs", "티로보틱스", "포드에너지", "피지컬웍스", "LG CNS", "포스코DX"];

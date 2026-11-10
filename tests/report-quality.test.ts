@@ -60,11 +60,11 @@ describe("금액 파싱", () => {
 describe("투자유치 vs 시설 투자", () => {
   const src = "Zipline raised $1.5 billion in new funding led by investors. The drone delivery company also plans a new manufacturing facility in Dallas.";
   test("투자유치 금액을 공장 투자로 쓰면 거부", () => {
-    const r = validateSummary(["Zipline, 미국 드론 배송 사업 확대", "15억 달러 공장 투자 추진", "댈러스 신규 제조시설 계획", "드론 물류 확산 동향 참고 필요"], src, { investmentPurpose: "funding_round" });
+    const r = validateSummary(["Zipline, 미국 드론 배송 사업 확대", "15억 달러 공장 투자 추진", "댈러스 신규 제조시설 계획", "드론 배송 사업 확장에 따른 물류 거점 수요 부각"], src, { investmentPurpose: "funding_round" });
     assert.ok(r.some((x) => x.includes("투자유치")), r.join(" | "));
   });
   test("투자유치로 정확히 쓰면 통과", () => {
-    const r = validateSummary(["Zipline, 신규 투자유치로 사업 확대", "15억 달러 규모 펀딩 유치", "댈러스 신규 제조시설 계획 발표", "드론 물류 확산 동향 참고 필요"], src, { investmentPurpose: "funding_round" });
+    const r = validateSummary(["Zipline, 신규 투자유치로 사업 확대", "15억 달러 규모 펀딩 유치", "댈러스 신규 제조시설 계획 발표", "드론 배송 사업 확장에 따른 물류 거점 수요 부각"], src, { investmentPurpose: "funding_round" });
     assert.deepEqual(r, []);
   });
   test("규칙 분류: 펀딩 기사는 제조물류 투자로 분류하지 않는다", () => {
@@ -128,7 +128,7 @@ describe("Gemini 결과 검증 → 상태", () => {
     schedule: { value: "2027년 착공", evidence: "Construction starts in 2027" }, automation: { mentioned: false, items: [], evidence: "" },
     supplier: { status: "unknown", name: "", evidence: "" }, construction_company: "", order_potential: "low",
     category: { group: "global", sub: "Industry", country_ko: "미국" },
-    summary: ["Pfizer, 미국 코네티컷 제조기술센터 건립", "6.5억 달러 투자·2027년 착공 예정", "신규 생산공정 개발 거점, 200명 근무", "제약 생산기술 투자 동향 참고 필요"],
+    summary: ["Pfizer, 미국 코네티컷 제조기술센터 건립", "6.5억 달러 투자·2027년 착공 예정", "신규 생산공정 개발 거점, 200명 근무", "제약 생산공정 고도화 투자 확대 부각"],
     line_evidence: ["build a manufacturing technology center in Groton, Connecticut", "Pfizer will invest $650 million", "the center will employ 200 scientists and engineers", ""],
     confidence: "high", review_reasons: [],
   };
@@ -275,5 +275,99 @@ describe("PPT 표지 프롬프트", () => {
     assert.match(p, /humanoid/);
     assert.match(p, /No text, no letters, no logos/);
     assert.match(p, /dark navy/i);
+  });
+});
+
+// ---------------------------------------------------------------- 4줄 요약 품질 (p2)
+import { readFileSync } from "node:fs";
+import { amountTable, fixAmountScale, koreanAmount, natureAt } from "@/lib/report/validate";
+import { needsAnalysis, PROMPT_REV } from "@/lib/report/factcheck";
+
+const NEROS = readFileSync(new URL("./fixtures/neros-manufacturingdive.txt", import.meta.url), "utf8");
+const nerosSrc: SourceText = { level: "body", chars: NEROS.length, url: null, publishedAt: null, publishedAtBasis: null, text: NEROS };
+const nerosRaw = (summary: string[], extra: object = {}) => ({
+  report_type: "trend", exclude_reason: "", title_ko: "Neros, 美 드론 생산 확대에 6.15억 달러 투입",
+  company: { value: "Neros", evidence: "small drone maker Neros a conditional loan of up to $450 million" },
+  location: { country: "United States", country_ko: "미국", city: "", evidence: "support the company’s expansion plans in the United States" },
+  facility: { kind: "production_plant", type: "드론 생산시설", evidence: "increase Neros’ manufacturing capacity to produce dual-use small unmanned aircraft systems" },
+  stage: { value: "planned", evidence: "support the company’s expansion plans in the United States" },
+  investment: { amount: "$615 million", purpose: "total_program", evidence: "bringing the investment amount to $615 million" },
+  schedule: { value: "2028년 연 100만 대", evidence: "manufacture 1 million drones per year by 2028" },
+  automation: { mentioned: false, items: [], evidence: "" }, supplier: { status: "unknown", name: "", evidence: "" }, construction_company: "",
+  order_potential: "low", category: { group: "global", sub: "제조물류 투자", country_ko: "미국" }, summary_status: "written",
+  summary,
+  line_evidence: ["support the company’s expansion plans in the United States", "Neros pledged $165 million in equity toward the project, bringing the investment amount to $615 million", "produce critical components such as motors, radios, flight electronics, sensors and batteries", ""],
+  confidence: "high", review_reasons: [], ...extra,
+});
+
+describe("금액 환산·성격 (Zipline·Neros 실제 사례)", () => {
+  test("Zipline: $21.5 billion은 215억 달러 (21.5억 달러는 오류 → 자동 보정)", () => {
+    assert.equal(koreanAmount(21.5e9, "USD"), "215억 달러");
+    const src = "Zipline … $21.5 billion"; // 사용자가 보고한 실제 오류 금액 (기사 원문 접근 불가 — 금액만 사용)
+    assert.ok(unsupportedNumbers(["21.5억 달러 규모"], src).length > 0, "잘못된 환산은 검출");
+    const f = fixAmountScale(["Zipline, 21.5억달러 규모 평가"], src);
+    assert.equal(f.lines[0], "Zipline, 215억 달러 규모 평가");
+    assert.equal(f.fixes.length, 1);
+    assert.deepEqual(unsupportedNumbers(f.lines, src), []);
+  });
+  test("Neros 원문 금액 성격: 4.5억 조건부 대출 · 1.65억 자기자본 · 6.15억 총액", () => {
+    const t = amountTable(NEROS);
+    const by = (raw: string) => t.find((x) => x.raw.startsWith(raw));
+    assert.equal(by("$450 million")?.ko, "4.5억 달러");
+    assert.equal(natureAt(NEROS, "$450 million"), "loan");
+    assert.equal(natureAt(NEROS, "$165 million"), "equity");
+    assert.equal(by("$615 million")?.ko, "6.15억 달러");
+  });
+  test("조건부 대출을 '투자 유치'로 쓰면 검토 필요", () => {
+    const r = validateSummary(["Neros, 미국 소형 드론 생산능력 확충 추진", "4.5억 달러 투자 유치로 생산 확대", "모터·무선·배터리 등 핵심 부품 생산 내재화", "드론 공급망 자국화에 따른 제조 투자 확대 부각"], NEROS);
+    assert.ok(r.some((x) => x.includes("대출")), r.join(" | "));
+  });
+});
+
+const good = ["Neros, 미국 소형 드론 생산능력 확충 추진", "총 6.15억 달러, 4.5억 달러 조건부 대출 포함", "모터·무선·배터리 등 핵심 부품 생산 확대", "드론 공급망 자국화로 북미 제조설비 투자 확대 부각"];
+describe("Neros 실제 기사 4줄 구성", () => {
+  test("원문 사실·수치가 맞는 4줄은 '분석 완료'", () => {
+    const r = buildReportAnalysis(nerosRaw(good), nerosSrc, "m");
+    assert.equal(r.status, "done", r.reviewReasons.join(" | "));
+    assert.equal(r.summary.length, 4);
+    assert.ok(r.summary.every((l) => l.length >= 10 && l.length <= 46));
+  });
+  test("원문에 없는 AGV·자동창고를 사실로 쓰면 검토 필요, 4줄 잠재 수요 표현은 허용", () => {
+    const bad = buildReportAnalysis(nerosRaw([good[0]!, good[1]!, "AGV·자동창고 기반 생산라인 구축", good[3]!]), nerosSrc, "m");
+    assert.equal(bad.status, "needs_review");
+    const hedged = buildReportAnalysis(nerosRaw([good[0]!, good[1]!, good[2]!, "대량생산 전환 시 자동창고 잠재 수요 가능성"]), nerosSrc, "m");
+    assert.equal(hedged.status, "done", hedged.reviewReasons.join(" | "));
+  });
+  test("상투문구·반복·예시 고유명사 혼입은 검토 필요", () => {
+    for (const lines of [
+      [good[0]!, good[1]!, good[2]!, "관련 설비 수요 동향 참고 필요"],
+      [good[0]!, good[1]!, "Neros, 미국 소형 드론 생산능력 확충", good[3]!],
+      [good[0]!, good[1]!, "AutoStore 로봇 기반 부품 보관 도입", good[3]!],
+    ]) assert.equal(buildReportAnalysis(nerosRaw(lines), nerosSrc, "m").status, "needs_review", lines.join(" / "));
+  });
+});
+
+describe("요약 작성 ≠ 수주 가능성", () => {
+  test("원문이 충분한데 요약을 비우면 '원문 부족'이 아니라 재분석 대상", () => {
+    const r = buildReportAnalysis(nerosRaw([], { summary_status: "insufficient_source", review_reasons: ["현대무벡스와 관련성 낮음"] }), nerosSrc, "m");
+    assert.equal(r.status, "needs_review");
+    assert.ok(r.reviewReasons.some((x) => x.includes("재분석")));
+    assert.ok(needsAnalysis(article({ title: "x", report: r }), { retryFailed: true }), "실패·재분석 대상에 포함");
+  });
+  test("원문이 제목뿐이면 '원문 부족'", () => {
+    const r = buildReportAnalysis(nerosRaw([], { summary_status: "insufficient_source" }), { ...nerosSrc, level: "title", chars: 0, text: "TITLE: Neros plans $615M drone manufacturing expansion in US" }, "m");
+    assert.equal(r.status, "insufficient_source");
+  });
+  test("수주 가능성 낮은 동향 기사도 요약은 정상 완료 (추천 여부와 별개)", () => {
+    const r = buildReportAnalysis(nerosRaw(good, { report_type: "trend", order_potential: "low" }), nerosSrc, "m");
+    assert.equal(r.status, "done");
+    assert.equal(r.reportType, "trend");
+  });
+  test("기존 분석은 자동 덮어쓰지 않고, 직접 요청 시에만 새 기준으로 재분석", () => {
+    const old = { ...buildReportAnalysis(nerosRaw(good), nerosSrc, "m"), promptRev: "p1" };
+    const a = article({ title: "x", report: old });
+    assert.equal(needsAnalysis(a, { retryFailed: true }), false);
+    assert.equal(needsAnalysis(a, { retryFailed: true, upgrade: true }), true);
+    assert.equal(PROMPT_REV, "p2");
   });
 });
