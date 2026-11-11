@@ -1,20 +1,28 @@
 /**
- * 엔딩 액자 (DOM): 같은 자리·같은 크기의 픽셀 액자 안에 장면 일러스트·영상을 원래 비율 그대로(contain) 보여 줌.
- *   장면 1~3: 기존 일러스트 (1 노을 마을 · 2 달리는 고나 + 발걸음 · 3 가족 발견)
- *   장면 4: ending_01_running_hug.mp4 → 5: 그 마지막 프레임 그대로 · 6: ending_02_grandma_kiss → ending_03_uncle_sniff
- *   7: 킁카 영상 마지막 프레임 그대로 · 8: ending_04_family_portrait (끝나면 마지막 프레임) → 황금 액자 피날레(ui/endingUi.ts)
- *   영상: 음소거 · playsinline · 미리 받기 · 끝나면 마지막 프레임 유지 · 실패하면 같은 장면의 정지 그림(첫/마지막 프레임)으로 대신
- * 그림은 다시 그리지 않고 작은 효과만 액자 안에: 달리기 발걸음(두 그림 번갈아) · 발밑 먼지 · 하트 · 킁카 냄새 · 별빛.
+ * 엔딩 액자 (DOM): 같은 자리·같은 크기의 픽셀 액자 안에 장면을 원래 비율 그대로(contain) 보여 줌.
+ *   장면 1: 둥지 속 알 → 알에서 태어난 아기 고나 (성장 회상 캔버스 — ui/endingGrowth.ts)
+ *   장면 2: 기어 다니는 고나 → 혼자 일어서기 → 두 발로 달리기 → 자이언트 곤룡 고나 (같은 캔버스)
+ *   장면 3: 노을 마을(s1) → 기다리던 가족 발견(s2)
+ *   장면 4: 달려가는 고나(s3, 그림 전체만 아주 느리게 100→104% 확대) → ending_01_running_hug.mp4
+ *   장면 5: 그 마지막 프레임 그대로 · 6: ending_02_grandma_kiss → ending_03_uncle_sniff · 7: 킁카 마지막 프레임
+ *   장면 8: ending_04_family_portrait (끝나면 마지막 프레임) → 황금 액자 피날레(ui/endingUi.ts)
+ *   영상: 음소거 · playsinline · 장면보다 먼저 한 번 재생·멈춤으로 준비(첫 프레임 디코딩) · 끝나면 마지막 프레임 유지
+ *         · 실패하면 같은 장면의 정지 그림(첫/마지막 프레임)으로 대신 — 엔딩 진행은 멈추지 않음
+ * 그림 속 인물만 따로 움직이는 효과는 쓰지 않음 (워프·찌그러짐 없음).
  * 자리: 세로 = 위 버튼 아래 ~ 아래 대사창 위 사이 가운데 / 가로 = 위 대사창 아래 ~ 화면 아래 사이 가운데
  *       (대사 길이와 상관없이 정해진 여백으로 계산 → 장면·대사가 바뀌어도 액자는 그대로)
  */
 import { bus, EV } from '../events';
 import { el } from './dom';
+import { EndingGrowth, preloadGrowth } from './endingGrowth';
 
 const DIR = 'assets/ending/frames/';
 const VDIR = 'assets/ending/';
-/** 장면 1~3 그림 (2 = 달리는 고나: '걷고, 달리고' · 3 = 가족 발견: '얼굴들이 보였어요') */
-const IMAGES = ['s1', 's3', 's2'];
+/** 그림 장면 — 장면 3: 노을 마을 → 가족 발견 · 장면 4 앞부분: 달려가는 고나 */
+const IMAGES = ['s1', 's2', 's3'];
+/** 장면 3 에서 마을 → 가족으로 바뀌는 때 · 장면 4 에서 달리기 그림 → 영상으로 바뀌는 때 (장면 시작 기준 초) */
+export const S3_FAMILY_AT = 3.6;
+export const S4_VIDEO_AT = 3.6;
 const VIDEOS = ['ending_01_running_hug', 'ending_02_grandma_kiss', 'ending_03_uncle_sniff', 'ending_04_family_portrait'] as const;
 const VLEN = 5.04;
 /** 액자 안쪽 화면비 (그림 2.5 · 영상 1.34~1.79 — contain 이라 잘리지 않음) */
@@ -26,7 +34,8 @@ let preloaded = false;
 export function preloadEndingFrames(): void {
   if (preloaded) return;
   preloaded = true;
-  for (const f of [...IMAGES, 's3b']) {
+  preloadGrowth();
+  for (const f of IMAGES) {
     const im = new Image();
     im.src = `${DIR}${f}.png`;
   }
@@ -43,12 +52,14 @@ export class EndingFrame {
   private front = 0;
   private fx: HTMLDivElement;
   index = -1;
-  private stepTimer = 0;
   private vids: HTMLVideoElement[] = [];
   /** 지금 보이는 영상 번호 (-1 = 그림) */
   private vidOn = -1;
   private vidTimer = 0;
   private fxTimers: number[] = [];
+  /** 장면 안에서 다음 그림·영상으로 넘어가는 예약 (장면이 바뀌면 취소) */
+  private sceneTimer = 0;
+  readonly growth = new EndingGrowth();
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'end-frame hidden');
@@ -77,6 +88,7 @@ export class EndingFrame {
       inner.append(v);
       return v;
     });
+    inner.append(this.growth.canvas);
     this.fx = el('div', 'ef-fx');
     inner.append(this.fx);
     this.root.append(inner);
@@ -149,18 +161,27 @@ export class EndingFrame {
   hide(): void {
     this.clearFx();
     this.stopVideos();
+    this.growth.stop();
+    // 엔딩을 나가면 영상 메모리를 놓아 줌 (다음 엔딩 때 다시 받음)
+    for (const v of this.vids) {
+      v.removeAttribute('src');
+      v.preload = 'none';
+      delete v.dataset.primed;
+      v.load();
+    }
     this.root.classList.add('hidden');
     this.index = -1;
   }
 
   private fadeOut(): void {
     this.clearFx();
+    this.growth.stop();
     this.root.classList.add('out');
   }
 
   private clearFx(): void {
-    clearInterval(this.stepTimer);
-    this.stepTimer = 0;
+    clearTimeout(this.sceneTimer);
+    this.sceneTimer = 0;
     for (const t of this.fxTimers) clearInterval(t);
     this.fxTimers = [];
     this.fx.replaceChildren();
@@ -171,16 +192,49 @@ export class EndingFrame {
     for (const v of this.vids) {
       v.pause();
       v.onended = null;
+      delete v.dataset.want;
       v.classList.remove('on');
     }
     this.vidOn = -1;
   }
 
+  /**
+   * 영상 준비: 보이지 않는 채로 한 번 재생했다가 바로 멈춤 → 아이폰 Safari 도 첫 프레임을 미리 디코딩해 둠
+   * (preload 만으로는 아이폰이 받지 않음). 그 사이 진짜 재생이 시작되면(want) 멈추지 않음.
+   */
+  private prime(k: number): void {
+    const v = this.vids[k];
+    if (!v || v.dataset.primed) return;
+    v.dataset.primed = '1';
+    if (v.preload !== 'auto' || !v.getAttribute('src')) {
+      v.preload = 'auto';
+      v.src = `${VDIR}${VIDEOS[k]}.mp4`;
+      v.load();
+    }
+    const p = v.play();
+    const settle = (): void => {
+      if (v.dataset.want) return;
+      v.pause();
+      try {
+        v.currentTime = 0;
+      } catch {
+        /* 메타데이터 전 */
+      }
+    };
+    if (p) p.then(settle, () => delete v.dataset.primed);
+    else settle();
+  }
+
   /** 정지 그림 보이기 (그림 장면 · 영상 실패 때 대신) */
-  private showImage(src: string): void {
+  private showImage(src: string, zoom = false): void {
     const next = this.imgs[1 - this.front];
     const cur = this.imgs[this.front];
+    next.classList.remove('zoom');
     next.src = src;
+    if (zoom) {
+      void next.offsetWidth; // 확대 애니메이션을 처음부터
+      next.classList.add('zoom');
+    }
     next.classList.add('on');
     cur.classList.remove('on');
     this.front = 1 - this.front;
@@ -193,6 +247,7 @@ export class EndingFrame {
   private playVideo(k: number, at: number, then?: () => void): void {
     clearTimeout(this.vidTimer);
     const v = this.vids[k];
+    v.dataset.want = '1';
     const hold = at >= VLEN - 0.15;
     const reveal = (): void => {
       if (this.vids[k] !== v) return;
@@ -254,23 +309,48 @@ export class EndingFrame {
     this.root.classList.remove('hidden', 'out');
     this.root.dataset.scene = String(i + 1);
     this.layout();
-    if (i <= 2) {
+    if (i <= 1) {
+      // 장면 1·2: 성장 회상 (알 → 탄생 / 기기 → 서기 → 달리기 → 최종 성장)
       this.stopVideos();
-      this.showImage(`${DIR}${IMAGES[i]}.png`);
-      this.ambient(i);
+      for (const im of this.imgs) im.classList.remove('on');
+      this.growth.start(i as 0 | 1, late);
+      if (i === 1) this.prime(0); // 장면 4 영상 준비 (한참 전에)
       return;
     }
-    // 영상 장면
-    if (i === 3) this.playVideo(0, late);
-    else if (i === 4) {
-      // 가족의 품: 달려와 안긴 영상의 마지막 프레임 그대로 (이어서 왔으면 이미 멈춰 있음)
+    this.growth.stop();
+    if (i === 2) {
+      // 장면 3: 노을 마을 → 기다리던 가족
+      this.stopVideos();
+      if (late < S3_FAMILY_AT) {
+        this.showImage(`${DIR}s1.png`);
+        this.sceneTimer = window.setTimeout(() => this.index === 2 && this.showImage(`${DIR}s2.png`), (S3_FAMILY_AT - late) * 1000);
+      } else this.showImage(`${DIR}s2.png`);
+      this.prime(0);
+      return;
+    }
+    if (i === 3) {
+      // 장면 4: 달려가는 고나(그림 전체만 아주 느리게 확대) → 달려가 안기는 영상
+      this.stopVideos();
+      if (late < S4_VIDEO_AT) {
+        this.showImage(`${DIR}s3.png`, true);
+        this.sceneTimer = window.setTimeout(() => this.index === 3 && this.playVideo(0, 0), (S4_VIDEO_AT - late) * 1000);
+      } else this.playVideo(0, late - S4_VIDEO_AT);
+      this.prime(1);
+      return;
+    }
+    if (i === 4) {
+      // 가족의 품: 달려와 안긴 영상이 이어서 끝까지 → 마지막 프레임 그대로 (이어서 왔으면 손대지 않음)
       if (!(prev === 3 && this.vidOn === 0)) this.playVideo(0, VLEN);
+      this.prime(1);
+      this.prime(2);
     } else if (i === 5) {
       // 뽀뽀 → 이어서 킁카 (하나의 내레이션)
       if (late >= VLEN) this.playVideo(2, late - VLEN);
       else this.playVideo(1, late, () => this.index === 5 && this.playVideo(2, 0));
+      this.prime(2);
     } else if (i === 6) {
       if (!(prev === 5 && this.vidOn === 2)) this.playVideo(2, VLEN);
+      this.prime(3);
     } else if (i === 7) this.playVideo(3, late);
   }
 
@@ -279,35 +359,4 @@ export class EndingFrame {
     const v = this.vids[this.vidOn];
     return v ? { name: VIDEOS[this.vidOn], t: v.currentTime, paused: v.paused, ended: v.ended } : null;
   }
-
-  private add(cls: string, x: number, y: number, src?: string): HTMLElement {
-    const e = src ? (el('img', `ef-p ${cls}`) as HTMLImageElement) : el('span', `ef-p ${cls}`);
-    if (src) (e as HTMLImageElement).src = `${DIR}${src}.png`;
-    e.style.left = `${x}%`;
-    e.style.top = `${y}%`;
-    this.fx.append(e);
-    e.addEventListener('animationend', () => e.remove());
-    return e;
-  }
-
-  private every(ms: number, fn: () => void): void {
-    fn();
-    this.fxTimers.push(window.setInterval(fn, ms));
-  }
-
-  /** 장면마다 작은 효과 */
-  private ambient(i: number): void {
-    const img = this.imgs[this.front];
-    if (i === 1) {
-      // 달리는 고나 (s3 그림): 같은 그림의 고나 부분만 2px 올라간 그림과 번갈아 → 통통 발걸음 · 발밑 먼지
-      let up = false;
-      this.stepTimer = window.setInterval(() => {
-        up = !up;
-        img.src = `${DIR}${up ? 's3b' : 's3'}.png`;
-      }, 190);
-      this.every(520, () => this.add('ef-dust', 36 + Math.random() * 4, 70 + Math.random() * 3));
-    }
-  }
-
-
 }

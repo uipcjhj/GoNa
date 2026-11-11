@@ -1,5 +1,5 @@
 /**
- * 가족 엔딩 컷신 — 액자형 픽셀아트 컷신 (8장면, 약 2분) → 타이틀 → 크레딧 → 마지막 문구 → 검은 화면
+ * 가족 엔딩 컷신 — 액자형 컷신 8장면(성장 회상 → 그림 → 영상) → 황금 왕궁 액자 + 크레딧 → 헌정 문구 → The End
  *
  *   - 장면 그림: 확정 엔딩 스토리보드의 일러스트를 그대로 잘라 낸 그림(public/assets/ending/frames/s1~s8.png,
  *     tools/build_ending_frames.py)을 화면 위 같은 자리·같은 크기의 픽셀 액자 안에 보여 줌 (DOM · ui/endingFrame.ts)
@@ -14,6 +14,7 @@ import { bus, EV } from '../events';
 import { sound } from '../audio';
 import { perf } from '../perf';
 import { preloadEndingFrames } from '../ui/endingFrame';
+import { EndingGrowth } from '../ui/endingGrowth';
 
 /** 내레이션 (사용자가 준 문장 그대로) · 시작 시각(초) */
 export const ENDING_LINES: { at: number; text: string }[] = [
@@ -32,11 +33,14 @@ export const ENDING_SCENES = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3] as 
 export const ENDING_FINALE_AT = 74.6;
 /** (예전 이름 호환) 내레이션이 끝나는 때 = 피날레 시작 */
 export const ENDING_TITLE_AT = ENDING_FINALE_AT;
-/** 피날레: 마지막 문장 · The End · 음악 페이드아웃 · 버튼 (피날레 시작 기준 초) */
-export const FINALE_TEXT_AT = 5.2;
-export const FINALE_END_AT = 7.4;
-export const FINALE_FADE_AT = 8.4;
-export const FINALE_BUTTONS_AT = 12.6;
+/** 피날레 (피날레 시작 기준 초): 액자 → 크레딧이 아래에서 위로 → 헌정 문구 → The End(+음악 페이드아웃) → 버튼
+ *  글자의 나타남·사라짐은 ui/endingUi.ts 의 CSS 가 같은 시각으로 맞춤 (style.css 의 fin-* 지연 시간과 같은 값) */
+export const FINALE_CREDITS_AT = 4.2;
+export const FINALE_CREDITS_LEN = 14;
+export const FINALE_DEDICATION_AT = 18.6;
+export const FINALE_END_AT = 24.4;
+export const FINALE_FADE_AT = FINALE_END_AT;
+export const FINALE_BUTTONS_AT = 28.6;
 /** 버튼이 나오는 때 */
 export const ENDING_THE_END_AT = ENDING_FINALE_AT + FINALE_BUTTONS_AT;
 
@@ -100,9 +104,11 @@ export class EndingScene extends Phaser.Scene {
     // 액자가 돋보이게 배경을 조금 어둡게 · 타이틀 이후엔 더 어둡게
     this.dim = this.add.rectangle(0, 0, L.W, L.H, 0x140a20, 1).setOrigin(0, 0).setDepth(310).setAlpha(0.35);
     cam.fadeIn(1400, 30, 16, 40);
+    EndingGrowth.clock = () => this.t;
     this.buildCues();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.cues = [];
+      EndingGrowth.clock = null;
     });
     perf.mark('ending:create', performance.now() - tCreate);
   }
@@ -165,13 +171,21 @@ export class EndingScene extends Phaser.Scene {
     const readEnd = l.at + Math.min(sec - 0.4, 1.2 + Array.from(l.text).length * 0.11);
     if (next - readEnd > 1.2) this.at(readEnd, () => sound.duckEnding(false));
   }
-  /** 다음 대사 버튼: 다음 문장 · 마지막 문장 뒤면 피날레로 */
+  /** 마지막으로 다음 대사로 넘어간 때 (연타로 여러 번 넘어가지 않게) */
+  private lastNextAt = -1;
+  /**
+   * 다음 대사 버튼: 다음 문장 · 마지막 문장 뒤면 피날레로.
+   * 화면(장면·자막)만 넘어가고 음악은 건드리지 않음 — 엔딩 곡은 엔딩이 시작될 때 한 번만 틀고, 끝까지 같은 곡이 그대로 이어짐
+   * (예전에는 여기서 곡을 장면 시각으로 다시 틀어서(seek = 새 소스) 누를 때마다 끊기고 다른 구간부터 나왔음)
+   */
   nextLine(): boolean {
     if (this.t >= ENDING_TITLE_AT - 0.05) return false;
+    const now = performance.now();
+    if (now - this.lastNextAt < 350) return true; // 연타: 한 번만
+    this.lastNextAt = now;
     const next = ENDING_LINES.find((l) => l.at > this.t + 0.05);
     const target = next ? next.at : ENDING_TITLE_AT;
     this.t = target - 0.02;
-    sound.seekEnding(this.t);
     return true;
   }
   private buildCues(): void {
@@ -185,7 +199,7 @@ export class EndingScene extends Phaser.Scene {
       const go = (): void => {
         if (started || !this.scene.isActive()) return;
         started = true;
-        sound.playEndingTrack(this.t);
+        sound.playEndingTrack(); // 늦게 준비돼도 곡은 처음부터 (장면 시각과 묶지 않음)
       };
       void sound.prepareEnding().then(go);
       this.time.delayedCall(2500, go);
@@ -210,7 +224,8 @@ export class EndingScene extends Phaser.Scene {
       sound.duckEnding(false);
       bus.emit(EV.endingPhase, 'finale');
     });
-    this.at(ENDING_FINALE_AT + FINALE_FADE_AT, () => sound.fadeOutEnding(6));
+    // The End 가 나타나면 음악을 천천히 줄여 끝냄 (엔딩에서 음악을 건드리는 곳은 시작·자막 낮추기·이 페이드뿐)
+    this.at(ENDING_FINALE_AT + FINALE_FADE_AT, () => sound.fadeOutEnding(7));
     this.at(ENDING_THE_END_AT, () => bus.emit(EV.endingTheEnd));
   }
 

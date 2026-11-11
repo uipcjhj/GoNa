@@ -233,6 +233,7 @@ async function boot(): Promise<void> {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
     (window as unknown as { __sound: typeof sound }).__sound = sound;
     (window as unknown as { __bus: typeof bus }).__bus = bus;
+    (window as unknown as { __growState: () => string }).__growState = () => endingFrame.growth.state;
     (window as unknown as { __perf: typeof perf }).__perf = perf;
     (window as unknown as { __coverDebug: () => unknown }).__coverDebug = () => cover.debugTitle();
   }

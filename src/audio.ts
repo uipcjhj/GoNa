@@ -1122,15 +1122,6 @@ class Sound {
     this.seekFile(offsetSec);
   }
 
-  /** 엔딩 곡을 sec 초 위치로 (다음 대사 버튼으로 장면을 건너뛸 때 음악도 같은 위치로 — 곡은 하나만) */
-  seekEnding(sec: number): void {
-    if (this.endingMode === 'buffer') {
-      this.playEndingTrack(sec);
-      return;
-    }
-    if (this.endingMode === 'file') this.seekFile(sec);
-  }
-
   private seekFile(sec: number): void {
     const el = this.bgmEl;
     if (this.bgmMode !== 'ending' || sec <= 0) return;

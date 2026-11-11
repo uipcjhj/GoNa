@@ -17,7 +17,14 @@ const FINALE_PHOTO = 'assets/ending/video/ending_04_family_portrait-last.png';
 const FINALE_FRAME = 'assets/ending/golden-frame.png';
 /** 액자 그림 186x170 안의 사진 칸 (golden-frame.json) */
 const FINALE_INNER = { x: 18, y: 40, w: 150, h: 112, W: 186, H: 170 };
-export const FINALE_LINES = ['세상에서 가장 맛있는 건,', '언제나 나를 믿어주고 기다려주는 사랑이라는 걸요.'];
+/** 피날레 크레딧 (아래에서 위로 천천히) — 실제 참여자 이름은 게임에 없어 지어내지 않음 */
+export const FINALE_CREDITS: { text: string; cls?: string }[][] = [
+  [{ text: 'GONA’s Food Adventure', cls: 'gold big' }],
+  [{ text: 'A Little Adventure,' }, { text: 'A Whole Lot of Love.' }],
+  [{ text: 'Made with Love', cls: 'gold' }],
+];
+/** 마지막 헌정 문구 (크레딧이 다 올라간 뒤 가운데에 은은하게) */
+export const FINALE_DEDICATION = '현이의 모든 도전을 응원하며..';
 
 /** 크레딧 (실제로 확인할 수 있는 내용만) */
 export const ENDING_CREDITS: [string, string[]][] = [
@@ -90,14 +97,17 @@ export class EndingUi {
     const frame = el('img', 'fin-frame') as HTMLImageElement;
     frame.alt = '';
     art.append(photo, frame);
+    // 액자 아래: 크레딧 창(액자와 겹치지 않는 별도 영역 — 그 안에서만 위로 흐름) → 헌정 문구 → The End
     const words = el('div', 'fin-words');
-    words.append(el('span', 'fin-rule'));
-    const text = el('p', 'fin-text');
-    FINALE_LINES.forEach((l, i) => {
-      if (i) text.append(document.createElement('br'));
-      text.append(l);
-    });
-    words.append(text, el('p', 'fin-end', 'The End'));
+    const stage = el('div', 'fin-stage');
+    const roll = el('div', 'fin-roll');
+    for (const block of FINALE_CREDITS) {
+      const b = el('div', 'fin-roll-block');
+      for (const l of block) b.append(el('p', `fin-roll-line ${l.cls ?? ''}`.trim(), l.text));
+      roll.append(b);
+    }
+    stage.append(roll, el('p', 'fin-dedi', FINALE_DEDICATION), el('p', 'fin-end', 'The End'));
+    words.append(el('span', 'fin-rule'), stage);
     const fbtns = el('div', 'fin-btns');
     const fRestart = el('button', 'pixel-btn fin-btn fin-restart', '처음부터 다시 하기');
     const fTitle = el('button', 'pixel-btn fin-btn fin-title', '타이틀로 돌아가기');

@@ -3151,6 +3151,28 @@ body.in-ending .prologue-ui .pr-box {
 .ef-img.on {
   opacity: 1;
 }
+/* 장면 4 달려가는 고나: 그림 전체만 아주 느리게 100% → 104% (인물만 따로 움직이지 않음 · GPU 합성 레이어로 transform 만) */
+.ef-img.zoom {
+  will-change: transform;
+  animation: ef-zoom 4.6s ease-in-out forwards;
+}
+@keyframes ef-zoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.04); }
+}
+/* 장면 1·2 성장 회상 캔버스 (정수 배율 · nearest 로 그림) */
+.ef-grow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.ef-grow.on {
+  opacity: 1;
+}
 .ef-fx {
   position: absolute;
   inset: 0;
@@ -3363,7 +3385,7 @@ body.in-ending .prologue-ui .pr-box {
 .fin-art {
   position: relative;
   flex: none;
-  width: min(92vw, calc((100svh - 300px) * 186 / 170), 560px);
+  width: min(92vw, calc((100svh - 360px) * 186 / 170), 560px);
   aspect-ratio: 186 / 170;
   transform: scale(1.16);
   animation: fin-zoom 2.8s 2.6s cubic-bezier(0.3, 0.1, 0.25, 1) forwards;
@@ -3396,43 +3418,115 @@ body.in-ending .prologue-ui .pr-box {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  max-width: 94vw;
+  gap: 8px;
+  width: min(94vw, 520px);
 }
 .fin-rule {
   display: block;
   width: min(220px, 60vw);
   height: 10px;
-  /* 작은 금빛 장식선: 가는 선 두 줄 + 가운데 마름모 */
+  /* 작은 금빛 장식선: 가는 선 두 줄 + 가운데 마름모 (크레딧 창의 윗선) */
   background:
     linear-gradient(45deg, transparent 38%, #c99a3e 38%, #c99a3e 62%, transparent 62%) center / 10px 10px no-repeat,
     linear-gradient(#b8862e, #b8862e) left 50% / calc(50% - 10px) 2px no-repeat,
     linear-gradient(#b8862e, #b8862e) right 50% / calc(50% - 10px) 2px no-repeat;
   image-rendering: pixelated;
   opacity: 0;
-  animation: fin-fade 1.6s 5.2s ease forwards;
+  animation: fin-fade 1.6s 3.4s ease forwards;
 }
-.fin-text {
-  margin: 0;
-  font-size: clamp(12px, 3.5vw, 18px);
-  line-height: 1.6;
-  color: #5a3418;
-  text-align: center;
-  word-break: keep-all;
-  text-shadow: 0 1px 0 rgba(255, 248, 228, 0.9);
-  opacity: 0;
-  animation: fin-fade 1.8s 5.2s ease forwards;
-}
-.fin-end {
+/* 크레딧 창: 액자 아래 고정 높이 · 이 안에서만 글자가 흐름 (위·아래 가장자리는 부드럽게 사라짐) */
+.fin-stage {
+  --sh: clamp(120px, 25svh, 230px);
   position: relative;
-  margin: 2px 0 0;
-  padding: 0 18px;
-  font-size: clamp(12px, 3.2vw, 15px);
-  letter-spacing: 0.18em;
+  width: 100%;
+  height: var(--sh);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 82%, transparent 100%);
+}
+.fin-roll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  text-align: center;
+  transform: translateY(var(--sh));
+  will-change: transform;
+  /* 영화 엔딩 크레딧처럼 일정한 속도로 (transform 만 — 화면 다른 곳은 움직이지 않음) */
+  animation: fin-roll 14s 4.2s linear forwards;
+}
+@keyframes fin-roll {
+  from { transform: translateY(var(--sh)); }
+  to { transform: translateY(-100%); }
+}
+.fin-roll-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fin-roll-line {
+  margin: 0;
+  font-size: clamp(14px, 4vw, 18px);
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: #5a3418;
+  text-shadow: 0 1px 0 rgba(255, 248, 228, 0.9);
+  word-break: keep-all;
+}
+.fin-roll-line.gold {
+  color: #a87622;
+  letter-spacing: 0.1em;
+  text-shadow: 0 1px 0 #fff3cf, 0 2px 0 rgba(90, 52, 18, 0.22);
+}
+.fin-roll-line.big {
+  font-size: clamp(17px, 5vw, 23px);
+}
+/* 헌정 문구: 크레딧이 다 올라간 뒤 창 가운데에 은은한 금빛으로 → 약 3.6초 머문 뒤 사라짐 */
+.fin-dedi,
+.fin-end {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  margin: 0;
+  text-align: center;
+  opacity: 0;
+}
+.fin-dedi {
+  transform: translateY(-50%);
+  font-size: clamp(15px, 4.4vw, 20px);
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  color: #9a6a1c;
+  text-shadow: 0 1px 0 #fff6da, 0 0 1px rgba(255, 236, 170, 0.6);
+  word-break: keep-all;
+  animation: fin-dedi 6s 18.4s ease-in-out forwards;
+}
+@keyframes fin-dedi {
+  0% { opacity: 0; }
+  27% { opacity: 1; }
+  87% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* The End: 작은 금빛 별 두 개와 함께 · 버튼을 누를 때까지 그대로 */
+.fin-end {
+  width: max-content;
+  margin: 0 auto;
+  padding: 0 20px;
+  transform: translateY(-50%);
+  font-size: clamp(18px, 5.2vw, 24px);
+  letter-spacing: 0.2em;
   color: #b8862e;
   text-shadow: 0 1px 0 #fff3cf, 0 2px 0 rgba(90, 52, 18, 0.25);
-  opacity: 0;
-  animation: fin-fade 1.6s 7.4s ease forwards;
+  animation: fin-end 1.8s 24.4s ease forwards;
+}
+@keyframes fin-end {
+  from { opacity: 0; transform: translateY(calc(-50% + 4px)); }
+  to { opacity: 1; transform: translateY(-50%); }
 }
 /* 양옆 작은 픽셀 별 */
 .fin-end::before,
@@ -3440,9 +3534,9 @@ body.in-ending .prologue-ui .pr-box {
   content: '';
   position: absolute;
   top: 50%;
-  width: 6px;
-  height: 6px;
-  margin-top: -3px;
+  width: 7px;
+  height: 7px;
+  margin-top: -4px;
   background: #d9aa45;
   clip-path: polygon(50% 0, 66% 34%, 100% 50%, 66% 66%, 50% 100%, 34% 66%, 0 50%, 34% 34%);
 }
@@ -3531,7 +3625,10 @@ body.in-ending .prologue-ui .pr-box {
   }
   .fin-words {
     align-self: end;
-    max-width: 44vw;
+    width: 44vw;
+  }
+  .fin-stage {
+    --sh: clamp(96px, 40svh, 180px);
   }
   .fin-btns {
     align-self: start;
