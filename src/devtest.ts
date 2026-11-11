@@ -37,7 +37,7 @@ export const TEST_ITEMS: [string, string][] = [
   ['ending-image', '23. 엔딩 가족사진(원본 캐릭터) 바로 보기'],
   ['ending-credits', '24. 엔딩 타이틀·크레딧·마지막 문구'],
   ['kiss-special', '25. 뽀뽀괴물 고나 필살기 컷인 테스트'],
-  ['sniff-aim', '26. 킁카괴물 움직이는 과녁 테스트 (직접 조준)'],
+  ['sniff-aim', '26. 킁카괴물 코 타이밍 바 테스트 (직접 발사)'],
   ['sniff-inhale', '27. 킁카괴물 흡입 공격 테스트 (직접 버티기)'],
   ['resist-success', '28. 버티기 QTE 성공 테스트 (자동 연타)'],
   ['resist-fail', '29. 버티기 QTE 실패 테스트 (안 누름)'],
@@ -172,11 +172,11 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
             window.setInterval(() => {
               const b = g().battle;
               const a = b?.aim;
-              if (a && !a.locked && a.phase === 'dwell' && a.cur === 'nose' && a.t > 0.12) bus.emit(EV.attack);
+              if (a && !a.locked && a.pause <= 0 && Math.abs(a.pos - 0.5) < 0.035) bus.emit(EV.attack);
             }, 50);
           }
         });
-        say(auto ? '과녁이 코에 머무는 순간 자동으로 조준 → 부메랑이 코에 명중 ×2 (반복)' : "과녁이 머리·이마·코·턱·배를 오가요 · 코에서 황금빛일 때 '조준!' (공격 버튼)");
+        say(auto ? '타이밍 바 커서가 가운데(코)에 오면 자동 발사 → PERFECT 코 명중 ×2 (반복)' : "타이밍 바 커서가 가운데 코(노란 칸)에 오면 '발사!' (공격 버튼) — PERFECT ×2 · GOOD 보통 · MISS 빗나감");
       } else if (id === 'kiss-special') {
         // 필살기 게이지를 채워 바로 '초특급 꼬불머리 팡팡!' (얼굴 컷인) — 9초마다 반복
         waitFight(() => {

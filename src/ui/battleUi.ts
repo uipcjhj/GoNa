@@ -49,6 +49,11 @@ export class BattleUi {
   private bossHp: HTMLDivElement;
   private banner: HTMLDivElement;
   private resistBox: HTMLDivElement;
+  private aimBox: HTMLDivElement;
+  private aimGood: HTMLDivElement;
+  private aimPerfect: HTMLDivElement;
+  private aimCursor: HTMLDivElement;
+  private aimJudgeEl: HTMLDivElement;
   private resistFill: HTMLDivElement;
   private bannerTimer = 0;
   private lastHp = -1;
@@ -121,9 +126,42 @@ export class BattleUi {
     this.resistFill = el('div', 'resist-fill');
     rt.append(this.resistFill, el('span', 'resist-goal'));
     this.resistBox.append(rt);
+    // 킁카괴물 코 타이밍 바 (지친 동안만): 커서가 양 끝을 왕복 · 가운데 PERFECT(코) · 주변 GOOD
+    this.aimBox = el('div', 'aimbar hidden');
+    const at = el('div', 'aimbar-track');
+    this.aimGood = el('div', 'aimbar-good');
+    this.aimPerfect = el('div', 'aimbar-perfect');
+    this.aimPerfect.append(el('span', 'aimbar-nose'));
+    this.aimCursor = el('div', 'aimbar-cursor');
+    at.append(this.aimGood, this.aimPerfect, this.aimCursor);
+    this.aimJudgeEl = el('div', 'aimbar-judge');
+    this.aimBox.append(at, this.aimJudgeEl);
+    bus.on(EV.aimBar, (b: { show: boolean; pos?: number; perfect?: number; good?: number; paused?: boolean }) => {
+      if (!b.show) {
+        this.aimBox.classList.add('hidden');
+        return;
+      }
+      if (b.perfect !== undefined && b.good !== undefined) {
+        this.aimPerfect.style.left = `${(0.5 - b.perfect) * 100}%`;
+        this.aimPerfect.style.width = `${b.perfect * 200}%`;
+        this.aimGood.style.left = `${(0.5 - b.good) * 100}%`;
+        this.aimGood.style.width = `${b.good * 200}%`;
+        this.aimJudgeEl.textContent = '';
+        this.aimJudgeEl.className = 'aimbar-judge';
+      }
+      this.aimBox.classList.remove('hidden');
+      this.aimCursor.style.left = `${(b.pos ?? 0) * 100}%`;
+      this.aimCursor.classList.toggle('paused', !!b.paused);
+    });
+    bus.on(EV.aimJudge, (j: 'perfect' | 'good' | 'miss') => {
+      this.aimJudgeEl.textContent = j === 'perfect' ? 'PERFECT!' : j === 'good' ? 'GOOD!' : 'MISS';
+      this.aimJudgeEl.className = `aimbar-judge ${j}`;
+      void this.aimJudgeEl.offsetWidth; // 같은 판정이 연달아 와도 다시 튀어오르게
+      this.aimJudgeEl.classList.add('pop');
+    });
     // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
     this.scoreEl = el('div', 'hud-score hidden', '점수 0');
-    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.pad);
+    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.pad);
 
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
@@ -215,7 +253,7 @@ export class BattleUi {
     this.atk.classList.toggle('locked', h.attack === 'locked');
     this.atk.classList.toggle('out', h.attack === 'out');
     this.setStyle(this.atkCool, 'height', h.attack === 'out' ? `${Math.round(h.cooldown * 100)}%` : '0%');
-    this.setText(this.atkLabel, aim ? '조준!' : h.attack === 'locked' ? '각성 전' : h.attack === 'out' ? '돌아오는 중' : '공격');
+    this.setText(this.atkLabel, aim ? '발사!' : h.attack === 'locked' ? '각성 전' : h.attack === 'out' ? '돌아오는 중' : '공격');
     this.atk.classList.toggle('aim', aim);
     if (aim) this.atk.classList.remove('off');
     // 필살

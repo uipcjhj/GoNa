@@ -97,6 +97,15 @@ export class KissBattle extends BossBattle {
     else this.wave();
   }
 
+  /** 난이도 (약 20% 쉽게): 이동·발사 속도 ×0.85 · 공격 사이 쉬는 시간 ×1.2 · 예고 +0.25초 · 연속 공격 사이 ×1.2 */
+  private static readonly SPEED = 0.85;
+  private static readonly GAP = 1.2;
+  private static readonly WARN = 0.25;
+
+  protected endAttack(cool: number): void {
+    super.endAttack(cool * KissBattle.GAP);
+  }
+
   /** 입술 위치 */
   private lips(): { x: number; y: number } {
     return { x: this.bx - this.fw * 0.36, y: this.host.groundY - this.balt - this.fh * 0.36 };
@@ -115,16 +124,18 @@ export class KissBattle extends BossBattle {
   /** 일반: 느린 하트탄 — 0.9초 예고 뒤 낮게 3발, 1초 간격 (한 발씩 점프) */
   /** 분노할수록 하트가 조금씩 빨라짐 (점프 타이밍은 그대로 넉넉하게) */
   private get heartSpeed(): number {
-    return 69 * (1 + 0.07 * this.rage);
+    return 69 * (1 + 0.07 * this.rage) * KissBattle.SPEED;
   }
 
   private shots(): void {
     const speed = this.heartSpeed;
-    this.warn(0.9);
-    this.setPose(2, 0.9);
-    for (let i = 0; i < 3; i++) this.after(0.9 + i * 1.0, () => this.fireHeart(true, speed));
+    const w = 0.9 + KissBattle.WARN;
+    const gap = 1.0 * KissBattle.GAP;
+    this.warn(w);
+    this.setPose(2, w);
+    for (let i = 0; i < 3; i++) this.after(w + i * gap, () => this.fireHeart(true, speed));
     const travel = (this.bx - this.host.basePlayerX) / speed;
-    this.after(0.9 + 2 * 1.0 + travel, () => this.endAttack(2.0));
+    this.after(w + 2 * gap + travel, () => this.endAttack(2.0));
   }
 
   /**
@@ -133,14 +144,16 @@ export class KissBattle extends BossBattle {
    */
   private doubleShots(): void {
     const speed = this.heartSpeed;
-    this.warn(0.9);
-    this.setPose(2, 0.9);
-    for (const t0 of [0.9, 2.5]) {
+    const w = 0.9 + KissBattle.WARN;
+    const t1 = w + 1.6 * KissBattle.GAP;
+    this.warn(w);
+    this.setPose(2, w);
+    for (const t0 of [w, t1]) {
       this.after(t0, () => this.fireHeart(true, speed));
-      this.after(t0 + 0.3, () => this.fireHeart(true, speed));
+      this.after(t0 + 0.3, () => this.fireHeart(true, speed)); // 두 발 사이는 그대로 (한 번 점프로 둘 다 넘음)
     }
     const travel = (this.bx - this.host.basePlayerX) / speed;
-    this.after(2.8 + travel, () => this.endAttack(2.0));
+    this.after(t1 + 0.3 + travel, () => this.endAttack(2.0));
   }
 
   /** 1차 분노: 빠르게 통통 세 번 뛰어 자리를 바꾼 뒤(고나와 80px 이상 떨어진 곳) 하트 2개 연속 한 번 */
@@ -150,35 +163,38 @@ export class KissBattle extends BossBattle {
     const step = (target - this.bx) / 3;
     const jump = (i: number): void => {
       if (i >= 3) {
-        this.warn(0.8);
-        this.setPose(2, 0.8);
-        this.after(0.8, () => this.fireHeart(true, 69));
-        this.after(1.1, () => this.fireHeart(true, 69));
-        const travel = (target - this.host.basePlayerX) / 69;
-        this.after(1.1 + travel, () => this.moveTo(this.homeX, 0, 0.6, 14, (t) => t, () => this.endAttack(2.0)));
+        const w = 0.8 + KissBattle.WARN;
+        const hs = 69 * KissBattle.SPEED;
+        this.warn(w);
+        this.setPose(2, w);
+        this.after(w, () => this.fireHeart(true, hs));
+        this.after(w + 0.3, () => this.fireHeart(true, hs));
+        const travel = (target - this.host.basePlayerX) / hs;
+        this.after(w + 0.3 + travel, () => this.moveTo(this.homeX, 0, 0.6 / KissBattle.SPEED, 14, (t) => t, () => this.endAttack(2.0)));
         return;
       }
       sound.boing();
-      this.moveTo(this.bx + step, 0, 0.32, 16, (t) => t, () => jump(i + 1));
+      this.moveTo(this.bx + step, 0, 0.32 / KissBattle.SPEED, 16, (t) => t, () => jump(i + 1));
     };
     jump(0);
   }
 
   /** 짧은 돌진 — 0.9초 예고(몸 흔들 + '!') 뒤 땅을 쓸고 지나감 → 점프로 넘기 (또는 방패) */
   private dash(): void {
-    this.warn(0.9);
-    this.setPose(1, 0.9);
-    this.after(0.95, () => {
+    const w = 0.9 + KissBattle.WARN;
+    this.warn(w);
+    this.setPose(1, w);
+    this.after(w + 0.05, () => {
       sound.boing();
       this.dashing = true;
       this.dashHit = false;
-      const speed = this.rage >= 1 ? 175 : 165;
+      const speed = (this.rage >= 1 ? 175 : 165) * KissBattle.SPEED;
       const dist = this.bx + this.fw;
       this.moveTo(-this.fw, 0, dist / speed, 0, (t) => t, () => {
         this.dashing = false;
         // 오른쪽에서 다시 통통 등장
         this.bx = this.host.W + this.fw / 2;
-        this.moveTo(this.homeX, 0, 1.0, 12, (t) => 1 - (1 - t) ** 2, () => this.endAttack(2.0));
+        this.moveTo(this.homeX, 0, 1.0 / KissBattle.SPEED, 12, (t) => 1 - (1 - t) ** 2, () => this.endAttack(2.0));
       });
     });
   }
@@ -198,15 +214,16 @@ export class KissBattle extends BossBattle {
   /** 뽀뽀 파동 — 가까이 폴짝 → 0.8초 입술 예고 → 땅을 따라 하트 파동 (점프로 넘기 또는 방패) */
   private wave(): void {
     const nearX = Math.min(this.homeX, this.host.basePlayerX + 70);
-    this.moveTo(nearX, 0, 0.7, 26, (t) => t, () => {
+    this.moveTo(nearX, 0, 0.7 / KissBattle.SPEED, 26, (t) => t, () => {
       sound.nestJump();
       this.host.scene.cameras.main.shake(140, 0.006);
-      this.warn(0.8);
-      this.setPose(2, 0.8);
-      this.after(0.8, () => this.emitWave());
-      const done = 1.8;
+      const w = 0.8 + KissBattle.WARN;
+      this.warn(w);
+      this.setPose(2, w);
+      this.after(w, () => this.emitWave());
+      const done = w + 1.0 / KissBattle.SPEED;
       this.after(done, () => {
-        this.moveTo(this.homeX, 0, 0.8, 26, (t) => t, () => this.endAttack(2.0));
+        this.moveTo(this.homeX, 0, 0.8 / KissBattle.SPEED, 26, (t) => t, () => this.endAttack(2.0));
       });
     });
   }
@@ -215,7 +232,7 @@ export class KissBattle extends BossBattle {
     sound.smooch();
     const m = this.lips();
     const y = this.host.groundY - 7;
-    const h = this.spawn('boss-wave', m.x, y, { vx: -100, shape: 'box', w: 10, h: 12, pierce: true, breakable: false, life: 1.6, dmg: DAMAGE.kissWave });
+    const h = this.spawn('boss-wave', m.x, y, { vx: -100 * KissBattle.SPEED, shape: 'box', w: 10, h: 12, pierce: true, breakable: false, life: 1.6 / KissBattle.SPEED, dmg: DAMAGE.kissWave });
     h.sprite.setScale(2);
     // 퍼지는 고리 (보이기만)
     const g = this.fx(this.host.scene.add.ellipse(m.x, y, 8, 6).setStrokeStyle(1, 0xff7aa8, 1).setDepth(10.9));
@@ -294,7 +311,7 @@ export class KissBattle extends BossBattle {
       }, true);
       this.after(0.9, () => scene.cameras.main.flash(260, 255, 150, 200), true);
     }
-    const speed = 105 + (variant - 1) * 8;
+    const speed = (105 + (variant - 1) * 8) * KissBattle.SPEED;
     this.after(1.7, () => {
       arrows.forEach((a) => a.destroy());
       charge.destroy();
@@ -308,17 +325,17 @@ export class KissBattle extends BossBattle {
       // 큰 하트를 넘고 착지한 뒤 작은 하트 2발 (1초 간격)
       const hs = this.heartSpeed;
       const travel = (m.x - this.host.basePlayerX) / hs;
-      const arrive0 = lastPass + 1.0;
-      for (let i = 0; i < 2; i++) this.after(Math.max(1.9, arrive0 + i * 1.0 - travel), () => this.fireHeart(true, hs));
-      lastPass = arrive0 + 1.0;
+      const arrive0 = lastPass + 1.0 * KissBattle.GAP;
+      for (let i = 0; i < 2; i++) this.after(Math.max(1.9, arrive0 + i * 1.0 * KissBattle.GAP - travel), () => this.fireHeart(true, hs));
+      lastPass = arrive0 + 1.0 * KissBattle.GAP;
     } else if (variant === 3) {
       // 두 번째 왕뽀뽀 (1.5초 뒤 — 착지하고 다시 뛸 시간)
-      this.after(3.2, () => {
+      this.after(1.7 + 1.5 * KissBattle.GAP, () => {
         this.setPose(2, 0.4);
         scene.cameras.main.flash(160, 255, 140, 200);
         this.launchRoyal(m.x - 6, y, speed);
       });
-      lastPass += 1.5;
+      lastPass += 1.5 * KissBattle.GAP;
     }
     // 다 지나간 뒤: 어지러워하며 약점 노출 (1.5배)
     this.after(lastPass + 0.4, () => {

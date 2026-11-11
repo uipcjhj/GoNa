@@ -66,7 +66,7 @@ async function play(run) {
         state: g.state, grounded: g.grounded, jumps: g.jumpsUsed, alt: g.alt, px: g.playerX, gy: g.groundY, speed: g.speed,
         hearts: g.hearts, hp: g.hp, out: g.boomerang.isOut, canThrow: g.canThrow, pull: g.pull, stage: g.growth.stageIndex,
         shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
-        b: bt && { qte: bt.resistActive ? 'resist' : bt.aimActive ? (bt.aim?.cur === 'nose' && bt.aim?.phase === 'dwell' ? 'nose' : 'aim') : null, mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
+        b: bt && { qte: bt.resistActive ? 'resist' : bt.aimActive ? (bt.aim && bt.aim.pause <= 0 && Math.abs(bt.aim.pos - 0.5) < 0.05 ? 'nose' : 'aim') : null, mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
           hs: bt.hostiles.filter((h) => !h.dead && !h.hitPlayer).map((h) => ({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, ay: h.ay, c: h.shape === 'circle', r: h.r, w: h.w, h: h.h, g: h.onGround, wave: !!h.wave })) },
       };
     });
@@ -138,9 +138,9 @@ async function play(run) {
   const logs = await page.evaluate(() => { const g = window.__gona.scene.getScene('Game'); return { dmg: g.damageLog.slice(), atk: (g.battle?.attackLog ?? g.lastAttackLog ?? []).slice() }; });
   stats.damage = logs.dmg.join(' ') || '없음';
   stats.attacksSeen = logs.atk.join(',');
-  await b.close();
-  const q = await page.evaluate(() => { const bt = window.__gona.scene.getScene('Game').battle; return bt ? { resist: (bt.resistLog ?? []).join(','), aim: (bt.aimLog ?? []).map((a) => a.spot + 'x' + a.mul).join(',') } : null; });
+  const q = await page.evaluate(() => { const bt = window.__gona.scene.getScene('Game').battle; return bt ? { resist: (bt.resistLog ?? []).join(','), aim: (bt.aimLog ?? []).map((a) => a.judge + 'x' + a.mul).join(',') } : null; });
   stats.qte = q;
+  await b.close();
   return { run, result, sec: Math.round(stats.ms / 1000), heartsLeft: last.hearts, ...stats, fps: perf.fps, p95: perf.p95, errs: errs.length };
 }
 

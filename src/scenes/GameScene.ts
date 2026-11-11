@@ -1952,8 +1952,8 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'playing' || !this.canThrow || this.battle?.frozen || this.battle?.mode === 'victory') return;
     // 흡입에 버티는 중엔 공격 안 함 (버티기 버튼과 겹치지 않게)
     if (this.battle?.resistActive) return;
-    // 움직이는 과녁: 공격 버튼 = '조준!' — 누른 순간 과녁 자리로 확정하고 그곳으로 부메랑 발사
-    if (this.battle?.aimActive) this.battle.lockAim();
+    // 코 타이밍 바: 공격 버튼 = '발사!' — 누른 순간 판정. PERFECT·GOOD 면 코로 부메랑 발사, MISS 면 빗나감(발사 안 함)
+    if (this.battle?.aimActive && this.battle.lockAim() === 'miss') return;
     if (this.boomerang.isOut) {
       // 돌아오기 직전에 누른 것은 기억 (돌아오자마자 발사)
       this.attackBufferUntil = this.time.now + 250;

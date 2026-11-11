@@ -9,6 +9,7 @@
  *     → 땅을 따라 오는 냄새 파동 (한 번 점프 또는 방패) → 어질어질/재채기 기절, 코가 약점 (2배 피해)
  */
 import Phaser from 'phaser';
+import { bus, EV } from '../../events';
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
@@ -300,17 +301,17 @@ export class SniffBattle extends BossBattle {
     if (this.pullHold > 0) this.pullHold -= dt;
   }
 
-  /** 조준한 자리에 부메랑이 맞음: 코면 약점 명중 ×2 (코가 찌그러지고 밀려남), 다른 자리면 보통 피해 · 흡입 중 콧구멍 직격도 2배 */
+  /** 타이밍 바로 쏜 부메랑이 맞음: PERFECT = 코 정확히 명중 ×2 (코가 찌그러지고 밀려남) · GOOD = 일반 명중 · 흡입 중 콧구멍 직격도 2배 */
   protected weakMul(x?: number, y?: number): number {
     const a = this.aim;
     if (a?.locked && x !== undefined && y !== undefined) {
-      const spot = a.locked;
+      const judge = a.locked;
       const scene = this.host.scene;
       this.closeAim(false);
-      if (spot === 'nose') {
-        const m = this.spotPos('nose');
+      const m = this.spotPos('nose');
+      if (judge === 'perfect') {
         this.weakHits++;
-        this.aimLog.push({ spot, mul: 2 });
+        this.aimLog.push({ spot: 'nose', judge, mul: 2 });
         this.floatText('약점 명중! ×2', m.x, m.y - 16, '#ffe14a');
         sound.puff();
         haptics.play('specialHit');
@@ -323,9 +324,8 @@ export class SniffBattle extends BossBattle {
         scene.cameras.main.shake(140, 0.008);
         return 2;
       }
-      this.aimLog.push({ spot, mul: 1 });
-      const label: Record<AimSpot, string> = { head: '머리', forehead: '이마', chin: '턱', belly: '배', nose: '코' };
-      this.floatText(`${label[spot]}에 맞았어요 (보통 피해)`, this.bx, this.host.groundY - this.balt - this.fh - 8, '#ffffff');
+      this.aimLog.push({ spot: 'nose', judge, mul: 1 });
+      this.floatText('명중! (보통 피해)', m.x, m.y - 14, '#ffffff');
       return 1;
     }
     if (this.inhaling <= 0 || this.resist) return super.weakMul();
@@ -506,11 +506,14 @@ export class SniffBattle extends BossBattle {
     return t;
   }
 
-  // ───────────────────────── 코 약점: 움직이는 과녁 (필살기 뒤 지쳤을 때) ─────────────────────────
-  //   과녁 하나가 머리·이마·턱·코·배를 오가며(보스가 움직이면 같이 움직임) 처음엔 천천히, 갈수록 빠르게.
-  //   공격 버튼이 '조준!' 으로 바뀌고, 누른 순간의 과녁 자리로 부메랑이 날아감 → 코면 약점 명중 ×2, 다른 곳이면 보통 피해.
+  // ───────────────────────── 코 약점: 타이밍 바 (필살기 뒤 지쳤을 때) ─────────────────────────
+  //   '킁카괴물의 약점은 코!' → 화면 아래 가로 타이밍 바(ui/battleUi.ts)의 커서가 양 끝을 자동으로 왕복(갈수록 조금 빨라짐).
+  //   공격 버튼이 '발사!' 로 바뀌고, 누른 순간 커서 위치로 판정:
+  //     PERFECT (가운데 좁은 칸) → 부메랑이 코에 정확히 명중 ×2 · GOOD (그 주변) → 코로 날아가 일반 명중
+  //     MISS (바깥) → 빗나감 (부메랑을 쏘지 않음) — 잠깐 멈췄다가 시간이 남았으면 다시 도전, 시간이 다 되면 '기회를 놓쳤어요'
+  //   체력·공격 횟수·승리 조건은 그대로 (판정은 피해 배율 weakMul 로만 이어짐)
 
-  /** 몸의 다섯 자리 (보스 그림 48x46 기준 좌표 — 실제 그림의 머리 꼭대기·이마·코·턱·배) */
+  /** 몸의 한 자리 (보스 그림 48x46 기준) — 부메랑이 노리는 코 위치 */
   private static readonly SPOTS: Record<AimSpot, [number, number]> = {
     head: [28, 7],
     forehead: [24, 14],
@@ -518,23 +521,22 @@ export class SniffBattle extends BossBattle {
     chin: [21, 40],
     belly: [34, 34],
   };
+  /** 판정 칸 (커서와 가운데의 거리, 바 전체 = 0~1) */
+  static readonly BAR = { perfect: 0.07, good: 0.2 };
   private aim: {
-    cur: AimSpot;
-    from: AimSpot;
-    phase: 'dwell' | 'move';
-    t: number;
-    dwell: number;
-    move: number;
+    /** 커서 위치 0~1 */
+    pos: number;
+    dir: 1 | -1;
     elapsed: number;
     total: number;
-    sinceNose: number;
-    locked: AimSpot | null;
+    /** MISS 뒤 잠깐 멈춤 */
+    pause: number;
+    locked: 'perfect' | 'good' | null;
     lockedLeft: number;
   } | null = null;
-  private target: Phaser.GameObjects.Sprite | null = null;
-  /** (검증용) 약점 명중 수 · 조준 결과 기록 */
+  /** (검증용) 약점 명중 수 · 판정 기록 */
   weakHits = 0;
-  readonly aimLog: { spot: AimSpot; mul: number }[] = [];
+  readonly aimLog: { spot: AimSpot; judge: 'perfect' | 'good' | 'miss'; mul: number }[] = [];
 
   /** 몸의 한 자리 (지금 보스 위치 기준, 화면 좌표) */
   spotPos(id: AimSpot): { x: number; y: number } {
@@ -544,71 +546,45 @@ export class SniffBattle extends BossBattle {
     return { x: left + (fx / 48) * this.fw, y: top + (fy / 46) * this.fh };
   }
 
-  /** 지금 과녁이 있는 화면 위치 (움직이는 중이면 두 자리 사이) */
-  aimPos(): { x: number; y: number } | null {
-    const a = this.aim;
-    if (!a) return null;
-    if (a.locked) return this.spotPos(a.locked);
-    if (a.phase === 'dwell') return this.spotPos(a.cur);
-    const p = Math.min(1, a.t / a.move);
-    const e = p * p * (3 - 2 * p);
-    const s0 = this.spotPos(a.from);
-    const s1 = this.spotPos(a.cur);
-    return { x: s0.x + (s1.x - s0.x) * e, y: s0.y + (s1.y - s0.y) * e };
-  }
-
   get aimActive(): boolean {
     return !!this.aim && !this.aim.locked;
   }
 
   startAim(sec: number): void {
-    const scene = this.host.scene;
     this.closeAim(true);
-    this.aim = { cur: 'head', from: 'head', phase: 'dwell', t: 0, dwell: 0.62, move: 0.17, elapsed: 0, total: sec, sinceNose: 1, locked: null, lockedLeft: 0 };
-    const p = this.spotPos('head');
-    this.target = this.fx(scene.add.sprite(p.x, p.y, 'sp-target', 0).setDepth(12.5).setScale(0.4));
-    scene.tweens.add({ targets: this.target, scale: 1.1, duration: 240, ease: 'Back.Out' });
-    this.floatText('과녁이 코에 오면 조준!', this.bx - this.fw * 0.2, this.host.groundY - this.balt - this.fh - 10, '#ffe14a');
+    this.aim = { pos: 0, dir: 1, elapsed: 0, total: sec, pause: 0, locked: null, lockedLeft: 0 };
+    const m = this.spotPos('nose');
+    this.floatText('킁카괴물의 약점은 코!', m.x + 4, this.host.groundY - this.balt - this.fh - 10, '#ffe14a');
     sound.warn();
+    bus.emit(EV.aimBar, { show: true, pos: 0, perfect: SniffBattle.BAR.perfect, good: SniffBattle.BAR.good });
   }
 
-  /** '조준!' — 누른 순간의 과녁 자리로 확정 (터치가 조금 늦거나 빨라도 코 근처면 코로 인정) */
-  lockAim(): AimSpot | null {
+  /** '발사!' — 누른 순간 커서 위치로 판정. 'miss' 면 부메랑을 쏘지 않음 */
+  lockAim(): 'perfect' | 'good' | 'miss' | null {
     const a = this.aim;
-    if (!a || a.locked) return null;
-    let spot: AimSpot = a.cur;
-    const GRACE = 0.1;
-    if (a.phase === 'move') {
-      // 움직이는 중: 가까운 쪽 / 코에 막 도착하려는 순간 · 막 떠난 순간이면 코
-      if (a.cur === 'nose' && a.move - a.t < GRACE) spot = 'nose';
-      else if (a.from === 'nose' && a.t < GRACE) spot = 'nose';
-      else spot = a.t / a.move < 0.5 ? a.from : a.cur;
+    if (!a || a.locked || a.pause > 0) return a && a.pause > 0 ? 'miss' : null;
+    const d = Math.abs(a.pos - 0.5);
+    const judge = d <= SniffBattle.BAR.perfect ? 'perfect' : d <= SniffBattle.BAR.good ? 'good' : 'miss';
+    bus.emit(EV.aimJudge, judge);
+    if (judge === 'miss') {
+      this.aimLog.push({ spot: 'nose', judge, mul: 0 });
+      const m = this.spotPos('nose');
+      this.floatText('MISS', m.x, m.y - 12, '#b8c4ff');
+      sound.boing();
+      a.pause = 0.55; // 빗나감 — 잠깐 멈췄다 다시
+      return 'miss';
     }
-    a.locked = spot;
+    a.locked = judge;
     a.lockedLeft = 2.4; // 부메랑이 날아가 맞을 시간
-    if (this.target?.active) {
-      this.target.setTint(spot === 'nose' ? 0xffd54a : 0xffffff);
-      this.host.scene.tweens.add({ targets: this.target, scale: 1.5, duration: 90, yoyo: true });
-    }
-    return spot;
+    if (judge === 'perfect') sound.catch();
+    return judge;
   }
 
   private closeAim(silent = false, text = ''): void {
+    const had = !!this.aim;
     this.aim = null;
-    const t = this.target;
-    this.target = null;
-    if (t?.active) {
-      if (silent) t.destroy();
-      else this.host.scene.tweens.add({ targets: t, alpha: 0, scale: 0.4, duration: 220, onComplete: () => t.destroy() });
-    }
-    if (text) this.floatText(text, this.bx, this.host.groundY - this.balt - this.fh - 8, '#fff3a0');
-  }
-
-  private nextSpot(a: NonNullable<SniffBattle['aim']>): AimSpot {
-    const all: AimSpot[] = ['head', 'forehead', 'nose', 'chin', 'belly'];
-    if (a.sinceNose >= 2 && a.cur !== 'nose') return 'nose';
-    const others = all.filter((x) => x !== a.cur);
-    return others[Math.floor(Math.random() * others.length)];
+    if (had) bus.emit(EV.aimBar, { show: false });
+    if (text && !silent) this.floatText(text, this.bx, this.host.groundY - this.balt - this.fh - 8, '#fff3a0');
   }
 
   private updateAim(dt: number): void {
@@ -617,41 +593,33 @@ export class SniffBattle extends BossBattle {
     if (a.locked) {
       a.lockedLeft -= dt;
       if (a.lockedLeft <= 0) this.closeAim(false);
+      return;
+    }
+    a.elapsed += dt;
+    if (a.elapsed >= a.total) {
+      this.closeAim(false, '기회를 놓쳤어요');
+      return;
+    }
+    if (a.pause > 0) {
+      a.pause -= dt;
     } else {
-      a.elapsed += dt;
-      a.t += dt;
-      // 갈수록 빨라짐: 머무는 시간 0.62s → 0.3s, 옮겨 가는 시간 0.17s → 0.11s
+      // 한쪽 끝에서 끝까지: 처음 0.95초 → 마지막 0.7초
       const k = Math.min(1, a.elapsed / a.total);
-      if (a.phase === 'dwell' && a.t >= a.dwell) {
-        a.from = a.cur;
-        a.cur = this.nextSpot(a);
-        a.sinceNose = a.cur === 'nose' ? 0 : a.sinceNose + 1;
-        a.phase = 'move';
-        a.t = 0;
-        a.move = 0.17 - 0.06 * k;
-      } else if (a.phase === 'move' && a.t >= a.move) {
-        a.phase = 'dwell';
-        a.t = 0;
-        a.dwell = 0.62 - 0.32 * k + (Math.random() - 0.5) * 0.08;
-      }
-      if (a.elapsed >= a.total) {
-        this.closeAim(false, '기회를 놓쳤어요');
-        return;
+      const cross = 0.95 - 0.25 * k;
+      a.pos += (a.dir * dt) / cross;
+      if (a.pos >= 1) {
+        a.pos = 2 - a.pos;
+        a.dir = -1;
+      } else if (a.pos <= 0) {
+        a.pos = -a.pos;
+        a.dir = 1;
       }
     }
-    const p = this.aimPos();
-    if (p && this.target?.active) {
-      this.target.setPosition(Math.round(p.x), Math.round(p.y));
-      if (!a.locked) {
-        // 코에 머무는 순간만 황금빛
-        const onNose = a.phase === 'dwell' && a.cur === 'nose';
-        this.target.setFrame(onNose ? 1 : 0).setTint(onNose ? 0xffd54a : 0xffffff).setScale(onNose ? 1.25 : 1.05);
-      }
-    }
+    bus.emit(EV.aimBar, { show: true, pos: a.pos, left: a.total - a.elapsed, paused: a.pause > 0 });
   }
 
   aimPoint(): { x: number; y: number } | null {
-    return this.aim?.locked ? this.spotPos(this.aim.locked) : null;
+    return this.aim?.locked ? this.spotPos('nose') : null;
   }
 
   /** 매 프레임: 돼지코 킁킁 (수축·팽창) · 고나 쪽으로 고개 돌림 · '킁!' 글자 */
@@ -839,7 +807,7 @@ export class SniffBattle extends BossBattle {
     this.after(lastArrive + 0.45, () => {
       this.allNosesOut(variant === 3);
       this.specialShown();
-      // 지친 동안 움직이는 과녁 — 과녁이 코에 왔을 때 '조준!' (공격 버튼)
+      // 지친 동안 타이밍 바 — 커서가 가운데(코)에 왔을 때 '발사!' (공격 버튼)
       const sec = variant === 3 ? 5.4 : 5.0;
       this.stun(sec, 1, variant === 3 ? '킁카괴물이 재채기하다 기절했어요!' : '킁카괴물이 어질어질!');
       this.startAim(sec - 0.3);

@@ -65,6 +65,10 @@ export const EV = {
   endingTheEnd: 'endingTheEnd',
   /** 엔딩 액자 장면 번호 (0~7) */
   endingFrame: 'endingFrame',
+  /** 킁카괴물 코 타이밍 바: { show, pos(0~1), perfect, good, left, paused } */
+  aimBar: 'aimBar',
+  /** 타이밍 바 판정 'perfect' | 'good' | 'miss' */
+  aimJudge: 'aimJudge',
   /** 엔딩 액자 효과 ('kiss' | 'sniff') */
   endingFx: 'endingFx',
   /** 엔딩 마지막 화면 단계: 'title' 타이틀 · 'credits' 크레딧 · 'final' 마지막 문구 · 'black' 검은 화면 */
