@@ -468,25 +468,21 @@ async function bossTests(label, device) {
   // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
   await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
   await page.waitForTimeout(1500);
-  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const f = document.querySelector('.end-frame'); return { scene: e.sceneNo, frame: f?.dataset.scene, img: [...document.querySelectorAll('.ef-img.on')].map((i) => i.src.split('/').pop()).join(','), line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
-  check(`${label}: ending scene 6 — framed kiss & sniff illustration`, s6.scene === 6 && s6.frame === '6' && s6.img === 's6.png', JSON.stringify(s6));
-  // 타이틀 → 크레딧 → 마지막 문구 → 검은 화면 + 버튼
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 79.5; });
+  const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const f = document.querySelector('.end-frame'); return { scene: e.sceneNo, frame: f?.dataset.scene, vid: [...document.querySelectorAll('.ef-vid.on')].map((v) => v.dataset.name).join(','), line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
+  check(`${label}: ending scene 6 — grandma kiss video in the frame`, s6.scene === 6 && s6.frame === '6' && /ending_0[23]/.test(s6.vid), JSON.stringify(s6));
+  // 황금 왕궁 액자 피날레: 마지막 문장 + The End → 버튼 2개 (자동으로 돌아가지 않음)
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 74.5; });
   await page.waitForTimeout(800);
-  const title = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, txt: document.querySelector('.end-title-card')?.textContent }));
-  check(`${label}: ending title card (no big THE END)`, title.phase === 'title' && title.txt.includes('GONA’s Food Adventure') && title.txt.includes('고나의 첫 번째 모험') && title.txt.includes('2026.04.10') && !title.txt.includes('THE END'), JSON.stringify(title));
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 108; });
-  await page.waitForTimeout(600);
-  const fin = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, txt: document.querySelector('.end-final')?.textContent }));
-  check(`${label}: ending final message after credits`, fin.phase === 'final' && fin.txt === '현이의 모든 모험을 응원하며…', JSON.stringify(fin));
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.9; });
-  await page.waitForSelector('.ending-ui.with-btns', { timeout: 5000 }).catch(() => {});
-  const endTxt = await page.locator('.ending-ui').textContent().catch(() => '');
-  check(`${label}: black screen + 3 small buttons`, (await G(() => document.querySelector('.ending-ui')?.dataset.phase)) === 'black' && endTxt.includes('2026.04.10') && (await page.locator('.ending-ui .end-btn').count()) === 3, endTxt.slice(0, 80));
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 88.0; });
+  await page.waitForSelector('.ending-ui.with-btns', { timeout: 8000 }).catch(() => {});
+  const fin = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, txt: document.querySelector('.fin-text')?.innerText, end: document.querySelector('.fin-end')?.textContent, btns: [...document.querySelectorAll('.fin-btns .fin-btn')].map((b) => b.textContent) }));
+  check(`${label}: golden-frame finale — last sentence, The End, 2 buttons`, fin.phase === 'finale' && fin.txt.replace(/\s+/g, ' ') === '세상에서 가장 맛있는 건, 언제나 나를 믿어주고 기다려주는 사랑이라는 걸요.' && fin.end === 'The End' && fin.btns.join('|') === '처음부터 다시 하기|타이틀로 돌아가기', JSON.stringify(fin));
+  await page.waitForTimeout(2500);
+  check(`${label}: finale stays until a button is pressed`, (await G(() => window.__gona.scene.getScene('Game').state)) === 'ending');
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${S}/boss-${label}-ending.png` });
   await page.waitForTimeout(700);
-  await page.locator('.end-restart').click(); await page.waitForTimeout(800);
+  await page.locator('.fin-restart').click(); await page.waitForTimeout(800);
   const rs = await combat();
   check(`${label}: ending → restart from newborn`, rs.stage === 0 && rs.state === 'playing', JSON.stringify(rs));
 
@@ -896,10 +892,10 @@ async function touchAudioTests(label, device) {
   await page.goto(URL + '?test=family-ending');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending?.t > 1, null, { timeout: 40000 });
   await round('1차');
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.5; });
-  await page.waitForSelector('.end-replay', { state: 'visible', timeout: 20000 });
+  await G(() => { window.__gona.scene.getScene('Game').ending.t = 88.5; });
+  await page.waitForSelector('.ending-ui.with-btns', { timeout: 20000 });
   await page.waitForTimeout(800);
-  await tap('.end-replay');
+  await G(() => window.__bus.emit('endingReplay')); // 테스트용 다시보기 (화면 버튼은 2개)
   await page.waitForTimeout(1500);
   await round('다시보기');
   // 엔딩 곡은 Web Audio 버퍼로 나옴 → 엔딩 중 터치로 배경음악 <audio> 의 play() 가 불리면 안 됨 (음소거 준비 재생 포함)
@@ -990,17 +986,17 @@ async function endingFixTests(label, device) {
   // 마지막 대사까지 → 타이틀(크레딧 앞)
   for (let k = 0; k < 28; k++) {
     const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
-    if (ph === 'title') break;
+    if (ph === 'finale') break;
     await tap('.pr-next'); await page.waitForTimeout(420);
   }
   await page.waitForTimeout(600);
   const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
-  check(`${label}: ending next ▶ on the last line goes to the title/credits`, ph === 'title' || ph === 'credits', ph);
+  check(`${label}: ending next ▶ on the last line goes to the golden-frame finale`, ph === 'finale', ph);
   for (let i = 0; i < 3; i++) {
-    await G(() => { window.__gona.scene.getScene('Game').ending.t = 119.5; });
-    await page.waitForSelector('.end-replay', { state: 'visible', timeout: 15000 });
+    await G(() => { window.__gona.scene.getScene('Game').ending.t = 88.5; });
+    await page.waitForSelector('.ending-ui.with-btns', { timeout: 15000 });
     await page.waitForTimeout(800);
-    await tap('.end-replay');
+    await G(() => window.__bus.emit('endingReplay'));
     await page.waitForTimeout(3000);
   }
   const en = await G(() => ({ max: window.__bgm.max, at: window.__bgm.at, now: window.__bgm.buf.size, files: window.__els.filter((e) => /bgm-/.test(e.src) && !e.paused && !e.muted).length }));
@@ -1034,18 +1030,21 @@ async function endingFixTests(label, device) {
     await G((k) => { const e = window.__gona.scene.getScene('Game').ending; const at = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3][k]; if (e.t < at) e.t = at - 0.02; }, i);
     await page.waitForFunction((k) => document.querySelector('.end-frame')?.dataset.scene === String(k + 1), i, { timeout: 15000 });
     await page.waitForTimeout(700);
+    await page.waitForTimeout(i >= 3 ? 900 : 0);
     frames.push(await G(() => {
       const f = document.querySelector('.end-frame').getBoundingClientRect();
-      const im = document.querySelector('.ef-img.on');
+      const v = document.querySelector('.ef-vid.on');
+      const im = v || document.querySelector('.ef-img.on');
       const ir = im.getBoundingClientRect();
-      const s = Math.min(ir.width / im.naturalWidth, ir.height / im.naturalHeight);
+      const nw = v ? v.videoWidth : im.naturalWidth;
+      const nh = v ? v.videoHeight : im.naturalHeight;
+      const s = Math.min(ir.width / nw, ir.height / nh);
       const box = document.querySelector('.pr-box:not(.hidden)')?.getBoundingClientRect();
-      const top = document.querySelector('.tm-back, .ap-open')?.getBoundingClientRect();
-      return { r: [f.left, f.top, f.width, f.height].map(Math.round).join(','), img: im.src.split('/').pop(), full: im.naturalWidth * s <= ir.width + 0.5 && im.naturalHeight * s <= ir.height + 0.5 && im.complete && im.naturalWidth > 0, inView: f.left >= 0 && f.top >= 0 && f.right <= innerWidth && f.bottom <= innerHeight, boxClear: !box || box.top >= f.bottom || box.bottom <= f.top };
+      return { r: [f.left, f.top, f.width, f.height].map(Math.round).join(','), img: v ? v.dataset.name : im.src.split('/').pop(), full: nw > 0 && nw * s <= ir.width + 0.5 && nh * s <= ir.height + 0.5 && getComputedStyle(im).objectFit === 'contain', inView: f.left >= 0 && f.top >= 0 && f.right <= innerWidth && f.bottom <= innerHeight, boxClear: !box || box.top >= f.bottom || box.bottom <= f.top };
     }));
     if (i === 0 || i === 4 || i === 7) await page.screenshot({ path: `${S}/${label}-frame-s${i + 1}.png` });
   }
-  check(`${label}: ending frame — scenes 1-8 same position & size, whole image visible, on screen, clear of the dialog`, new Set(frames.map((f) => f.r)).size === 1 && frames.every((f) => f.full && f.inView && f.boxClear) && frames.map((f) => f.img.replace('s3b', 's3')).join(',') === 's1.png,s2.png,s3.png,s4.png,s5.png,s6.png,s7.png,s8.png', JSON.stringify(frames));
+  check(`${label}: ending frame — scenes 1-8 (3 images + 4 videos, held last frames) same position & size, whole picture visible, on screen, clear of the dialog`, new Set(frames.map((f) => f.r)).size === 1 && frames.every((f) => f.full && f.inView && f.boxClear) && frames.map((f) => f.img.replace('s3b', 's3')).join(',') === 's1.png,s3.png,s2.png,ending_01_running_hug,ending_01_running_hug,ending_02_grandma_kiss,ending_03_uncle_sniff,ending_04_family_portrait', JSON.stringify(frames));
   await page.goto(URL + '?test=family-ending&debugAudio=1');
   await page.waitForSelector('.audio-debug', { timeout: 30000 });
   await page.waitForTimeout(1500);

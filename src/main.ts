@@ -127,7 +127,7 @@ async function boot(): Promise<void> {
   });
   // 타이틀이 나오면 자막 상자는 닫음 (타이틀·크레딧·마지막 문구는 endingUi)
   bus.on(EV.endingPhase, (p: string) => {
-    if (p === 'title') {
+    if (p === 'title' || p === 'finale') {
       subs.hide();
       subs.root.classList.remove('auto');
     }
@@ -232,6 +232,7 @@ async function boot(): Promise<void> {
   if (new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
     (window as unknown as { __sound: typeof sound }).__sound = sound;
+    (window as unknown as { __bus: typeof bus }).__bus = bus;
     (window as unknown as { __perf: typeof perf }).__perf = perf;
     (window as unknown as { __coverDebug: () => unknown }).__coverDebug = () => cover.debugTitle();
   }

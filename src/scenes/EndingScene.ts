@@ -28,12 +28,17 @@ export const ENDING_LINES: { at: number; text: string }[] = [
 ];
 /** 장면 시작 시각 (엔딩 곡의 마디에 맞춤: 1마디 = 3.158초) */
 export const ENDING_SCENES = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3] as const;
-export const ENDING_TITLE_AT = 78.9;
-export const ENDING_CREDITS_AT = 88.4;
-export const ENDING_FINAL_AT = 107.4;
-export const ENDING_BLACK_AT = 116.5;
-/** (예전 이름 호환) 마지막 화면 버튼이 나오는 때 */
-export const ENDING_THE_END_AT = ENDING_BLACK_AT + 3.5;
+/** 황금 왕궁 액자 피날레 시작 (마지막 가족사진 영상 66.3~71.3초 → 마지막 프레임을 잠깐 머문 뒤) */
+export const ENDING_FINALE_AT = 74.6;
+/** (예전 이름 호환) 내레이션이 끝나는 때 = 피날레 시작 */
+export const ENDING_TITLE_AT = ENDING_FINALE_AT;
+/** 피날레: 마지막 문장 · The End · 음악 페이드아웃 · 버튼 (피날레 시작 기준 초) */
+export const FINALE_TEXT_AT = 5.2;
+export const FINALE_END_AT = 7.4;
+export const FINALE_FADE_AT = 8.4;
+export const FINALE_BUTTONS_AT = 12.6;
+/** 버튼이 나오는 때 */
+export const ENDING_THE_END_AT = ENDING_FINALE_AT + FINALE_BUTTONS_AT;
 
 /** 액자 장면 효과 (DOM 액자가 받음) */
 export type EndingFx = 'kiss' | 'sniff';
@@ -160,6 +165,7 @@ export class EndingScene extends Phaser.Scene {
     const readEnd = l.at + Math.min(sec - 0.4, 1.2 + Array.from(l.text).length * 0.11);
     if (next - readEnd > 1.2) this.at(readEnd, () => sound.duckEnding(false));
   }
+  /** 다음 대사 버튼: 다음 문장 · 마지막 문장 뒤면 피날레로 */
   nextLine(): boolean {
     if (this.t >= ENDING_TITLE_AT - 0.05) return false;
     const next = ENDING_LINES.find((l) => l.at > this.t + 0.05);
@@ -189,36 +195,22 @@ export class EndingScene extends Phaser.Scene {
     ENDING_SCENES.forEach((at, i) =>
       this.at(at, () => {
         this.sceneNo = i + 1;
-        bus.emit(EV.endingFrame, i);
+        // 빨리 감기·다음 버튼으로 늦게 불렸으면 그만큼 영상도 건너뜀
+        bus.emit(EV.endingFrame, i, Math.max(0, this.t - at));
       }),
     );
-    // 장면 5 뽀뽀와 킁카: 뽀뽀(하트 · 쪽) → 킁카(냄새 · 킁킁)
-    const s5 = ENDING_SCENES[4];
-    this.at(s5 + 1.4, () => {
-      sound.smooch();
-      bus.emit(EV.endingFx, 'kiss' as EndingFx);
-    });
-    this.at(s5 + 5.6, () => {
-      sound.inhale();
-      bus.emit(EV.endingFx, 'sniff' as EndingFx);
-    });
-    this.at(ENDING_TITLE_AT - 2.2, () => this.tweens.add({ targets: this.dim, alpha: 0.55, duration: 2600, ease: 'Sine.InOut' }));
-    // ── 타이틀 · 크레딧 · 마지막 문구 (글자는 화면 위 DOM — ui/endingUi.ts) → 검은 화면
-    this.at(ENDING_TITLE_AT, () => {
+    // 장면 6 뽀뽀와 킁카 (영상 두 개, 그림 속 하트·움직임 그대로): 영상에 맞춰 작은 효과음만
+    const s6 = ENDING_SCENES[5];
+    this.at(s6 + 2.2, () => sound.smooch());
+    this.at(s6 + 5.04 + 2.0, () => sound.inhale());
+    // ── 황금 왕궁 액자 피날레 (글자·액자는 화면 위 DOM — ui/endingUi.ts): 마지막 문장 → The End → 음악 페이드아웃 → 버튼
+    this.at(ENDING_FINALE_AT - 1.2, () => this.tweens.add({ targets: this.dim, alpha: 0.7, duration: 1200, ease: 'Sine.InOut' }));
+    this.at(ENDING_FINALE_AT, () => {
       this.sceneNo = 9;
       sound.duckEnding(false);
-      bus.emit(EV.endingPhase, 'title');
+      bus.emit(EV.endingPhase, 'finale');
     });
-    this.at(ENDING_CREDITS_AT, () => {
-      bus.emit(EV.endingPhase, 'credits');
-      this.tweens.add({ targets: this.dim, alpha: 0.7, duration: 2000 });
-    });
-    this.at(ENDING_FINAL_AT, () => bus.emit(EV.endingPhase, 'final'));
-    this.at(ENDING_BLACK_AT - 4, () => sound.fadeOutEnding(7));
-    this.at(ENDING_BLACK_AT, () => {
-      bus.emit(EV.endingPhase, 'black');
-      this.tweens.add({ targets: this.dim, alpha: 1, duration: 3000, ease: 'Sine.InOut' });
-    });
+    this.at(ENDING_FINALE_AT + FINALE_FADE_AT, () => sound.fadeOutEnding(6));
     this.at(ENDING_THE_END_AT, () => bus.emit(EV.endingTheEnd));
   }
 

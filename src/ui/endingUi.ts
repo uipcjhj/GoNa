@@ -10,7 +10,14 @@ import { bus, EV, type GameOverInfo } from '../events';
 import { sound } from '../audio';
 import { el } from './dom';
 
-export type EndingPhase = 'title' | 'credits' | 'final' | 'black';
+export type EndingPhase = 'title' | 'credits' | 'final' | 'black' | 'finale';
+
+/** 황금 왕궁 액자 피날레: 마지막 가족사진(영상 ending_04 의 마지막 프레임 그대로) + 액자(tools/build_golden_frame.py) */
+const FINALE_PHOTO = 'assets/ending/video/ending_04_family_portrait-last.png';
+const FINALE_FRAME = 'assets/ending/golden-frame.png';
+/** 액자 그림 186x170 안의 사진 칸 (golden-frame.json) */
+const FINALE_INNER = { x: 18, y: 40, w: 150, h: 112, W: 186, H: 170 };
+export const FINALE_LINES = ['세상에서 가장 맛있는 건,', '언제나 나를 믿어주고 기다려주는 사랑이라는 걸요.'];
 
 /** 크레딧 (실제로 확인할 수 있는 내용만) */
 export const ENDING_CREDITS: [string, string[]][] = [
@@ -32,6 +39,7 @@ export class EndingUi {
   private finalEl: HTMLElement;
   private blackEl: HTMLElement;
   private btnsEl: HTMLElement;
+  private finaleEl: HTMLElement;
   /** 버튼 연결 (main 에서) */
   onRestart: () => void = () => {};
   onTitle: () => void = () => {};
@@ -68,7 +76,47 @@ export class EndingUi {
     const replay = el('button', 'pixel-btn end-btn end-replay', '엔딩 다시보기');
     for (const b of [restart, title, replay]) b.type = 'button';
     this.btnsEl.append(this.scoreEl, restart, title, replay);
-    this.root.append(this.titleEl, this.creditsEl, this.finalEl, this.blackEl, this.btnsEl);
+    // 5) 황금 왕궁 액자 피날레 — 동화책의 마지막 페이지
+    this.finaleEl = el('div', 'end-finale');
+    const page = el('div', 'fin-page');
+    const art = el('div', 'fin-art');
+    const photo = el('img', 'fin-photo') as HTMLImageElement;
+    photo.alt = '';
+    const I = FINALE_INNER;
+    photo.style.left = `${(I.x / I.W) * 100}%`;
+    photo.style.top = `${(I.y / I.H) * 100}%`;
+    photo.style.width = `${(I.w / I.W) * 100}%`;
+    photo.style.height = `${(I.h / I.H) * 100}%`;
+    const frame = el('img', 'fin-frame') as HTMLImageElement;
+    frame.alt = '';
+    art.append(photo, frame);
+    const words = el('div', 'fin-words');
+    words.append(el('span', 'fin-rule'));
+    const text = el('p', 'fin-text');
+    FINALE_LINES.forEach((l, i) => {
+      if (i) text.append(document.createElement('br'));
+      text.append(l);
+    });
+    words.append(text, el('p', 'fin-end', 'The End'));
+    const fbtns = el('div', 'fin-btns');
+    const fRestart = el('button', 'pixel-btn fin-btn fin-restart', '처음부터 다시 하기');
+    const fTitle = el('button', 'pixel-btn fin-btn fin-title', '타이틀로 돌아가기');
+    for (const b of [fRestart, fTitle]) b.type = 'button';
+    fbtns.append(fRestart, fTitle);
+    const motes = el('div', 'fin-motes');
+    for (let i = 0; i < 16; i++) {
+      const m = el('span', i % 3 === 0 ? 'fin-star' : 'fin-dust');
+      m.style.left = `${(i * 37 + 11) % 96 + 2}%`;
+      m.style.top = `${(i * 53 + 7) % 90 + 4}%`;
+      m.style.animationDelay = `${(i % 8) * 0.7}s`;
+      m.style.animationDuration = `${5 + (i % 5)}s`;
+      motes.append(m);
+    }
+    page.append(art, words, fbtns);
+    this.finaleEl.append(motes, page);
+    this.finalePhoto = photo;
+    this.finaleFrame = frame;
+    this.root.append(this.titleEl, this.creditsEl, this.finalEl, this.blackEl, this.btnsEl, this.finaleEl);
     parent.append(this.root);
     const guard = (fn: () => void) => () => {
       if (performance.now() < this.readyAt) return; // 나타나자마자 실수로 눌리지 않게
@@ -78,10 +126,13 @@ export class EndingUi {
     };
     restart.addEventListener('click', guard(() => this.onRestart()));
     title.addEventListener('click', guard(() => this.onTitle()));
+    fRestart.addEventListener('click', guard(() => this.onRestart()));
+    fTitle.addEventListener('click', guard(() => this.onTitle()));
     replay.addEventListener('click', guard(() => this.onReplay()));
     bus.on(EV.endingStart, (info: GameOverInfo | null) => {
       if (info) this.info = info;
       this.hide();
+      this.preloadFinale();
     });
     bus.on(EV.endingPhase, (p: EndingPhase) => this.setPhase(p));
     bus.on(EV.endingTheEnd, () => this.showButtons());
@@ -91,8 +142,18 @@ export class EndingUi {
     return !this.root.classList.contains('hidden');
   }
 
+  private finalePhoto!: HTMLImageElement;
+  private finaleFrame!: HTMLImageElement;
+
+  /** 피날레 그림 미리 받기 (엔딩이 시작될 때) */
+  preloadFinale(): void {
+    if (!this.finalePhoto.src) this.finalePhoto.src = FINALE_PHOTO;
+    if (!this.finaleFrame.src) this.finaleFrame.src = FINALE_FRAME;
+  }
+
   setPhase(p: EndingPhase): void {
     this.phase = p;
+    if (p === 'finale') this.preloadFinale();
     this.root.classList.remove('hidden');
     this.root.dataset.phase = p;
   }
@@ -101,7 +162,7 @@ export class EndingUi {
   showButtons(): void {
     const i = this.info;
     this.scoreEl.textContent = i ? `점수 ${i.score}점 · 먹은 간식 ${i.snacks}개${i.isNewBest ? ' · ★ 최고 기록!' : ''}` : '';
-    if (this.phase !== 'black') this.setPhase('black');
+    if (this.phase !== 'black' && this.phase !== 'finale') this.setPhase('black');
     this.root.classList.add('with-btns');
     this.readyAt = performance.now() + 600;
   }

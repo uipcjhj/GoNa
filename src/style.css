@@ -3307,3 +3307,233 @@ body.in-ending .prologue-ui .pr-box {
     bottom: calc(max(8px, env(safe-area-inset-bottom)) + 18px);
   }
 }
+.ef-vid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.ef-vid.on {
+  opacity: 1;
+}
+
+/* ───────── 황금 왕궁 액자 피날레 — 동화책의 마지막 페이지 ───────── */
+.end-finale {
+  position: absolute;
+  inset: 0;
+  display: none;
+  overflow: hidden;
+  /* 오래된 동화책 양피지 + 은은한 궁전 벽지 무늬 + 가장자리 그늘 */
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(255, 244, 214, 0) 45%, rgba(120, 78, 36, 0.38) 100%),
+    radial-gradient(circle at 25% 25%, rgba(196, 150, 84, 0.13) 2px, transparent 2.5px) 0 0 / 34px 34px,
+    radial-gradient(circle at 75% 75%, rgba(196, 150, 84, 0.1) 1.5px, transparent 2px) 0 0 / 34px 34px,
+    linear-gradient(180deg, #f6e8c8 0%, #f1dfba 55%, #e8d2a6 100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.ending-ui[data-phase='finale'] .end-finale {
+  display: block;
+  animation: fin-in 1.4s ease forwards;
+}
+.ending-ui[data-phase='finale'] .end-btns {
+  display: none;
+}
+@keyframes fin-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fin-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.4vh, 22px);
+  padding: max(14px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+/* 액자 + 사진: 액자 그림 186x170 비율 그대로 · 왕관·모서리까지 화면 안 */
+.fin-art {
+  position: relative;
+  flex: none;
+  width: min(92vw, calc((100svh - 300px) * 186 / 170), 560px);
+  aspect-ratio: 186 / 170;
+  transform: scale(1.16);
+  animation: fin-zoom 2.8s 2.6s cubic-bezier(0.3, 0.1, 0.25, 1) forwards;
+}
+@keyframes fin-zoom {
+  to { transform: scale(1); }
+}
+.fin-photo {
+  position: absolute;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #2a1a10;
+}
+.fin-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  opacity: 0;
+  filter: drop-shadow(0 6px 0 rgba(90, 52, 18, 0.35));
+  animation: fin-frame 1.8s 1.2s ease-out forwards;
+}
+@keyframes fin-frame {
+  from { opacity: 0; transform: scale(1.04); }
+  to { opacity: 1; transform: scale(1); }
+}
+.fin-words {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: 94vw;
+}
+.fin-rule {
+  display: block;
+  width: min(220px, 60vw);
+  height: 10px;
+  /* 작은 금빛 장식선: 가는 선 두 줄 + 가운데 마름모 */
+  background:
+    linear-gradient(45deg, transparent 38%, #c99a3e 38%, #c99a3e 62%, transparent 62%) center / 10px 10px no-repeat,
+    linear-gradient(#b8862e, #b8862e) left 50% / calc(50% - 10px) 2px no-repeat,
+    linear-gradient(#b8862e, #b8862e) right 50% / calc(50% - 10px) 2px no-repeat;
+  image-rendering: pixelated;
+  opacity: 0;
+  animation: fin-fade 1.6s 5.2s ease forwards;
+}
+.fin-text {
+  margin: 0;
+  font-size: clamp(12px, 3.5vw, 18px);
+  line-height: 1.6;
+  color: #5a3418;
+  text-align: center;
+  word-break: keep-all;
+  text-shadow: 0 1px 0 rgba(255, 248, 228, 0.9);
+  opacity: 0;
+  animation: fin-fade 1.8s 5.2s ease forwards;
+}
+.fin-end {
+  position: relative;
+  margin: 2px 0 0;
+  padding: 0 18px;
+  font-size: clamp(12px, 3.2vw, 15px);
+  letter-spacing: 0.18em;
+  color: #b8862e;
+  text-shadow: 0 1px 0 #fff3cf, 0 2px 0 rgba(90, 52, 18, 0.25);
+  opacity: 0;
+  animation: fin-fade 1.6s 7.4s ease forwards;
+}
+/* 양옆 작은 픽셀 별 */
+.fin-end::before,
+.fin-end::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  background: #d9aa45;
+  clip-path: polygon(50% 0, 66% 34%, 100% 50%, 66% 66%, 50% 100%, 34% 66%, 0 50%, 34% 34%);
+}
+.fin-end::before { left: 2px; }
+.fin-end::after { right: 0; }
+@keyframes fin-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.fin-btns {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  min-height: 44px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.4s ease;
+}
+.ending-ui.with-btns .fin-btns {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+/* 작은 빈티지 골드 버튼 */
+.fin-btn {
+  min-height: 44px;
+  padding: 6px 14px;
+  font-size: clamp(12px, 3.4vw, 15px);
+  color: #4a2a0c;
+  background: #e2b85a;
+  border: 2px solid #5a3a12;
+  box-shadow: inset 0 -3px 0 #a87a2a, inset 0 2px 0 #fff0b8, 0 3px 0 rgba(58, 34, 8, 0.5);
+  text-shadow: 0 1px 0 #fff0b8;
+  touch-action: manipulation;
+}
+.fin-btn:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 -1px 0 #a87a2a, inset 0 2px 0 #fff0b8;
+}
+/* 금빛 먼지·작은 별빛 — 아주 천천히, 은은하게 */
+.fin-motes {
+  position: absolute;
+  inset: 0;
+}
+.fin-dust,
+.fin-star {
+  position: absolute;
+  opacity: 0;
+  animation: fin-mote 6s ease-in-out infinite;
+}
+.fin-dust {
+  width: 3px;
+  height: 3px;
+  background: #e8c46a;
+}
+.fin-star {
+  width: 7px;
+  height: 7px;
+  background: #f3d88a;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+}
+@keyframes fin-mote {
+  0%, 100% { opacity: 0; transform: translateY(0); }
+  40% { opacity: 0.55; }
+  60% { opacity: 0.35; }
+  100% { transform: translateY(-14px); }
+}
+/* 가로 화면: 액자 왼쪽 · 글 오른쪽 위 · 버튼 오른쪽 아래 (겹치지 않게 칸을 나눔) */
+@media (orientation: landscape) and (max-height: 500px) {
+  .fin-page {
+    display: grid;
+    grid-template-columns: auto minmax(0, 44vw);
+    grid-template-rows: auto auto;
+    align-content: center;
+    justify-content: center;
+    align-items: center;
+    gap: 14px 24px;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .fin-art {
+    grid-row: 1 / span 2;
+    width: min(48vw, calc((100svh - 28px) * 186 / 170));
+  }
+  .fin-words {
+    align-self: end;
+    max-width: 44vw;
+  }
+  .fin-btns {
+    align-self: start;
+  }
+}
