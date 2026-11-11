@@ -33,8 +33,12 @@ const ASPECT = 1.6;
 const BORDER = 6;
 
 let preloaded = false;
+/** 화면의 엔딩 액자 (한 개) — 최종 보스전 때 '터치로 영상 잠금 풀기'를 켜기 위해 */
+let frameInstance: EndingFrame | null = null;
 /** 엔딩 그림을 미리 받아 둠 (최종 보스전 때) */
 export function preloadEndingFrames(): void {
+  // 아이폰(특히 저전력 모드)은 터치로 한 번 재생된 적 없는 영상의 자동 재생을 막음 → 보스전 중 터치에서 영상 4개를 미리 깨워 둠
+  frameInstance?.armUnlock();
   if (preloaded) return;
   preloaded = true;
   preloadGrowth();
@@ -64,6 +68,12 @@ export class EndingFrame {
   private sceneTimer = 0;
   private doneTimer = 0;
   readonly growth = new EndingGrowth();
+  /** 터치(사용자 동작)가 오면 영상들을 깨움 (최종 보스전 ~ 엔딩) */
+  private unlockArmed = false;
+  /** 재생이 막혀(자동 재생 제한) 다음 터치를 기다리는 영상 */
+  private pendingPlay: (() => void) | null = null;
+  /** (검증·문제 확인용) 영상 재생 기록 · 오류 */
+  readonly videoLog: string[] = [];
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'end-frame hidden');
@@ -97,7 +107,14 @@ export class EndingFrame {
     inner.append(this.fx);
     this.root.append(inner);
     parent.append(this.root);
-    bus.on(EV.endingStart, () => this.reset());
+    frameInstance = this;
+    // 사용자 동작으로 인정되는 이벤트(터치 끝·클릭·키)에서 영상 잠금 풀기 — 아이폰 Safari 는 touchstart/pointerdown 은 인정하지 않음
+    const onGesture = (): void => this.onGesture();
+    for (const ev of ['touchend', 'click', 'keydown'] as const) document.addEventListener(ev, onGesture, { capture: true, passive: true });
+    bus.on(EV.endingStart, () => {
+      this.armUnlock();
+      this.reset();
+    });
     bus.on(EV.endingFrame, (i: number, late = 0) => this.show(i, late));
     bus.on(EV.endingPhase, (p: string) => {
       if (p === 'title' || p === 'finale') this.fadeOut();
@@ -171,10 +188,13 @@ export class EndingFrame {
       v.removeAttribute('src');
       v.preload = 'none';
       delete v.dataset.primed;
+      delete v.dataset.unlocked;
       v.load();
     }
     this.root.classList.add('hidden');
     this.index = -1;
+    this.unlockArmed = false;
+    this.pendingPlay = null;
   }
 
   private fadeOut(): void {
@@ -195,6 +215,7 @@ export class EndingFrame {
 
   private stopVideos(): void {
     clearTimeout(this.vidTimer);
+    this.pendingPlay = null;
     for (const v of this.vids) {
       v.pause();
       v.onended = null;
@@ -204,19 +225,77 @@ export class EndingFrame {
     this.vidOn = -1;
   }
 
+  /** 영상 파일 연결 (아직이면) */
+  private ensureSrc(k: number): HTMLVideoElement {
+    const v = this.vids[k];
+    if (!v.getAttribute('src')) {
+      v.preload = 'auto';
+      v.src = `${VDIR}${VIDEOS[k]}.mp4`;
+    }
+    return v;
+  }
+
+  private log(msg: string): void {
+    this.videoLog.push(`${(performance.now() / 1000).toFixed(1)} ${msg}`);
+    if (this.videoLog.length > 40) this.videoLog.shift();
+  }
+
+  /** 최종 보스전·엔딩 동안 터치가 오면 영상 잠금을 풂 */
+  armUnlock(): void {
+    this.unlockArmed = true;
+  }
+
   /**
-   * 영상 준비: 보이지 않는 채로 한 번 재생했다가 바로 멈춤 → 아이폰 Safari 도 첫 프레임을 미리 디코딩해 둠
+   * 사용자 동작(터치 끝·클릭) 안에서: ① 재생이 막혀 기다리던 영상을 바로 재생 ② 아직 깨우지 않은 영상들을 한 번 재생→멈춤.
+   * 아이폰 Safari 는 이렇게 '터치로 재생된 적 있는' 영상만 나중에 코드로 재생할 수 있게 해 줌 (저전력 모드 포함).
+   */
+  private onGesture(): void {
+    if (this.pendingPlay) {
+      const go = this.pendingPlay;
+      this.pendingPlay = null;
+      go();
+    }
+    if (!this.unlockArmed) return;
+    for (let k = 0; k < this.vids.length; k++) {
+      const v = this.vids[k];
+      if (v.dataset.unlocked || v.dataset.unlocking) continue;
+      if (v.dataset.want) {
+        v.dataset.unlocked = '1';
+        continue;
+      }
+      this.ensureSrc(k);
+      v.dataset.unlocking = '1';
+      const p = v.play();
+      const settle = (): void => {
+        delete v.dataset.unlocking;
+        v.dataset.unlocked = '1';
+        v.dataset.primed = '1';
+        if (v.dataset.want) return;
+        v.pause();
+        try {
+          v.currentTime = 0;
+        } catch {
+          /* 메타데이터 전 */
+        }
+      };
+      if (p) p.then(settle, (e: Error) => {
+        delete v.dataset.unlocking;
+        this.log(`unlock ${VIDEOS[k]} ${e?.name ?? e}`);
+      });
+      else settle();
+    }
+    if (this.vids.every((v) => v.dataset.unlocked)) this.unlockArmed = false;
+  }
+
+  /**
+   * 영상 준비: 보이지 않는 채로 한 번 재생했다가 바로 멈춤 → 아이폰 Safari 도 첫 프레임을 미리 받아 디코딩해 둠
    * (preload 만으로는 아이폰이 받지 않음). 그 사이 진짜 재생이 시작되면(want) 멈추지 않음.
    */
   private prime(k: number): void {
     const v = this.vids[k];
     if (!v || v.dataset.primed) return;
     v.dataset.primed = '1';
-    if (v.preload !== 'auto' || !v.getAttribute('src')) {
-      v.preload = 'auto';
-      v.src = `${VDIR}${VIDEOS[k]}.mp4`;
-      v.load();
-    }
+    this.ensureSrc(k);
     const p = v.play();
     const settle = (): void => {
       if (v.dataset.want) return;
@@ -227,7 +306,10 @@ export class EndingFrame {
         /* 메타데이터 전 */
       }
     };
-    if (p) p.then(settle, () => delete v.dataset.primed);
+    if (p) p.then(settle, (e: Error) => {
+      delete v.dataset.primed;
+      this.log(`prime ${VIDEOS[k]} ${e?.name ?? e}`);
+    });
     else settle();
   }
 
@@ -247,16 +329,30 @@ export class EndingFrame {
   }
 
   /**
-   * 영상 k 를 at 초부터 재생 (at 이 끝 근처면 마지막 프레임에 멈춤). 새 영상이 실제로 그려지기 시작할 때 이전 것을 감춤 → 검은 화면 없음.
-   * 2.5초 안에 못 그리면(로딩 실패·자동 재생 막힘) 같은 장면의 정지 그림으로 대신 — 엔딩 진행은 시간대로 계속
+   * 영상 k 를 at 초부터 재생 (at 이 끝 근처면 마지막 프레임에 멈춤). 영상이 실제로 재생되기 시작할 때 이전 그림을 감춤 → 검은 화면 없음.
+   *   - play() 를 바로 부름: 아이폰 Safari 는 play() 전에는 영상을 받지 않아 'loadedmetadata' 를 기다리면 영원히 오지 않을 수 있음
+   *   - 재생이 막히면(NotAllowedError — 저전력 모드 등) 다음 터치 때 바로 다시 재생 · 그동안 엔딩이 멈추지 않게
+   *     같은 장면의 정지 그림을 잠깐 보여 주고 영상 길이만큼 기다렸다 다음으로 (영상이 나중에 재생되면 그대로 영상으로 바뀜)
+   *   - 파일 오류(error)·8초 동안 재생 시작 못 함 → 같은 처리 + 기록(videoLog)
+   *   then: 영상이 끝나면 한 번만 (끝남 · 대신 진행 중 어느 쪽이 먼저든)
    */
   private playVideo(k: number, at: number, then?: () => void): void {
     clearTimeout(this.vidTimer);
-    const v = this.vids[k];
+    this.pendingPlay = null;
+    const v = this.ensureSrc(k);
     v.dataset.want = '1';
     const hold = at >= VLEN - 0.15;
+    let finished = false;
+    const once = (): void => {
+      if (finished || this.vids[k] !== v || !v.dataset.want) return;
+      finished = true;
+      then?.();
+    };
+    let shown = false;
     const reveal = (): void => {
-      if (this.vids[k] !== v) return;
+      if (!v.dataset.want || shown) return;
+      shown = true;
+      clearTimeout(this.vidTimer);
       for (const o of this.vids) if (o !== v) {
         o.classList.remove('on');
         o.pause();
@@ -265,46 +361,75 @@ export class EndingFrame {
       for (const im of this.imgs) im.classList.remove('on');
       this.vidOn = k;
     };
-    const start = (): void => {
-      try {
-        if (hold) v.currentTime = Math.max(0, (v.duration || VLEN) - 0.05);
-        else if (at > 0.05) v.currentTime = at;
-        else if (v.currentTime > 0.05 && !v.paused) v.currentTime = 0;
-      } catch {
-        /* 메타데이터 전 */
-      }
-      if (hold) {
-        v.pause();
+    let fellBack = false;
+    const fallback = (why: string): void => {
+      if (shown || fellBack || !v.dataset.want) return;
+      fellBack = true;
+      this.log(`fallback ${VIDEOS[k]} ${why} (readyState ${v.readyState}, network ${v.networkState}, error ${v.error?.code ?? '-'})`);
+      this.showImage(`${VDIR}video/${VIDEOS[k]}-${hold || at > 2.5 ? 'last' : 'first'}.${k === 3 && (hold || at > 2.5) ? 'png' : 'jpg'}`);
+      if (then) this.vidTimer = window.setTimeout(once, Math.max(0, (VLEN - at) * 1000));
+    };
+    const tryPlay = (): void => {
+      const p = v.play();
+      if (!p) {
         reveal();
-        then?.();
         return;
       }
-      v.onended = () => {
-        v.onended = null;
-        then?.(); // 다음 영상 (뽀뽀 → 킁카) · 없으면 마지막 프레임 그대로
+      p.then(
+        () => {
+          this.log(`play ${VIDEOS[k]}`);
+          reveal();
+        },
+        (e: Error) => {
+          if (!v.dataset.want) return;
+          const name = e?.name ?? String(e);
+          if (name === 'AbortError') return; // 다른 재생 요청에 밀림 — 다음 요청이 처리
+          // 자동 재생 막힘: 다음 터치 때 바로 재생
+          if (name === 'NotAllowedError') this.pendingPlay = () => v.dataset.want && tryPlay();
+          fallback(name);
+        },
+      );
+    };
+    if (hold) {
+      // 마지막 프레임: 길이를 알면 끝으로 옮기고 멈춤 (모르면 재생으로 받기 시작 → 길이를 알게 되면 끝으로)
+      const toEnd = (): void => {
+        try {
+          v.currentTime = Math.max(0, (v.duration || VLEN) - 0.05);
+        } catch {
+          /* 메타데이터 전 */
+        }
+        v.pause();
+        if (v.readyState >= 2) reveal();
+        else v.addEventListener('seeked', reveal, { once: true });
+        once();
       };
-      const p = v.play();
-      if (p) p.then(reveal, () => fallback());
-      else reveal();
-    };
-    const fallback = (): void => {
-      if (this.vids[k] !== v || v.classList.contains('on')) return;
-      this.showImage(`${VDIR}video/${VIDEOS[k]}-${hold || at > 2.5 ? 'last' : 'first'}.${k === 3 && (hold || at > 2.5) ? 'png' : 'jpg'}`);
-      if (then) this.vidTimer = window.setTimeout(then, Math.max(0, (VLEN - at) * 1000));
-    };
-    if (v.readyState >= 1) start();
-    else {
-      v.addEventListener('loadedmetadata', start, { once: true });
-      if (v.preload !== 'auto') {
-        v.preload = 'auto';
-        v.src = `${VDIR}${VIDEOS[k]}.mp4`;
+      if (v.readyState >= 1) toEnd();
+      else {
+        v.addEventListener('loadedmetadata', toEnd, { once: true });
+        v.play().catch(() => {});
+        this.vidTimer = window.setTimeout(() => {
+          fallback('hold-timeout');
+          once();
+        }, 8000);
       }
-      v.load();
+      return;
     }
-    v.addEventListener('error', fallback, { once: true });
-    this.vidTimer = window.setTimeout(() => {
-      if (!v.classList.contains('on')) fallback();
-    }, 2500);
+    v.onended = () => {
+      v.onended = null;
+      once(); // 다음 영상 (뽀뽀 → 킁카) · 없으면 마지막 프레임 그대로
+    };
+    try {
+      if (at > 0.05) {
+        if (v.readyState >= 1) v.currentTime = at;
+        else v.addEventListener('loadedmetadata', () => (v.currentTime = at), { once: true });
+      } else if (v.currentTime > 0.05) v.currentTime = 0;
+    } catch {
+      /* 메타데이터 전 */
+    }
+    v.addEventListener('error', () => fallback(`error ${v.error?.code ?? ''}`), { once: true });
+    tryPlay();
+    // 8초 안에 재생이 시작되지 않으면 (아주 느린 네트워크 등) 정지 그림으로 진행 — 영상은 계속 받다가 시작되면 영상으로 바뀜
+    this.vidTimer = window.setTimeout(() => fallback('timeout'), 8000);
   }
 
   /** 장면 i 의 그림 애니메이션·영상이 끝남 → 엔딩 씬이 '다음 ▶'·자동 전환을 정함 (장면이 이미 바뀌었으면 무시) */

@@ -1119,10 +1119,60 @@ async function endingFixTests(label, device) {
   await b.close();
 }
 
+/**
+ * 아이폰 Safari 의 영상 규칙 흉내: ① preload 무시 (play() 전엔 영상을 받지 않음)
+ * ② 터치(touchend)로 한 번 재생된 적 없는 영상의 play() 는 거부 (저전력 모드 등)
+ * → 최종 보스전 중 터치가 있었다면 엔딩의 영상 4개가 모두 실제로 재생되어야 함 (정지 그림으로 대신하지 않음)
+ */
+async function iosVideoTests(label, device) {
+  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const page = await (await b.newContext({ ...device })).newPage();
+  const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, 'preload', { get() { return 'none'; }, set() {}, configurable: true });
+    const play = HTMLMediaElement.prototype.play;
+    let lastTouch = -1e9;
+    addEventListener('touchend', () => { lastTouch = performance.now(); setTimeout(() => (lastTouch = -1e9), 0); }, { capture: true });
+    HTMLMediaElement.prototype.play = function () {
+      if (this.tagName === 'VIDEO') {
+        if (performance.now() - lastTouch < 50) this.__gest = true;
+        if (!this.__gest) return Promise.reject(new DOMException('blocked', 'NotAllowedError'));
+      }
+      return play.call(this);
+    };
+  });
+  await page.goto(URL + '?test=sniff-boss');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.battle, null, { timeout: 40000 });
+  await page.waitForTimeout(1500);
+  // 최종 보스전 중 공격 버튼 터치 (평소처럼)
+  const ab = await page.locator('.bt-attack').boundingBox();
+  await page.touchscreen.tap(ab.x + ab.width / 2, ab.y + ab.height / 2);
+  await page.waitForTimeout(1500);
+  const unlocked = await page.evaluate(() => [...document.querySelectorAll('.ef-vid')].map((v) => v.dataset.unlocked === '1'));
+  await page.evaluate(() => { const g = window.__gona.scene.getScene('Game'); g.debugFinish(); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game')?.ending?.cur >= 0, null, { timeout: 30000 });
+  await page.evaluate(() => window.__gona.scene.getScene('Game').ending.jumpTo(3));
+  const seen = {};
+  const t0 = Date.now();
+  while (Date.now() - t0 < 80000) {
+    const st = await page.evaluate(() => { const e = window.__gona.scene.getScene('Game').ending; const v = document.querySelector('.ef-vid.on'); const im = document.querySelector('.ef-img.on'); return { cur: e.cur, vid: v?.dataset.name ?? null, vt: v ? v.currentTime : 0, img: im ? im.src.split('/').pop() : '', phase: document.querySelector('.ending-ui').dataset.phase }; });
+    if (st.vid) seen[st.vid] = Math.max(seen[st.vid] ?? 0, st.vt);
+    if (/-first|-last/.test(st.img)) seen.still = st.img;
+    if (st.phase === 'finale') break;
+    await page.waitForTimeout(150);
+  }
+  const log = await page.evaluate(() => window.__endingFrameLog?.() ?? []);
+  check(`${label}: taps during the final boss unlock all 4 ending videos (iPhone autoplay rule)`, unlocked.every(Boolean), JSON.stringify(unlocked));
+  check(`${label}: all 4 MP4s really play to the end in the frame (no still image instead)`, ['ending_01_running_hug', 'ending_02_grandma_kiss', 'ending_03_uncle_sniff', 'ending_04_family_portrait'].every((n) => (seen[n] ?? 0) >= 4.9) && !seen.still, JSON.stringify({ seen, log }));
+  check(`${label}: no page errors (iPhone video rule)`, errs.length === 0, errs.join(' | '));
+  await b.close();
+}
+
 (async () => {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
   const want = (n) => !only || only.some((o) => n.startsWith(o));
+  if (want('iosvid-port')) await iosVideoTests('iosvid-port', devices['iPhone 13']);
   if (want('touch-port')) await touchAudioTests('touch-port', devices['iPhone 13']);
   if (want('endfix-port')) await endingFixTests('endfix-port', devices['iPhone 13']);
   if (want('endfix-land')) await endingFixTests('endfix-land', devices['iPhone 13 landscape']);
