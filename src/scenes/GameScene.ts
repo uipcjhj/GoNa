@@ -403,6 +403,11 @@ export class GameScene extends Phaser.Scene {
     const onSpecial = (): void => {
       if (this.state === 'playing') this.battle?.useSpecial();
     };
+    // 킁카괴물 전용 필살기 '두바이 똥냄새 공격!' (같은 필살 게이지)
+    const onSpecial2 = (): void => {
+      if (this.state === 'playing') this.battle?.useSpecial2();
+    };
+    bus.on(EV.special2, onSpecial2);
     bus.on(EV.tap, onTap);
     bus.on(EV.requestPause, onPause);
     bus.on(EV.requestResume, onResume);
@@ -421,6 +426,7 @@ export class GameScene extends Phaser.Scene {
       bus.off(EV.dodge, onDodge);
       bus.off(EV.attack, onAttack);
       bus.off(EV.special, onSpecial);
+      bus.off(EV.special2, onSpecial2);
       this.battle?.destroy();
       this.battle = null;
       bus.off(EV.tap, onTap);
@@ -1474,6 +1480,8 @@ export class GameScene extends Phaser.Scene {
       this.battle.resistTap();
       return;
     }
+    // 코 조준 중: 방패 잠금 (발사! 버튼만)
+    if (this.battle.qteBusy) return;
     if (this.time.now < this.shieldReadyAt) return;
     this.shieldUntil = this.time.now + SHIELD.activeMs;
     this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
@@ -1953,7 +1961,14 @@ export class GameScene extends Phaser.Scene {
     // 흡입에 버티는 중엔 공격 안 함 (버티기 버튼과 겹치지 않게)
     if (this.battle?.resistActive) return;
     // 코 타이밍 바: 공격 버튼 = '발사!' — 누른 순간 판정. PERFECT·GOOD 면 코로 부메랑 발사, MISS 면 빗나감(발사 안 함)
-    if (this.battle?.aimActive && this.battle.lockAim() === 'miss') return;
+    // 조준 안내·결과 안내 중엔 공격 안 함
+    if (this.battle?.qteBusy && !this.battle.aimActive) return;
+    let aimJudge: unknown = null;
+    if (this.battle?.aimActive) {
+      // 부메랑이 아직 날아가 있으면 판정하지 않음 (돌아오면 다시 '발사!')
+      if (this.boomerang.isOut) return;
+      aimJudge = this.battle.lockAim();
+    }
     if (this.boomerang.isOut) {
       // 돌아오기 직전에 누른 것은 기억 (돌아오자마자 발사)
       this.attackBufferUntil = this.time.now + 250;
@@ -1964,6 +1979,8 @@ export class GameScene extends Phaser.Scene {
     // 보스전: 보스까지는 꼭 닿게
     if (this.battle) stats.range = Math.max(stats.range, this.battle.bossRect().x1 - h.x);
     if (this.boomerang.throw(this.hairKey(), this.vis.scale, h.x + 4, h.y, stats)) {
+      // 조준 실패: 조준점이 있던 자리로 날아가 빗나감 (보스에 맞지 않음)
+      if (aimJudge === 'miss') this.boomerang.hitIds.add('boss');
       this.squash = 1.12;
       this.sparkleEmitter.explode(2, h.x, h.y);
     }
@@ -2275,6 +2292,7 @@ export class GameScene extends Phaser.Scene {
       shieldCool: shield === 'cool' ? Math.ceil(((this.shieldReadyAt - now) / (SHIELD.cooldownMs - SHIELD.activeMs)) * 20) / 20 : 0,
       special: Math.floor((b ? b.special : this.specialCarry) * 20) / 20,
       specialReady: !!b?.specialReady,
+      dubai: !!b?.special2Available && b.mode !== 'done' && b.mode !== 'victory',
       boss: b && b.mode !== 'done' ? b.hud() : null,
       score: this.score,
       player: showPlayer ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
@@ -2288,7 +2306,7 @@ export class GameScene extends Phaser.Scene {
       this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
       this.gaugeGfx.setVisible(wantPhaser);
     }
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${hud.qte ? (hud.qte.kind === 'resist' ? `r${Math.round(hud.qte.gauge * 50)}` : 'aim') : '-'}`;
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${hud.qte ? (hud.qte.kind === 'resist' ? `r${Math.round(hud.qte.gauge * 50)}` : hud.qte.kind) : '-'}|${hud.dubai}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);

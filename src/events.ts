@@ -39,6 +39,8 @@ export const EV = {
   /** UI → 게임: 머리카락 부메랑 / 필살기 */
   attack: 'attack',
   special: 'special',
+  /** 보스 전용 두 번째 필살기 (킁카괴물: 두바이 똥냄새 공격!) */
+  special2: 'special2',
   /** UI → 게임: 보스전 '피하기' 버튼 = 점프 / 공중에서 한 번 더 = 더블 점프 */
   dodge: 'dodge',
   /** UI → 게임: 보스전 방패 */
@@ -65,6 +67,10 @@ export const EV = {
   endingTheEnd: 'endingTheEnd',
   /** 엔딩 액자 장면 번호 (0~7) */
   endingFrame: 'endingFrame',
+  /** 엔딩 장면 i 의 그림 애니메이션·영상이 끝남 (액자 → 엔딩 씬) */
+  endingMediaDone: 'endingMediaDone',
+  /** 엔딩 '다음 ▶' 을 보여도 되는지 (true/false) */
+  endingNextReady: 'endingNextReady',
   /** 킁카괴물 코 타이밍 바: { show, pos(0~1), perfect, good, left, paused } */
   aimBar: 'aimBar',
   /** 타이밍 바 판정 'perfect' | 'good' | 'miss' */
@@ -95,13 +101,15 @@ export interface CombatHud {
   /** 필살 게이지 0~1 (보스전에서만) */
   special: number;
   specialReady: boolean;
+  /** 킁카괴물 전용 필살기 버튼을 보일지 (같은 필살 게이지) */
+  dubai: boolean;
   boss: { name: string; hp: number; maxHp: number; phase: number } | null;
   /** 고나 체력: 하트 + 지금 하트의 HP (일반 스테이지·보스전 공통) */
   player: { hearts: number; maxHearts: number; hp: number; maxHp: number } | null;
   /** 점수 (화면 위 왼쪽) */
   score: number;
   /** 잠깐 바뀌는 버튼: 'aim' = 공격 버튼이 '조준!' · 'resist' = 방패 버튼이 '버티기!' (+ 버티기 게이지 0~1) */
-  qte?: { kind: 'aim' } | { kind: 'resist'; gauge: number; left: number } | null;
+  qte?: { kind: 'aim' | 'aimIntro' } | { kind: 'resist'; gauge: number; left: number } | null;
   /** 성장 게이지 (보스전 중엔 null) */
   growth: { ratio: number; level: number; levels: number; final: boolean } | null;
 }
@@ -111,7 +119,7 @@ export interface BannerInfo {
   name: string;
   desc?: string;
   ms: number;
-  tone?: 'boss' | 'good' | 'power' | 'special';
+  tone?: 'boss' | 'good' | 'power' | 'special' | 'special2' | 'aim' | 'aim-perfect' | 'aim-good' | 'aim-miss';
 }
 
 export interface GameOverInfo {

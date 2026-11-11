@@ -37,10 +37,11 @@ export const TEST_ITEMS: [string, string][] = [
   ['ending-image', '23. 엔딩 마지막 가족사진 영상 바로 보기'],
   ['ending-credits', '24. 엔딩 황금 왕궁 액자 피날레 바로 보기'],
   ['kiss-special', '25. 뽀뽀괴물 고나 필살기 컷인 테스트'],
-  ['sniff-aim', '26. 킁카괴물 코 타이밍 바 테스트 (직접 발사)'],
-  ['sniff-inhale', '27. 킁카괴물 흡입 공격 테스트 (직접 버티기)'],
+  ['sniff-aim', '26. 킁카괴물 코 조준 테스트 (안내 → 조준점 → 직접 발사 → 결과)'],
+  ['sniff-inhale', '27. 킁카괴물 흡입 공격 테스트 (가운데 버티기! 버튼)'],
   ['resist-success', '28. 버티기 QTE 성공 테스트 (자동 연타)'],
   ['resist-fail', '29. 버티기 QTE 실패 테스트 (안 누름)'],
+  ['sniff-dubai', '30. 킁카괴물 두바이 똥냄새 공격 (필살기 게이지 가득)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -128,7 +129,8 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'sniff-aim':
     case 'sniff-inhale':
     case 'resist-success':
-    case 'resist-fail': {
+    case 'resist-fail':
+    case 'sniff-dubai': {
       const boss = id.startsWith('kiss') ? 'kiss' : 'sniff';
       sc.debugSetStage(boss === 'kiss' ? 1 : 3);
       sc.boomerangAwake = true;
@@ -167,16 +169,15 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
             b.startAim(5.6);
           };
           open();
-          window.setInterval(open, 8000);
+          window.setInterval(open, 11000);
           if (auto) {
             window.setInterval(() => {
-              const b = g().battle;
-              const a = b?.aim;
-              if (a && !a.locked && a.pause <= 0 && Math.abs(a.pos - 0.5) < 0.035) bus.emit(EV.attack);
-            }, 50);
+              const d = g().battle?.aimDebug?.();
+              if (d && d.phase === 'aim' && d.judge === 'perfect') bus.emit(EV.attack);
+            }, 30);
           }
         });
-        say(auto ? '타이밍 바 커서가 가운데(코)에 오면 자동 발사 → PERFECT 코 명중 ×2 (반복)' : "타이밍 바 커서가 가운데 코(노란 칸)에 오면 '발사!' (공격 버튼) — PERFECT ×2 · GOOD 보통 · MISS 빗나감");
+        say(auto ? '조준점이 코에 오면 자동 발사 → 완벽 명중 ×2 (반복)' : "안내 뒤 조준점이 머리↔코를 오가요 — 코(노란 점선 고리)에 오면 '발사!' (공격 버튼)");
       } else if (id === 'kiss-special') {
         // 필살기 게이지를 채워 바로 '초특급 꼬불머리 팡팡!' (얼굴 컷인) — 9초마다 반복
         waitFight(() => {
@@ -210,6 +211,18 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
           if (id === 'resist-success') window.setInterval(() => g().battle?.resistActive && bus.emit(EV.shield), 200);
         });
         say(id === 'sniff-inhale' ? "흡입이 오면 '버티기!' (방패 버튼) 연타 — 9초마다 반복" : id === 'resist-success' ? '자동으로 초당 5번 연타 → 버티기 성공' : '누르지 않음 → 끌려가서 피해 (실패)');
+      } else if (id === 'sniff-dubai') {
+        waitFight(() => {
+          const go = (): void => {
+            const b = g().battle;
+            if (!b || b.mode !== 'fight') return;
+            b.hp = Math.max(b.hp, Math.round(b.def.maxHp * 0.8));
+            b.special = 1;
+          };
+          window.setTimeout(go, 600);
+          window.setInterval(go, 9000);
+        });
+        say("필살기 게이지가 차면 초록 '두바이!' 버튼 — 9초마다 다시 채워져요");
       } else say(boss === 'kiss' ? '뽀뽀괴물 보스전 (필살기 ①②③ · 마지막 대사)' : '킁카괴물 보스전 (돼지코 돌진 · 코 약점)');
       break;
     }
@@ -304,15 +317,16 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'ending-credits': {
       sc.debugSetStage(3);
       sc.debugFinish();
-      const jump = { 'ending-hug': 31.5, layout: 66.2, 'ending-image': 66.2, 'ending-credits': 73.0 }[id as 'layout'] ?? 0;
-      if (jump) {
+      // 장면 번호로 바로 (엔딩은 장면마다 애니메이션·영상이 끝나면 저절로 넘어감)
+      const jump = { 'ending-hug': 3, layout: 7, 'ending-image': 7, 'ending-credits': 8 }[id as 'layout'] ?? -1;
+      if (jump >= 0) {
         const t = window.setInterval(() => {
           const e = g().ending;
-          if (e) {
+          if (e && e.cur >= 0) {
             clearInterval(t);
-            e.t = jump;
-            // 최종 그림 바로 보기: THE END 직전에서 멈춰 그림만 계속 보여 줌
-            if (id === 'ending-image') e.holdAt = 74;
+            // 최종 그림 바로 보기: 마지막 가족사진 장면에서 멈춰 그림만 계속 보여 줌
+            if (id === 'ending-image') e.stayAt = 7;
+            e.jumpTo(jump);
           }
         }, 100);
       }

@@ -15,8 +15,26 @@ import { heartCanvas } from '../art/textures';
 import { perf } from '../perf';
 import { el, pixelImg } from './dom';
 
-const PAL = { k: '#4a2a14', b: '#9a6238', w: '#d79a62', d: '#6e4024', y: '#ffd84a', c: '#8fe3ff', l: '#e6fbff', s: '#4fb6e8' };
-const HAIR_ICON = ['....k....', '...kbk...', '...kbk...', '..kbbbk..', '.kbbwbbk.', 'kbbbwbbbk', 'kbbbbbbbk', 'kbbbbbbdk', '.kbbbbdk.', '..kkkkk..'];
+const PAL = { k: '#4a2a14', b: '#9a6238', w: '#d79a62', d: '#6e4024', y: '#ffd84a', c: '#8fe3ff', l: '#e6fbff', s: '#4fb6e8', t: '#e8c79a', g: '#7ccf4a', L: '#b8f07a', K: '#24401a', e: '#24401a', p: '#ff9fb0', W: '#ffffff', m: '#a8e070' };
+/** 공격 = 고나 머리카락 부메랑: 갈색 머리카락 한 가닥이 C자로 휜 모양 (위 끝은 가늘고 밝게, 아래 끝은 두툼하게 — 비대칭) + 도는 잔상 */
+const HAIR_ICON = [
+  '......kkkk....',
+  '....kkbwwbk...',
+  '...kbbwwbk....',
+  '..kbbbkkk.....',
+  '.kbbbk.....t..',
+  '.kbbk.....t...',
+  'kbbbk.........',
+  'kbbbk....tt...',
+  'kbbbk.........',
+  '.kbbdk....t...',
+  '.kdbbdkk...t..',
+  '..kddbbbkkk...',
+  '...kkddddbbk..',
+  '.....kkkkkkk..',
+];
+/** 두바이 똥냄새 공격: 초록 울룩불룩 아기 똥 + 냄새 점 */
+const DUBAI_ICON = ['.m..kk..m..', 'm..kLgk...m', '...kgggk.m.', '..kkkkkkk..', '.kLggggdk..', 'kgWegWegdk.', 'kkkkkkkkkk.', 'kLgpggpgdk.', 'kggggggddk.', '.kkkkkkkk..'];
 const STAR_ICON = ['....k....', '...kyk...', '...kyk...', 'kkkkyykkk', 'kyyyyyyyk', '.kyyyyyk.', '..kyyyk..', '.kyykyyk.', 'kyyk.kyyk', 'kkk...kkk'];
 const SHIELD_ICON = ['kkkkkkkkk', 'klllcccck', 'klccccssk', 'klccccssk', 'klccccssk', '.kcccssk.', '.kcccssk.', '..kccsk..', '...kck...', '....k....'];
 
@@ -29,6 +47,11 @@ export class BattleUi {
   private shieldLabel: HTMLSpanElement;
   private atk: Btn;
   private sp: Btn;
+  private sp2: Btn;
+  private sp2Fill: HTMLDivElement;
+  private sp2Label: HTMLSpanElement;
+  /** 킁카괴물 강력한 흡입 때만 화면 가운데에 나오는 큰 '버티기!' 버튼 */
+  private resistBtn: Btn;
   private atkCool: HTMLDivElement;
   private atkLabel: HTMLSpanElement;
   private spFill: HTMLDivElement;
@@ -67,7 +90,7 @@ export class BattleUi {
     this.shieldCool = el('div', 'bt-cool');
     this.shieldBtn.querySelector('.bt-face')!.prepend(this.shieldCool);
     this.shieldLabel = this.shieldBtn.querySelector('.bt-label') as HTMLSpanElement;
-    this.atk = this.makeBtn('bt-attack', '공격', HAIR_ICON, 6);
+    this.atk = this.makeBtn('bt-attack', '공격', HAIR_ICON, 5);
     this.atkCool = el('div', 'bt-cool');
     this.atk.querySelector('.bt-face')!.prepend(this.atkCool);
     this.atkLabel = this.atk.querySelector('.bt-label') as HTMLSpanElement;
@@ -77,9 +100,16 @@ export class BattleUi {
     this.spLabel = this.sp.querySelector('.bt-label') as HTMLSpanElement;
     const left = el('div', 'bt-group bt-left');
     left.append(this.shieldBtn);
+    this.sp2 = this.makeBtn('bt-special bt-special2', '두바이!', DUBAI_ICON, 3);
+    this.sp2Fill = el('div', 'bt-fill');
+    this.sp2.querySelector('.bt-face')!.prepend(this.sp2Fill);
+    this.sp2Label = this.sp2.querySelector('.bt-label') as HTMLSpanElement;
     const right = el('div', 'bt-group bt-right');
-    right.append(this.sp, this.atk);
-    this.pad.append(left, right);
+    right.append(this.sp2, this.sp, this.atk);
+    this.resistBtn = el('button', 'bt-resist hidden', '버티기!');
+    this.resistBtn.type = 'button';
+    this.resistBtn.setAttribute('aria-label', '버티기');
+    this.pad.append(left, right, this.resistBtn);
 
     // 위: 고나 하트 + HP · 보스 체력
     this.top = el('div', 'battle-top hidden');
@@ -166,6 +196,9 @@ export class BattleUi {
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
     this.bindPress(this.sp, () => bus.emit(EV.special));
+    this.bindPress(this.sp2, () => bus.emit(EV.special2));
+    // 버티기: 한 번 누를 때마다 한 번 (게임의 방패 입력이 흡입 중엔 버티기로 처리)
+    this.bindPress(this.resistBtn, () => bus.emit(EV.shield));
 
     bus.on(EV.combatHud, (h: CombatHud) => this.render(h));
     bus.on(EV.banner, (b: BannerInfo) => this.showBanner(b));
@@ -234,22 +267,24 @@ export class BattleUi {
       document.body.classList.toggle('has-pad', h.mode !== 'none');
     }
     const off = !h.enabled;
-    // 방패
-    this.shieldBtn.classList.toggle('off', off || h.shield !== 'ready');
-    this.shieldBtn.classList.toggle('active', h.shield === 'active');
-    this.setStyle(this.shieldCool, 'height', h.shield === 'cool' ? `${Math.round(h.shieldCool * 100)}%` : '0%');
     const resist = h.qte?.kind === 'resist' ? h.qte : null;
     const aim = h.qte?.kind === 'aim';
-    this.setText(this.shieldLabel, resist ? '버티기!' : h.shield === 'active' ? '막는 중!' : h.shield === 'cool' ? '준비 중' : '방패');
-    this.shieldBtn.classList.toggle('qte', !!resist);
-    if (resist) this.shieldBtn.classList.remove('off');
+    /** 조준 안내·조준·결과 · 버티기 동안: 방패·필살 잠금 (조준 중엔 '발사!' 만) */
+    const qteLock = !!h.qte;
+    // 방패
+    this.shieldBtn.classList.toggle('off', off || qteLock || h.shield !== 'ready');
+    this.shieldBtn.classList.toggle('active', h.shield === 'active');
+    this.setStyle(this.shieldCool, 'height', h.shield === 'cool' ? `${Math.round(h.shieldCool * 100)}%` : '0%');
+    this.setText(this.shieldLabel, h.shield === 'active' ? '막는 중!' : h.shield === 'cool' ? '준비 중' : '방패');
+    // 버티기: 방패 버튼 대신 화면 가운데 큰 버튼 (흡입 패턴 동안만)
+    this.resistBtn.classList.toggle('hidden', !resist);
     this.resistBox.classList.toggle('hidden', !resist);
     if (resist) {
       this.setStyle(this.resistFill, 'width', `${Math.round(resist.gauge * 100)}%`);
       this.resistFill.classList.toggle('low', resist.gauge < 0.25);
     }
     // 공격: 잠김(각성 전) / 준비 / 돌아오는 중(쿨타임)
-    this.atk.classList.toggle('off', off || h.attack !== 'ready');
+    this.atk.classList.toggle('off', off || h.attack !== 'ready' || (qteLock && !aim));
     this.atk.classList.toggle('locked', h.attack === 'locked');
     this.atk.classList.toggle('out', h.attack === 'out');
     this.setStyle(this.atkCool, 'height', h.attack === 'out' ? `${Math.round(h.cooldown * 100)}%` : '0%');
@@ -258,9 +293,16 @@ export class BattleUi {
     if (aim) this.atk.classList.remove('off');
     // 필살
     this.setStyle(this.spFill, 'height', `${Math.round(h.special * 100)}%`);
-    this.sp.classList.toggle('ready', h.specialReady && !off);
-    this.sp.classList.toggle('off', off || !h.specialReady);
+    const spOk = h.specialReady && !off && !qteLock;
+    this.sp.classList.toggle('ready', spOk);
+    this.sp.classList.toggle('off', !spOk);
     this.setText(this.spLabel, h.specialReady ? '필살!' : `${Math.round(h.special * 100)}%`);
+    // 킁카괴물 전용 필살기 (같은 게이지 — 둘 중 하나를 쓰면 게이지가 비워짐)
+    this.pad.classList.toggle('has-sp2', h.dubai);
+    this.setStyle(this.sp2Fill, 'height', `${Math.round(h.special * 100)}%`);
+    this.sp2.classList.toggle('ready', spOk && h.dubai);
+    this.sp2.classList.toggle('off', !(spOk && h.dubai));
+    this.setText(this.sp2Label, h.specialReady ? '두바이!' : `${Math.round(h.special * 100)}%`);
     // 위: 점수 · 고나 하트 + HP + 성장 · 보스 (보스전에서만)
     this.scoreEl.classList.toggle('hidden', !h.player);
     if (h.score !== this.lastScore) {

@@ -3076,12 +3076,34 @@ body.in-ending .pr-next {
   touch-action: manipulation;
   cursor: pointer;
 }
+/* 장면이 끝나기 전(영상·애니메이션 재생 중·타이핑 중)에는 숨김 — 자리(absolute)는 그대로라 대사창 크기·위치가 바뀌지 않음 */
+body.in-ending .pr-box:not(.can-next) .pr-next {
+  visibility: hidden;
+  pointer-events: none;
+}
+body.in-ending .pr-box.can-next .pr-next {
+  animation: pr-next-in 0.35s ease-out;
+}
+@keyframes pr-next-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 body.in-ending .pr-next:active {
   transform: translateY(1px);
   box-shadow: none;
 }
 body.in-ending .prologue-ui .pr-box {
   padding-bottom: 38px;
+}
+/* 엔딩 대사창 높이 고정 (세 줄 높이) — 문장 길이(두 줄·세 줄)에 따라 장면마다 대사창이 오르내리지 않게 */
+body.in-ending .prologue-ui .pr-box {
+  min-height: calc(17px * 1.6 * 3 + 14px + 38px + 8px);
+  box-sizing: border-box;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  body.in-ending .prologue-ui .pr-box {
+    min-height: calc(15px * 1.5 * 2 + 9px + 38px + 8px);
+  }
 }
 
 /* 오디오 디버그 패널 (?debugAudio=1) */
@@ -3633,4 +3655,148 @@ body.in-ending .prologue-ui .pr-box {
   .fin-btns {
     align-self: start;
   }
+}
+
+/* ───────── 킁카괴물 전투 개선: 두바이 필살기 버튼 · 가운데 '버티기!' · 조준 안내/결과 팝업 ───────── */
+/* 두바이 똥냄새 공격 버튼 (킁카괴물전에서만 — 기존 필살 버튼 왼쪽, 같은 높이) */
+.bt-special2 {
+  display: none;
+}
+.battle-pad.mode-battle.has-sp2 .bt-special2 {
+  display: block;
+}
+.bt-special2 .bt-face {
+  background: #d9ecc4;
+  border-color: #2f5a1a;
+}
+.bt-special2 .bt-fill {
+  background: linear-gradient(#c8ff8a, #6ccf3a);
+}
+.bt-special2.ready .bt-face {
+  border-color: #24401a;
+  animation: sp2-glow 0.7s steps(2) infinite;
+}
+@keyframes sp2-glow {
+  0% { box-shadow: inset 0 0 0 2px #e8ffc8, 0 4px 0 #1d3410, 0 0 0 3px #9cf05a, 0 0 12px 2px rgba(156, 240, 90, 0.8); }
+  100% { box-shadow: inset 0 0 0 2px #6ccf3a, 0 4px 0 #1d3410, 0 0 0 6px #c8ff8a, 0 0 18px 4px rgba(200, 255, 138, 0.75); }
+}
+.bt-special2 .bt-label {
+  font-size: 11px;
+}
+/* 두 필살 버튼의 터치 영역이 겹치지 않게 (기존 필살 버튼만 공격 버튼 쪽으로 살짝 겹쳐 둠) */
+.bt-special.bt-special2 {
+  margin-right: 0;
+}
+
+/* 버티기! — 강력한 흡입 동안만 화면 가운데 (점수·체력 아래, 고나·보스 얼굴 위 빈 곳) */
+.bt-resist {
+  position: absolute;
+  left: 50%;
+  top: calc(22% + 92px);
+  transform: translateX(-50%);
+  width: min(62vw, 250px);
+  height: 86px;
+  margin: 0;
+  padding: 0 0 6px;
+  font: inherit;
+  font-size: clamp(26px, 8vw, 34px);
+  letter-spacing: 0.06em;
+  color: #fff8e0;
+  text-shadow: 0 3px 0 #7a1c08, 2px 0 0 #7a1c08, -2px 0 0 #7a1c08;
+  background: linear-gradient(#ff8a3a, #e8461e);
+  border: 4px solid #4a1606;
+  border-radius: 14px;
+  box-shadow: inset 0 4px 0 #ffc078, inset 0 -8px 0 #b8300e, 0 5px 0 #3a1004, 0 0 0 3px #ffd54a, 0 0 20px 4px rgba(255, 140, 60, 0.6);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  z-index: 6;
+  animation: resist-pulse 0.42s ease-in-out infinite alternate;
+}
+.bt-resist.hidden {
+  display: none;
+}
+.bt-resist.pressed {
+  transform: translateX(-50%) translateY(4px) scale(0.97);
+  box-shadow: inset 0 4px 0 #ffc078, inset 0 -4px 0 #b8300e, 0 1px 0 #3a1004, 0 0 0 3px #ffd54a;
+  animation: none;
+}
+@keyframes resist-pulse {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.15); }
+}
+.resist-box {
+  top: 22%;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .resist-box {
+    top: calc(max(4px, env(safe-area-inset-top)) + 54px);
+  }
+  .bt-resist {
+    top: calc(max(4px, env(safe-area-inset-top)) + 136px);
+    height: 64px;
+    width: 200px;
+    font-size: 24px;
+  }
+}
+
+/* 조준 안내 · 결과 안내 (가운데 팝업 — 분노 안내와 같은 도트 창) */
+.battle-banner.tone-aim {
+  border-color: #ffb43a;
+  background: rgba(58, 30, 8, 0.86);
+  box-shadow: 0 3px 0 #2a1404, 0 0 18px rgba(255, 180, 60, 0.6);
+}
+.battle-banner.tone-aim .bn-top {
+  color: #ffd27a;
+}
+.battle-banner.tone-aim .bn-name,
+.battle-banner[class*='tone-aim-'] .bn-name {
+  font-size: clamp(19px, 5.6vmin, 28px);
+}
+.battle-banner.tone-aim-perfect {
+  border-color: #ffe14a;
+  background: rgba(70, 40, 6, 0.88);
+  box-shadow: 0 3px 0 #2a1404, 0 0 22px rgba(255, 225, 74, 0.8);
+}
+.battle-banner.tone-aim-perfect .bn-name {
+  color: #ffe14a;
+  text-shadow: 0 2px 0 #b5420f;
+}
+.battle-banner.tone-aim-good {
+  border-color: #9cf05a;
+  background: rgba(20, 46, 18, 0.86);
+  box-shadow: 0 3px 0 #0e220a, 0 0 18px rgba(156, 240, 90, 0.6);
+}
+.battle-banner.tone-aim-miss {
+  border-color: #a8b8e8;
+  background: rgba(30, 32, 56, 0.86);
+  box-shadow: 0 3px 0 #10122a, 0 0 14px rgba(168, 184, 232, 0.5);
+}
+.battle-banner.tone-aim-miss .bn-name {
+  color: #e4ecff;
+  text-shadow: 0 2px 0 #3a4270;
+}
+.battle-banner .bn-top:empty {
+  display: none;
+}
+/* 두바이 똥냄새 공격 이름 (필살기 이름처럼 큼직하게, 초록) */
+.battle-banner.tone-special2 {
+  top: 30%;
+  border-color: #9cf05a;
+  background: rgba(22, 44, 16, 0.86);
+  box-shadow: 0 3px 0 #0e220a, 0 0 22px rgba(156, 240, 90, 0.7);
+}
+.battle-banner.tone-special2 .bn-top {
+  color: #c8ff8a;
+}
+.battle-banner.tone-special2 .bn-name {
+  color: #e8ffc8;
+  text-shadow: 2px 2px 0 #2f5a1a, 0 0 10px rgba(156, 240, 90, 0.8);
+}
+.battle-banner.tone-special2 .bn-desc {
+  color: #fff6c0;
 }

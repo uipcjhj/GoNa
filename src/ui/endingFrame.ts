@@ -23,6 +23,9 @@ const IMAGES = ['s1', 's2', 's3'];
 /** 장면 3 에서 마을 → 가족으로 바뀌는 때 · 장면 4 에서 달리기 그림 → 영상으로 바뀌는 때 (장면 시작 기준 초) */
 export const S3_FAMILY_AT = 3.6;
 export const S4_VIDEO_AT = 3.6;
+/** 장면 3 가족 그림을 보여 주는 시간 · 성장 회상이 끝나는 때 (장면 시작 기준 초) */
+export const S3_FAMILY_SHOW = 4.2;
+export const GROW_END = { egg: 8.8, grow: 11.8 };
 const VIDEOS = ['ending_01_running_hug', 'ending_02_grandma_kiss', 'ending_03_uncle_sniff', 'ending_04_family_portrait'] as const;
 const VLEN = 5.04;
 /** 액자 안쪽 화면비 (그림 2.5 · 영상 1.34~1.79 — contain 이라 잘리지 않음) */
@@ -59,6 +62,7 @@ export class EndingFrame {
   private fxTimers: number[] = [];
   /** 장면 안에서 다음 그림·영상으로 넘어가는 예약 (장면이 바뀌면 취소) */
   private sceneTimer = 0;
+  private doneTimer = 0;
   readonly growth = new EndingGrowth();
 
   constructor(parent: HTMLElement) {
@@ -182,6 +186,8 @@ export class EndingFrame {
   private clearFx(): void {
     clearTimeout(this.sceneTimer);
     this.sceneTimer = 0;
+    clearTimeout(this.doneTimer);
+    this.doneTimer = 0;
     for (const t of this.fxTimers) clearInterval(t);
     this.fxTimers = [];
     this.fx.replaceChildren();
@@ -270,6 +276,7 @@ export class EndingFrame {
       if (hold) {
         v.pause();
         reveal();
+        then?.();
         return;
       }
       v.onended = () => {
@@ -300,6 +307,15 @@ export class EndingFrame {
     }, 2500);
   }
 
+  /** 장면 i 의 그림 애니메이션·영상이 끝남 → 엔딩 씬이 '다음 ▶'·자동 전환을 정함 (장면이 이미 바뀌었으면 무시) */
+  private done(i: number, afterSec = 0): void {
+    const fire = (): void => {
+      if (this.index === i) bus.emit(EV.endingMediaDone, i);
+    };
+    if (afterSec <= 0) fire();
+    else this.doneTimer = window.setTimeout(fire, afterSec * 1000);
+  }
+
   /** 장면 i (부드럽게 겹쳐 바뀜 — 액자는 그대로). late = 예정보다 늦게 불린 초 (빨리 감기·다음 버튼) */
   show(i: number, late = 0): void {
     if (i === this.index) return;
@@ -315,6 +331,7 @@ export class EndingFrame {
       for (const im of this.imgs) im.classList.remove('on');
       this.growth.start(i as 0 | 1, late);
       if (i === 1) this.prime(0); // 장면 4 영상 준비 (한참 전에)
+      this.done(i, Math.max(0, (i === 0 ? GROW_END.egg : GROW_END.grow) - late));
       return;
     }
     this.growth.stop();
@@ -326,6 +343,7 @@ export class EndingFrame {
         this.sceneTimer = window.setTimeout(() => this.index === 2 && this.showImage(`${DIR}s2.png`), (S3_FAMILY_AT - late) * 1000);
       } else this.showImage(`${DIR}s2.png`);
       this.prime(0);
+      this.done(2, Math.max(0, S3_FAMILY_AT + S3_FAMILY_SHOW - late));
       return;
     }
     if (i === 3) {
@@ -333,8 +351,8 @@ export class EndingFrame {
       this.stopVideos();
       if (late < S4_VIDEO_AT) {
         this.showImage(`${DIR}s3.png`, true);
-        this.sceneTimer = window.setTimeout(() => this.index === 3 && this.playVideo(0, 0), (S4_VIDEO_AT - late) * 1000);
-      } else this.playVideo(0, late - S4_VIDEO_AT);
+        this.sceneTimer = window.setTimeout(() => this.index === 3 && this.playVideo(0, 0, () => this.done(3)), (S4_VIDEO_AT - late) * 1000);
+      } else this.playVideo(0, late - S4_VIDEO_AT, () => this.done(3));
       this.prime(1);
       return;
     }
@@ -343,15 +361,18 @@ export class EndingFrame {
       if (!(prev === 3 && this.vidOn === 0)) this.playVideo(0, VLEN);
       this.prime(1);
       this.prime(2);
+      this.done(4);
     } else if (i === 5) {
       // 뽀뽀 → 이어서 킁카 (하나의 내레이션)
-      if (late >= VLEN) this.playVideo(2, late - VLEN);
-      else this.playVideo(1, late, () => this.index === 5 && this.playVideo(2, 0));
+      const end = (): void => this.done(5);
+      if (late >= VLEN) this.playVideo(2, late - VLEN, end);
+      else this.playVideo(1, late, () => this.index === 5 && this.playVideo(2, 0, end));
       this.prime(2);
     } else if (i === 6) {
       if (!(prev === 5 && this.vidOn === 2)) this.playVideo(2, VLEN);
       this.prime(3);
-    } else if (i === 7) this.playVideo(3, late);
+      this.done(6);
+    } else if (i === 7) this.playVideo(3, late, () => this.done(7));
   }
 
   /** (테스트) 지금 보이는 영상 이름 · 위치 */

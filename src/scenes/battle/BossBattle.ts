@@ -443,7 +443,7 @@ export abstract class BossBattle {
   resistTap(): void {}
 
   /** 화면 버튼 표시용: 조준 / 버티기 게이지 */
-  qteHud(): { kind: 'aim' } | { kind: 'resist'; gauge: number; left: number } | null {
+  qteHud(): { kind: 'aim' | 'aimIntro' } | { kind: 'resist'; gauge: number; left: number } | null {
     return null;
   }
 
@@ -699,7 +699,17 @@ export abstract class BossBattle {
   // ───────────────────────── 필살기 ─────────────────────────
 
   get specialReady(): boolean {
-    return this.special >= 1 && this.mode === 'fight' && !this.bossSpecialOn;
+    return this.special >= 1 && this.mode === 'fight' && !this.bossSpecialOn && !this.qteBusy && !this.frozen;
+  }
+
+  /** 조준·버티기 같은 특별 패턴 진행 중 (그동안 방패·필살기 잠금) — 킁카괴물 */
+  get qteBusy(): boolean {
+    return false;
+  }
+
+  /** 보스 전용 두 번째 필살기를 쓸 수 있는 보스인지 (킁카괴물: '두바이 똥냄새 공격!') */
+  get special2Available(): boolean {
+    return false;
   }
 
   /** (검증용) 필살기 얼굴 컷인 그림 */
@@ -881,6 +891,176 @@ export abstract class BossBattle {
         } else this.dizzy(1.3);
       }
     }, true);
+    return true;
+  }
+
+  /** 필살기 연출이 끝남: 화면 원래대로 · 고나 무적 해제 · 전투로 (분노 대기 중이면 분노부터, 아니면 어질어질) */
+  private finishSpecial(): void {
+    this.host.scene.tweens.add({ targets: this.dim, fillAlpha: 0, duration: 220 });
+    this.protectPlayer = false;
+    this.frozen = false;
+    this.timeScale = 1;
+    if (this.mode === 'cutscene') {
+      this.mode = 'fight';
+      if (this.pendingRage) {
+        this.busy = false;
+        this.cooldown = 1.0;
+        this.returnHome();
+        this.enterRage();
+      } else this.dizzy(1.3);
+    }
+  }
+
+  /** 두바이 똥냄새 공격 그림 (코드로 그린 도트: 초록 울룩불룩 아기 똥 · 냄새 구름) */
+  private ensureStinkArt(): void {
+    const scene = this.host.scene;
+    if (scene.textures.exists('sp-dubai')) return;
+    const P: Record<string, string> = { k: '#24401a', d: '#4f9a30', g: '#7ccf4a', l: '#b8f07a', w: '#ffffff', e: '#24401a', p: '#ff9fb0' };
+    const draw = (rows: string[], key: string): void => {
+      const c = document.createElement('canvas');
+      c.width = rows[0].length;
+      c.height = rows.length;
+      const g = c.getContext('2d')!;
+      rows.forEach((r, y) =>
+        [...r].forEach((ch, x) => {
+          if (ch === '.') return;
+          g.fillStyle = P[ch];
+          g.fillRect(x, y, 1, 1);
+        }),
+      );
+      scene.textures.addCanvas(key, c);
+    };
+    // 초록 울룩불룩 아기 똥 (작고 귀엽게 — 눈·볼)
+    draw(
+      [
+        '......kk......',
+        '.....klgk.....',
+        '....kgggdk....',
+        '...kkkkkkkk...',
+        '..klllgggggk..',
+        '.klgggggggddk.',
+        '.kgwegggwegdk.',
+        'kkkkkkkkkkkkkk',
+        'klgpgggggpgddk',
+        'kggggkkkgggddk',
+        '.kkkkkkkkkkkk.',
+      ],
+      'sp-dubai',
+    );
+    // 냄새 구름 (몽글몽글)
+    draw(['..kkk.kk..', '.kllgkllk.', 'klggggggdk', 'kgggggggdk', '.kgggggdk.', '..kkkkkk..'], 'sp-stink');
+  }
+
+  /**
+   * 킁카괴물 전용 필살기 '두바이 똥냄새 공격!' (Dubai Stink Attack!) — 약 3.2초, 고나 무적. 게이지는 기존 필살기와 같이 씀
+   *   ① 슬로모션 + 이름 배너  ② 고나 앞에 초록 울룩불룩 아기 똥이 '뽕!' + 냄새 구름  ③ 냄새 구름을 끌고 보스로 날아감
+   *   ④ 펑! 초록 냄새 구름 폭발 + 냄새 파동 → 킁카괴물이 당황하며 뒤로 밀려남 · 피해(기존 필살기 피해와 같음)  ⑤ 전투로
+   */
+  useSpecial2(): boolean {
+    if (!this.special2Available || !this.specialReady) return false;
+    this.ensureStinkArt();
+    this.special = 0;
+    this.mode = 'cutscene';
+    this.protectPlayer = true;
+    this.timeScale = 0.25; // 슬로모션
+    this.ai = [];
+    this.stunT = 0;
+    this.clearStars();
+    this.onInterrupt();
+    const scene = this.host.scene;
+    const cam = scene.cameras.main;
+    const GREEN = 0x9cf05a;
+    sound.special();
+    cam.flash(160, 190, 255, 150);
+    scene.tweens.killTweensOf(this.dim);
+    scene.tweens.add({ targets: this.dim, fillAlpha: 0.4, duration: 220 });
+    this.host.setSpecialLook('serious');
+    this.banner({ top: '고나 필살기!', name: '두바이 똥냄새 공격!', desc: 'Dubai Stink Attack!', ms: 1500, tone: 'special2' });
+    const pr = this.host.playerRect();
+    const sx = pr.x1 + 8;
+    const sy = (pr.y0 + pr.y1) / 2 - 4;
+    const poop = this.fx(scene.add.image(sx, sy, 'sp-dubai').setDepth(13).setScale(0));
+    // 똥 주위 몽글몽글 냄새 (도트 구름이 피어오름)
+    const smell = this.fx(scene.add.particles(0, 0, 'sp-stink', {
+      follow: poop,
+      x: { min: -8, max: 8 },
+      y: { min: -10, max: 2 },
+      speedY: { min: -26, max: -10 },
+      speedX: { min: -12, max: 12 },
+      lifespan: 620,
+      scale: { start: 0.9, end: 1.8 },
+      alpha: { start: 0.85, end: 0 },
+      frequency: perf.low ? 90 : 45,
+      emitting: false,
+    }).setDepth(12.9));
+    this.after(0.5, () => {
+      this.timeScale = 1;
+      this.frozen = true; // 세상 멈춤 (날아오던 것들은 펑)
+      this.clearHostiles();
+    }, true);
+    this.after(0.6, () => {
+      sound.boing();
+      smell.start();
+      scene.tweens.add({ targets: poop, scale: 3, duration: 260, ease: 'Back.Out' });
+      scene.tweens.add({ targets: poop, angle: { from: -8, to: 8 }, duration: 160, yoyo: true, repeat: 3, ease: 'Sine.InOut' });
+    }, true);
+    const r = this.bossRect();
+    const bcx = (r.x0 + r.x1) / 2;
+    const bcy = (r.y0 + r.y1) / 2;
+    // 날아감: 포물선 (위로 살짝 떴다가 보스 얼굴로) + 뒤로 냄새 구름 꼬리
+    this.after(1.3, () => {
+      sound.throw();
+      const from = { x: poop.x, y: poop.y };
+      scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: 480,
+        ease: 'Sine.In',
+        onUpdate: (tw) => {
+          const t = tw.getValue() ?? 0;
+          poop.setPosition(from.x + (bcx - 6 - from.x) * t, from.y + (bcy - from.y) * t - Math.sin(t * Math.PI) * 26);
+          poop.setAngle(t * 360);
+        },
+      });
+    }, true);
+    this.after(1.8, () => {
+      smell.stop();
+      poop.setVisible(false);
+      sound.fart();
+      sound.puff();
+      haptics.play('specialFinal');
+      this.hitStop(110);
+      cam.shake(300, 0.016);
+      cam.flash(110, 225, 255, 205);
+      // 초록 냄새 구름 폭발 + 냄새 파동 3겹
+      const boom = this.fx(scene.add.particles(bcx, bcy, 'sp-stink', { speed: { min: 40, max: 120 }, lifespan: 900, scale: { start: 1.6, end: 3 }, alpha: { start: 0.95, end: 0 }, rotate: { min: -20, max: 20 }, emitting: false }).setDepth(12.6));
+      boom.explode(perf.low ? 8 : 16);
+      for (let i = 0; i < 3; i++) {
+        const ring = this.fx(scene.add.image(bcx, bcy, 'sp-ring-gold').setDepth(12.5).setTint(GREEN).setScale(0.4).setAlpha(0.9));
+        scene.tweens.add({ targets: ring, scale: 3.2, alpha: 0, duration: 620, delay: i * 160, ease: 'Quad.Out', onComplete: () => ring.destroy() });
+      }
+      this.after(1.0, () => boom.destroy(), true);
+      // 킁카괴물: 당황 (눈 질끈 · 덜덜) → 뒤로 밀려남
+      this.frozen = false;
+      this.setPose(4, 1.2);
+      this.floatText('으악! 이 냄새는?!', bcx - 14, r.y0 - 10, '#b8ff7a');
+      scene.tweens.add({ targets: this.boss, x: this.boss.x + 2, duration: 50, yoyo: true, repeat: 6 });
+      this.moveTo(Math.min(this.host.W - this.fw / 2 - 2, this.bx + 18), 0, 0.35, 10, (t) => 1 - (1 - t) ** 2);
+      this.damage(this.def.specialDamage);
+      this.host.setSpecialLook(null);
+    }, true);
+    // 보스 코 주위에 남는 냄새 몇 개
+    this.after(2.2, () => {
+      for (let i = 0; i < 4; i++) {
+        const c = this.fx(scene.add.image(bcx - 8 + i * 6, r.y0 + 4, 'sp-stink').setDepth(12.4).setScale(1.2).setAlpha(0.8));
+        scene.tweens.add({ targets: c, y: c.y - 18, alpha: 0, scale: 2, duration: 900, delay: i * 120, onComplete: () => c.destroy() });
+      }
+    }, true);
+    this.after(2.6, () => {
+      poop.destroy();
+      smell.destroy();
+    }, true);
+    this.after(3.2, () => this.finishSpecial(), true);
     return true;
   }
 

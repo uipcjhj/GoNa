@@ -57,6 +57,8 @@ export class Subtitles {
     parent.append(this.root);
 
     bus.on(EV.prologueLine, (l: LineInfo) => this.showLine(l));
+    // 엔딩: 장면의 애니메이션·영상과 타이핑이 끝났을 때만 '다음 ▶' (자리는 그대로 두고 보이기만 바꿈 → 대사창이 흔들리지 않음)
+    bus.on(EV.endingNextReady, (on: boolean) => this.box.classList.toggle('can-next', !!on));
   }
 
   /** 프롤로그 화면 준비 (대기 화면부터) */
@@ -95,7 +97,7 @@ export class Subtitles {
 
   private showLine(l: LineInfo): void {
     this.hideGate();
-    this.box.classList.remove('hidden', 'typed');
+    this.box.classList.remove('hidden', 'typed', 'can-next');
     this.box.dataset.index = String(l.index);
     this.pageEl.textContent = `${l.index + 1}/${l.total}`;
     // 타이핑 효과: 문장 길이에 맞춰, 다음 문장 전에 조금 여유 있게 끝나게

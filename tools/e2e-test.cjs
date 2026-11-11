@@ -355,7 +355,7 @@ async function bossTests(label, device) {
   check(`${label}: crawler gauge full → 뽀뽀괴물 battle (no evolution yet)`, k0?.id === 'kiss' && c0.stage === 1 && c0.state === 'playing', JSON.stringify({ k0, c0 }));
   const bar = await page.locator('.boss-bar').isVisible();
   check(`${label}: boss HP bar visible`, bar);
-  check(`${label}: 3 buttons shown from battle start, attack locked before awakening`, !c0.canThrow && (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-attack').getAttribute('class')).includes('locked'));
+  check(`${label}: 3 buttons shown from battle start, attack locked before awakening`, !c0.canThrow && (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special:not(.bt-special2)').isVisible()) && (await page.locator('.bt-attack').getAttribute('class')).includes('locked'));
   await G(() => window.__gona.scene.getScene('Game').debugGod());
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 30000 });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugCombat().canThrow, null, { timeout: 6000 }).catch(() => {});
@@ -378,9 +378,9 @@ async function bossTests(label, device) {
   // 필살기
   await G(() => window.__gona.scene.getScene('Game').debugBoss(undefined, 1));
   await page.waitForTimeout(150);
-  check(`${label}: special button ready when gauge full`, (await page.locator('.bt-special').getAttribute('class')).includes('ready'));
+  check(`${label}: special button ready when gauge full`, (await page.locator('.bt-special:not(.bt-special2)').getAttribute('class')).includes('ready'));
   const hp1 = (await battle()).hp;
-  await tapEl('.bt-special');
+  await tapEl('.bt-special:not(.bt-special2)');
   await page.waitForTimeout(300);
   const sp = await battle();
   // '초특급 꼬불머리 팡팡!' 약 3.6초 (슬로모션 → 멈춤 → 3연타) → 분노 전환 연출이 이어질 수 있음 → 전투로 돌아올 때까지
@@ -403,7 +403,7 @@ async function bossTests(label, device) {
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
   // (필살 버튼은 평소에도 보임 — 몬스터 처치로 모은 게이지를 다음 보스전으로)
-  check(`${label}: boss UI hidden after battle (boss bar · shield · special gone, attack stays)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && !(await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-attack').isVisible()));
+  check(`${label}: boss UI hidden after battle (boss bar · shield · special gone, attack stays)`, !(await page.locator('.boss-bar').isVisible()) && !(await page.locator('.bt-shield').isVisible()) && !(await page.locator('.bt-special:not(.bt-special2)').isVisible()) && (await page.locator('.bt-attack').isVisible()));
   // 일반 스테이지: 방패·필살 입력도 꺼짐 (버튼 숨김뿐 아니라)
   const sh0 = await G(() => { const g = window.__gona.scene.getScene('Game'); const { bus } = window; g.raiseShield(); return { shieldOn: g.shieldOn, special: g.debugBattle() }; });
   check(`${label}: shield input ignored outside boss fights`, sh0.shieldOn === false && sh0.special === null, JSON.stringify(sh0));
@@ -466,14 +466,16 @@ async function bossTests(label, device) {
   const sub1 = await G(() => document.querySelector('.pr-shown')?.textContent ?? '');
   check(`${label}: ending narration line 1 types by itself`, '처음 세상에 왔을 땐, 모든 것이 낯설고 커다랬던 고나.'.startsWith(sub1) && sub1.length > 3, sub1);
   // SCENE 06 뽀뽀와 킁카 (할머니 볼뽀뽀)
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 48.6; });
+  await G(() => window.__gona.scene.getScene('Game').ending.jumpTo(5));
   await page.waitForTimeout(1500);
   const s6 = await G(() => { const e = window.__gona.scene.getScene('Game').ending; const f = document.querySelector('.end-frame'); return { scene: e.sceneNo, frame: f?.dataset.scene, vid: [...document.querySelectorAll('.ef-vid.on')].map((v) => v.dataset.name).join(','), line: document.querySelector('.pr-shown')?.textContent?.slice(0, 10) }; });
   check(`${label}: ending scene 6 — grandma kiss video in the frame`, s6.scene === 6 && s6.frame === '6' && /ending_0[23]/.test(s6.vid), JSON.stringify(s6));
   // 황금 왕궁 액자 피날레: 크레딧 → 헌정 문구 → The End → 버튼 2개 (자동으로 돌아가지 않음)
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 74.5; });
+  await G(() => window.__gona.scene.getScene('Game').ending.jumpTo(8));
   await page.waitForTimeout(800);
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 103.0; });
+  const early = await G(() => document.querySelector('.ending-ui').classList.contains('with-btns'));
+  check(`${label}: finale buttons not shown before The End (credits still running)`, !early);
+  await G(() => { const e = window.__gona.scene.getScene('Game').ending; e.t = e.finaleAt + 29; });
   await page.waitForSelector('.ending-ui.with-btns', { timeout: 8000 }).catch(() => {});
   const fin = await G(() => ({ phase: document.querySelector('.ending-ui')?.dataset.phase, oldText: !!document.querySelector('.fin-text'), roll: [...document.querySelectorAll('.fin-roll-line')].map((p) => p.textContent).join('|'), dedi: document.querySelector('.fin-dedi')?.textContent, end: document.querySelector('.fin-end')?.textContent, btns: [...document.querySelectorAll('.fin-btns .fin-btn')].map((b) => b.textContent) }));
   check(`${label}: golden-frame finale — no repeated last sentence, credits, dedication, The End, 2 buttons`, fin.phase === 'finale' && !fin.oldText && fin.roll === 'GONA’s Food Adventure|A Little Adventure,|A Whole Lot of Love.|Made with Love' && fin.dedi === '현이의 모든 도전을 응원하며..' && fin.end === 'The End' && fin.btns.join('|') === '처음부터 다시 하기|타이틀로 돌아가기', JSON.stringify(fin));
@@ -530,7 +532,7 @@ async function controlTests(label, device) {
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
   const top = await G(() => ({ me: !!document.querySelector('.bt-me') && getComputedStyle(document.querySelector('.battle-top')).display !== 'none', hp: document.querySelector('.bt-hp-text').textContent, hearts: document.querySelectorAll('.bt-heart').length }));
   check(`${label}: top shows GONA hearts + HP gauge + boss HP`, top.me && top.hp === 'HP 100' && top.hearts === 3 && (await page.locator('.boss-bar').isVisible()), JSON.stringify(top));
-  check(`${label}: buttons: shield (left), big attack + special (right), no dodge button`, (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special').isVisible()) && (await page.locator('.bt-dodge').count()) === 0);
+  check(`${label}: buttons: shield (left), big attack + special (right), no dodge button`, (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special:not(.bt-special2)').isVisible()) && (await page.locator('.bt-dodge').count()) === 0);
 
   // 버튼 위치·크기: 고나·보스를 가리지 않음, 터치 영역 64px 이상, 공격 버튼은 크게
   const geo = await G(() => {
@@ -540,7 +542,7 @@ async function controlTests(label, device) {
     return { player: [...S(p.x, p.y), ...S(p.right, p.bottom)], boss: [...S(br.x0, br.y0), ...S(br.x1, br.y1)] };
   });
   const rects = [];
-  for (const sel of ['.bt-shield .bt-face', '.bt-attack .bt-face', '.bt-special .bt-face']) rects.push(await page.locator(sel).boundingBox());
+  for (const sel of ['.bt-shield .bt-face', '.bt-attack .bt-face', '.bt-special:not(.bt-special2) .bt-face']) rects.push(await page.locator(sel).boundingBox());
   const hit = (r, q) => r.x < q[2] && r.x + r.width > q[0] && r.y < q[3] && r.y + r.height > q[1];
   const inView = rects.every((r) => r.x >= 0 && r.y >= 0 && r.x + r.width <= vp.width && r.y + r.height <= vp.height);
   check(`${label}: buttons inside screen, not covering GONA or boss`, inView && !rects.some((r) => hit(r, geo.player) || hit(r, geo.boss)), JSON.stringify({ geo, rects: rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)) }));
@@ -614,7 +616,7 @@ async function controlTests(label, device) {
   check(`${label}: attack button reacts in the same event (pressed + throw)`, lat.out && lat.pressed && lat.ms < 8, JSON.stringify(lat));
 
   // ④ 필살: 게이지 100% 에서만
-  const spSt = await G(() => ({ cls: document.querySelector('.bt-special').className, g: window.__gona.scene.getScene('Game').battle.special }));
+  const spSt = await G(() => ({ cls: document.querySelector('.bt-special:not(.bt-special2)').className, g: window.__gona.scene.getScene('Game').battle.special }));
   check(`${label}: special enabled only at 100%`, spSt.g >= 1 ? spSt.cls.includes('ready') : spSt.cls.includes('off') && !spSt.cls.includes('ready'), JSON.stringify(spSt));
 
   // ⑤ HP 시스템: HP 만 감소 → 0 이면 하트 -1, HP 100 회복, 넘친 피해 버림, 무적
@@ -772,59 +774,83 @@ async function qteTests(label, device) {
   const ci = await G(() => { const g = window.__gona.scene.getScene('Game'); const f = g.battle.cutInFace; const x0 = f.parentContainer.x + f.x; return { x0, y0: f.y, x1: x0 + f.displayWidth, y1: f.y + f.displayHeight, W: g.W, H: g.H, crop: !!f.isCropped }; });
   check(`${label}: special cut-in shows GONA's whole face on screen`, ci.x0 >= 0 && ci.y0 >= 0 && ci.x1 <= ci.W && ci.y1 <= ci.H && !ci.crop, JSON.stringify(ci));
   await page.screenshot({ path: `${S}/${label}-cutin.png` });
-  // 3) 코 타이밍 바: 커서 왕복 · 발사 버튼 · PERFECT ×2 / GOOD 보통 / MISS 빗나감(발사 안 함) — 실제 버튼 터치로
-  const atkBox = async () => page.locator('.bt-attack').boundingBox();
-  const tapAtk = async () => { const r = await atkBox(); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
-  const barOpen = async () => { await page.goto(URL + '?test=sniff-aim'); await page.waitForFunction(() => window.__gona?.scene.getScene('Game').battle?.aimActive, null, { timeout: 30000 }); };
-  // 커서가 원하는 칸에 들어오는 순간(페이지 안에서 매 프레임 확인) 발사 버튼에 실제 pointerdown/up — 판정은 누른 순간의 위치
-  const pressWhen = (lo, hi) => G(([lo, hi]) => new Promise((res) => {
+  // 3) 코 조준: 안내(전투 멈춤) → 보스 위 조준점이 머리↔코 왕복 → '발사!' 만 활성 → 누른 순간 조준점 자리로 판정 → 결과 안내(멈춤) → 복귀
+  const AD = () => G(() => window.__gona.scene.getScene('Game').battle?.aimDebug?.() ?? null);
+  const btnState = () => G(() => ({ atk: document.querySelector('.bt-attack').className, atkLabel: document.querySelector('.bt-attack .bt-label').textContent, sh: document.querySelector('.bt-shield').className, sp: document.querySelector('.bt-special:not(.bt-special2)').className, sp2: document.querySelector('.bt-special2').className, banner: document.querySelector('.battle-banner:not(.hidden)')?.innerText.replace(/\s+/g, ' ').trim() ?? '' }));
+  const aimOpen = async () => { await page.goto(URL + '?test=sniff-aim'); await page.waitForFunction(() => window.__gona?.scene.getScene('Game').battle?.aimDebug?.(), null, { timeout: 30000 }); };
+  // 조준점이 원하는 판정 자리에 오는 순간(매 프레임 확인) 실제 공격 버튼에 pointerdown/up — 누를 때의 조준점·코 화면 좌표도 기록
+  const fireWhen = (want) => G((want) => new Promise((res) => {
     const btn = document.querySelector('.bt-attack');
     const t0 = performance.now();
     const loop = () => {
-      const a = window.__gona.scene.getScene('Game').battle?.aim;
-      if (a && !a.locked && a.pause <= 0 && Math.abs(a.pos - 0.5) >= lo && Math.abs(a.pos - 0.5) <= hi) {
+      const bt = window.__gona.scene.getScene('Game').battle;
+      const d = bt?.aimDebug?.();
+      if (d && d.phase === 'aim' && d.judge === want && (want !== 'miss' || d.u < 0.15)) {
+        const shot = { reticle: d.reticle, nose: d.nose, fw: bt.fw, hp: bt.hp };
         const r = btn.getBoundingClientRect();
         const o = { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
         btn.dispatchEvent(new PointerEvent('pointerdown', o));
         btn.dispatchEvent(new PointerEvent('pointerup', o));
-        return res(a.pos);
+        return res(shot);
       }
-      if (performance.now() - t0 > 8000) return res(null);
+      if (performance.now() - t0 > 9000) return res(null);
       requestAnimationFrame(loop);
     };
     loop();
-  }), [lo, hi]);
-  await barOpen();
-  const bar = await G(() => { const b = document.querySelector('.aimbar'); const r = b.getBoundingClientRect(); const c = document.querySelector('.aimbar-cursor'); const atk = document.querySelector('.bt-attack').getBoundingClientRect(); return { shown: !b.classList.contains('hidden'), label: document.querySelector('.bt-attack .bt-label')?.textContent, inView: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, clearOfBtn: r.bottom <= atk.top + 4 || r.right <= atk.left, lowerHalf: r.top > innerHeight * 0.4, c0: c.style.left, oldTarget: window.__gona.scene.getScene('Game').children.list.some((o) => o.texture?.key === 'sp-target') }; });
-  await page.waitForTimeout(400);
-  const c1 = await G(() => document.querySelector('.aimbar-cursor').style.left);
-  await page.screenshot({ path: `${S}/${label}-aimbar.png` });
-  check(`${label}: nose timing bar shown at the bottom (cursor moving, '발사!' button, no old target)`, bar.shown && bar.label === '발사!' && bar.inView && bar.clearOfBtn && bar.lowerHalf && c1 !== bar.c0 && !bar.oldTarget, JSON.stringify({ ...bar, c1 }));
-  await pressWhen(0, 0.03);
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimLog.some((a) => a.mul === 2), null, { timeout: 5000 }).catch(() => {});
-  const pf = await G(() => { const b = window.__gona.scene.getScene('Game').battle; return { log: b.aimLog, weak: b.weakHits, judge: document.querySelector('.aimbar-judge')?.textContent }; });
-  check(`${label}: PERFECT → boomerang hits the nose ×2`, pf.log.some((a) => a.judge === 'perfect' && a.mul === 2) && pf.weak >= 1, JSON.stringify(pf));
-  await barOpen();
-  await pressWhen(0.1, 0.17);
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimLog.some((a) => a.judge === 'good' && a.mul === 1), null, { timeout: 5000 }).catch(() => {});
-  const gd = await G(() => window.__gona.scene.getScene('Game').battle.aimLog);
-  check(`${label}: GOOD → normal hit (×1)`, gd.some((a) => a.judge === 'good' && a.mul === 1), JSON.stringify(gd));
-  await barOpen();
-  await pressWhen(0.35, 0.5);
-  await page.waitForTimeout(150);
-  const ms = await G(() => { const g = window.__gona.scene.getScene('Game'); return { log: g.battle.aimLog, out: g.boomerang.isOut, active: g.battle.aimActive }; });
-  await page.waitForTimeout(700);
-  const retry = await G(() => window.__gona.scene.getScene('Game').battle.aimActive);
-  check(`${label}: MISS → no boomerang, bar stays for a retry`, ms.log.length === 1 && ms.log[0].judge === 'miss' && !ms.out && retry, JSON.stringify({ ...ms, retry }));
+  }), want);
+  await aimOpen();
+  const intro = { d: await AD(), b: await btnState(), frozen: await G(() => window.__gona.scene.getScene('Game').battle.frozen) };
+  await page.screenshot({ path: `${S}/${label}-aim-intro.png` });
+  check(`${label}: aim intro — battle paused, '🎯 킁카괴물의 약점은 코!' guide, all buttons locked`, intro.d.phase === 'intro' && intro.frozen && /킁카괴물의 약점은 코!/.test(intro.b.banner) && /움직이는 조준점을 코에 맞춰 공격해보세요!/.test(intro.b.banner) && / off/.test(intro.b.atk) && / off/.test(intro.b.sh) && / off/.test(intro.b.sp), JSON.stringify(intro));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'aim', null, { timeout: 5000 });
+  const a1 = await AD();
+  await page.waitForTimeout(250);
+  const a2 = await AD();
+  const bs = await btnState();
+  const onBoss = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; const r = bt.bossRect(); const d = bt.aimDebug(); return d.reticle.x >= r.x0 - 2 && d.reticle.x <= r.x1 + 2 && d.reticle.y >= r.y0 - 2 && d.reticle.y <= r.y1 + 2; });
+  await page.screenshot({ path: `${S}/${label}-aim.png` });
+  check(`${label}: aim — reticle moves on the boss sprite (head↔nose), only '발사!' is active`, a1.reticle && a2.reticle && (a1.reticle.x !== a2.reticle.x || a1.reticle.y !== a2.reticle.y) && onBoss && bs.atkLabel === '발사!' && / aim/.test(bs.atk) && !/ off/.test(bs.atk) && / off/.test(bs.sh) && / off/.test(bs.sp), JSON.stringify({ a1, a2, bs, onBoss }));
+  // 조준 중 방패를 눌러도 방패가 켜지지 않음
+  const shBox = await page.locator('.bt-shield').boundingBox();
+  await page.touchscreen.tap(shBox.x + shBox.width / 2, shBox.y + shBox.height / 2);
+  await page.waitForTimeout(80);
+  check(`${label}: shield does nothing during aiming`, !(await G(() => document.querySelector('.bt-shield').classList.contains('active'))));
+  const pshot = await fireWhen('perfect');
+  await page.waitForTimeout(80);
+  const plog = await G(() => window.__gona.scene.getScene('Game').battle.aimLog.slice(-1)[0]);
+  // 화면의 조준점(누른 순간)과 판정 거리가 같은지: 화면 거리 × 48 / 보스 폭 = 기록된 거리
+  const scr = pshot ? (Math.hypot(pshot.reticle.x - pshot.nose.x, pshot.reticle.y - pshot.nose.y) * 48) / pshot.fw : -1;
+  check(`${label}: the judged spot = the reticle shown on screen at the press`, plog && plog.judge === 'perfect' && Math.abs(scr - plog.dist) < 1.2, JSON.stringify({ scr, plog }));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'result', null, { timeout: 4000 }).catch(() => {});
+  const pres = { b: await btnState(), frozen: await G(() => window.__gona.scene.getScene('Game').battle.frozen), weak: await G(() => window.__gona.scene.getScene('Game').battle.weakHits) };
+  await page.screenshot({ path: `${S}/${label}-aim-perfect.png` });
+  check(`${label}: PERFECT → nose ×2, '🎯 완벽 명중!' popup, battle paused`, /완벽 명중!/.test(pres.b.banner) && /코를 정확히 맞혔어요!/.test(pres.b.banner) && pres.frozen && pres.weak >= 1, JSON.stringify(pres));
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').battle.aimDebug(), null, { timeout: 4000 }).catch(() => {});
+  const after = { d: await AD(), b: await btnState(), frozen: await G(() => window.__gona.scene.getScene('Game').battle.frozen) };
+  check(`${label}: after the result the battle resumes and buttons return`, !after.d && !after.frozen && after.b.atkLabel !== '발사!' && !/ aim/.test(after.b.atk), JSON.stringify(after));
+  await aimOpen();
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'aim', null, { timeout: 5000 });
+  await fireWhen('good');
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'result', null, { timeout: 4000 }).catch(() => {});
+  const gd = { log: await G(() => window.__gona.scene.getScene('Game').battle.aimLog), b: await btnState() };
+  check(`${label}: GOOD → normal hit, '✨ 공격 성공!' popup`, gd.log.some((a) => a.judge === 'good' && a.mul === 1) && /공격 성공!/.test(gd.b.banner) && /코를 스쳤어요!/.test(gd.b.banner), JSON.stringify(gd));
+  await aimOpen();
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'aim', null, { timeout: 5000 });
+  const mshot = await fireWhen('miss');
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.aimDebug()?.phase === 'result', null, { timeout: 4000 }).catch(() => {});
+  const ms = { log: await G(() => window.__gona.scene.getScene('Game').battle.aimLog), b: await btnState(), hp: await G(() => window.__gona.scene.getScene('Game').battle.hp), hp0: mshot?.hp };
+  check(`${label}: MISS → boomerang misses (no damage), '💨 공격 실패!' popup`, ms.log.length === 1 && ms.log[0].judge === 'miss' && /공격 실패!/.test(ms.b.banner) && /코를 빗나갔어요!/.test(ms.b.banner) && ms.hp === ms.hp0, JSON.stringify(ms));
   await page.goto(URL + '?test=sniff-weakpoint');
   await page.waitForFunction(() => (window.__gona?.scene.getScene('Game').battle?.aimLog ?? []).some((a) => a.mul === 2), null, { timeout: 30000 }).catch(() => {});
   const wl = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { log: bt.aimLog, weak: bt.weakHits }; });
-  check(`${label}: auto test route lands PERFECT nose hits`, wl.log.some((a) => a.judge === 'perfect' && a.mul === 2) && wl.weak >= 1, JSON.stringify(wl));
-  // 4) 흡입 버티기: 진짜 버튼 연타로 성공 / 꾹 누르기는 1번만 / 안 누르면 실패(피해)
+  check(`${label}: auto test route lands PERFECT nose hits`, wl.log.some((a) => a.judge === 'perfect' && a.mul === 2), JSON.stringify(wl));
+  // 4) 흡입 버티기: 화면 가운데 큰 '버티기!' 버튼 (방패 버튼은 그대로) · 연타로 성공 / 꾹 누르기는 1번만 / 안 누르면 실패(피해)
   await page.goto(URL + '?test=sniff-inhale');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game').battle?.resistActive, null, { timeout: 30000 });
-  const ql = await G(() => ({ label: document.querySelector('.bt-shield .bt-label')?.textContent, box: !document.querySelector('.resist-box')?.classList.contains('hidden') }));
-  const btn = page.locator('.bt-shield');
+  await page.waitForTimeout(150);
+  const ql = await G(() => { const rb = document.querySelector('.bt-resist'); const r = rb.getBoundingClientRect(); const pad = [...document.querySelectorAll('.bt-attack, .bt-shield, .bt-special')].map((b) => b.getBoundingClientRect()); const top = document.querySelector('.battle-top').getBoundingClientRect(); const g = window.__gona.scene.getScene('Game'); const canvas = document.querySelector('canvas').getBoundingClientRect(); const k = canvas.height / g.H; const faceY = canvas.top + (g.groundY - 30) * k; return { shown: !rb.classList.contains('hidden'), text: rb.textContent, shLabel: document.querySelector('.bt-shield .bt-label')?.textContent, box: !document.querySelector('.resist-box')?.classList.contains('hidden'), big: r.width >= 180 && r.height >= 60, inView: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, clearOfPad: pad.every((p) => r.bottom <= p.top || r.top >= p.bottom || r.right <= p.left || r.left >= p.right), belowHud: r.top >= top.bottom, aboveFaces: r.bottom <= faceY + 2, faceY: Math.round(faceY), r: [r.left, r.top, r.width, r.height].map(Math.round) }; });
+  await page.screenshot({ path: `${S}/${label}-resist.png` });
+  const btn = page.locator('.bt-resist');
   const bb = await btn.boundingBox();
   // 꾹 누르기 (1.0초) → 1번만 셈
   const t0 = await G(() => window.__gona.scene.getScene('Game').battle.resist.taps);
@@ -832,15 +858,35 @@ async function qteTests(label, device) {
   const t1 = await G(() => window.__gona.scene.getScene('Game').battle.resist?.taps ?? -1);
   for (let i = 0; i < 40; i++) { if (!(await G(() => window.__gona.scene.getScene('Game').battle.resistActive))) break; await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.waitForTimeout(150); }
   await page.waitForTimeout(400);
-  const rs = await G(() => { const g = window.__gona.scene.getScene('Game'); return { log: g.battle.resistLog, label: document.querySelector('.bt-shield .bt-label')?.textContent }; });
-  check(`${label}: inhale → shield becomes 버티기! with gauge`, ql.label === '버티기!' && ql.box, JSON.stringify(ql));
+  const rs = await G(() => { const g = window.__gona.scene.getScene('Game'); return { log: g.battle.resistLog, hidden: document.querySelector('.bt-resist').classList.contains('hidden') }; });
+  check(`${label}: inhale → big '버티기!' button in the middle (not on the shield), with gauge, clear of HUD/buttons/faces`, ql.shown && ql.text === '버티기!' && ql.shLabel !== '버티기!' && ql.box && ql.big && ql.inView && ql.clearOfPad && ql.belowHud && ql.aboveFaces, JSON.stringify(ql));
   check(`${label}: holding the button counts once (no auto-repeat)`, t1 - t0 === 1, `${t0} → ${t1}`);
-  check(`${label}: one-finger mashing wins the resist QTE, button restored`, rs.log[0] === 'success' && rs.label !== '버티기!', JSON.stringify(rs));
+  check(`${label}: one-finger mashing wins the resist QTE, the button disappears afterwards`, rs.log[0] === 'success' && rs.hidden, JSON.stringify(rs));
   await page.goto(URL + '?test=resist-fail');
   await page.waitForFunction(() => (window.__gona?.scene.getScene('Game').battle?.resistLog ?? []).length > 0, null, { timeout: 40000 }).catch(() => {});
   await page.waitForTimeout(2000);
   const rf = await G(() => { const g = window.__gona.scene.getScene('Game'); return { log: g.battle.resistLog, hp: g.hp, hearts: g.hearts, pull: Math.round(g.pull) }; });
   check(`${label}: no mashing → sucked in, takes damage, pushed back`, rf.log[0] === 'fail' && (rf.hp < 100 || rf.hearts < 3) && rf.pull < 30, JSON.stringify(rf));
+  // 5) 두바이 똥냄새 공격: 킁카괴물전에서만 초록 버튼 · 같은 필살 게이지 · 배너 · 피해 = 기존 필살기 피해 · 전투 복귀
+  await page.goto(URL + '?test=sniff-dubai');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game').battle?.specialReady, null, { timeout: 40000 });
+  await page.waitForTimeout(200);
+  const d0 = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; const a = document.querySelector('.bt-special2').getBoundingClientRect(); const others = [...document.querySelectorAll('.bt-attack, .bt-shield, .bt-special:not(.bt-special2)')].map((b) => b.getBoundingClientRect()); return { hp: bt.hp, dmg: bt.def.specialDamage, cls: document.querySelector('.bt-special2').className, vis: a.width > 0, noOverlap: others.every((p) => a.right <= p.left + 1 || a.left >= p.right - 1 || a.bottom <= p.top + 1 || a.top >= p.bottom - 1), inView: a.left >= 0 && a.right <= innerWidth && a.bottom <= innerHeight }; });
+  await page.screenshot({ path: `${S}/${label}-dubai-ready.png` });
+  const db = await page.locator('.bt-special2').boundingBox();
+  await page.touchscreen.tap(db.x + db.width / 2, db.y + db.height / 2);
+  await page.waitForTimeout(250);
+  const d1 = await btnState();
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${S}/${label}-dubai.png` });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.mode === 'fight', null, { timeout: 8000 }).catch(() => {});
+  const d2 = await G(() => { const bt = window.__gona.scene.getScene('Game').battle; return { hp: bt.hp, mode: bt.mode, special: bt.special, frozen: bt.frozen }; });
+  check(`${label}: '두바이!' button shown only in the sniff battle, ready when the gauge is full, no overlap`, / ready/.test(d0.cls) && d0.vis && d0.noOverlap && d0.inView, JSON.stringify(d0));
+  check(`${label}: 두바이 똥냄새 공격 — banner, damage = existing special damage, gauge used, back to the fight`, /두바이 똥냄새 공격!/.test(d1.banner) && d0.hp - d2.hp === d0.dmg && d2.special === 0 && d2.mode === 'fight' && !d2.frozen, JSON.stringify({ d0, d1: d1.banner, d2 }));
+  await page.goto(URL + '?test=kiss-boss');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game').battle, null, { timeout: 30000 });
+  await page.waitForTimeout(1500);
+  check(`${label}: kiss battle has no 두바이 button`, (await G(() => document.querySelector('.bt-special2').getBoundingClientRect().width)) === 0);
   check(`${label}: no page errors (qte)`, errs.length === 0, errs.join(' | '));
   await b.close();
 }
@@ -870,6 +916,8 @@ async function touchAudioTests(label, device) {
   const tap = async (sel) => { const r = await page.locator(sel).first().boundingBox(); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
   const vp = page.viewportSize();
   const tapEmpty = () => page.touchscreen.tap(vp.width / 2, Math.round(vp.height * 0.12));
+  // 다음 ▶ 자리를 터치 (숨겨져 있을 때도 그 자리를 누름 — 장면이 끝나기 전엔 아무 일 없어야 함)
+  const tapAt = async (sel) => { const r = await G((q) => document.querySelector(q).getBoundingClientRect().toJSON(), sel); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
   const state = () => G(() => {
     const els = (window.__sound && Object.values(window.__sound.allBgmEls?.() ?? {})) || [];
     return { playing: [...document.querySelectorAll('audio')].length, plays: window.__plays.length, bufs: window.__bufs };
@@ -884,15 +932,15 @@ async function touchAudioTests(label, device) {
     await G(() => { window.__plays.length = 0; window.__bufs = 0; });
     await page.waitForTimeout(10000); await record(`${tag} 10초 대기`);
     await tapEmpty(); await record(`${tag} 빈 곳 1회`);
-    await tap('.pr-next'); await record(`${tag} 다음 1회`);
+    await tapAt('.pr-next'); await record(`${tag} 다음 1회`);
     for (let i = 0; i < 5; i++) { await tapEmpty(); await page.waitForTimeout(250); } await record(`${tag} 빈 곳 5회`);
-    for (let i = 0; i < 5; i++) { await tap('.pr-next'); await page.waitForTimeout(250); } await record(`${tag} 다음 5회`);
+    for (let i = 0; i < 5; i++) { await tapAt('.pr-next'); await page.waitForTimeout(250); } await record(`${tag} 다음 5회`);
     await page.waitForTimeout(10000); await tapEmpty(); await record(`${tag} 10초 뒤 터치`);
   };
   await page.goto(URL + '?test=family-ending');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending?.t > 1, null, { timeout: 40000 });
   await round('1차');
-  await G(() => { window.__gona.scene.getScene('Game').ending.t = 103.5; });
+  await G(() => { const e = window.__gona.scene.getScene('Game').ending; e.jumpTo(8); e.t = e.finaleAt + 29; });
   await page.waitForSelector('.ending-ui.with-btns', { timeout: 20000 });
   await page.waitForTimeout(800);
   await G(() => window.__bus.emit('endingReplay')); // 테스트용 다시보기 (화면 버튼은 2개)
@@ -972,28 +1020,33 @@ async function endingFixTests(label, device) {
   // 엔딩 + 다시보기 3회
   await page.goto(URL + '?test=family-ending');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.ending, null, { timeout: 40000 });
-  // 다음 ▶: 타이핑 중 1번 = 문장 완성, 다음 1번 = 다음 대사·장면
-  await page.waitForFunction(() => { const b = document.querySelector('.pr-box'); return b && !b.classList.contains('typed') && (document.querySelector('.pr-shown')?.textContent?.length ?? 0) > 1; }, null, { timeout: 20000 });
-  const before = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, t: window.__gona.scene.getScene('Game').ending.t }));
-  await tap('.pr-next');
-  await page.waitForTimeout(100);
-  const typed = await G(() => ({ typed: document.querySelector('.pr-box').classList.contains('typed'), shown: document.querySelector('.pr-shown').textContent, i: document.querySelector('.pr-box').dataset.index }));
-  await page.waitForTimeout(400);
-  await tap('.pr-next'); await tap('.pr-next'); await tap('.pr-next'); // 연타 — 잠금으로 한 번만
+  const tapAt = async (sel) => { const r = await G((q) => document.querySelector(q).getBoundingClientRect().toJSON(), sel); await page.touchscreen.tap(r.x + r.width / 2, r.y + r.height / 2); };
+  // 다음 ▶: 장면의 애니메이션·영상이 끝나기 전(타이핑 중 포함)엔 숨김 · 대사창 자리는 그대로
+  const nb = () => G(() => { const n = document.querySelector('.pr-next'); const b = document.querySelector('.pr-box').getBoundingClientRect(); return { vis: getComputedStyle(n).visibility, i: document.querySelector('.pr-box').dataset.index, top: Math.round(b.top), h: Math.round(b.height), cur: window.__gona.scene.getScene('Game').ending.cur }; });
+  await page.waitForFunction(() => (document.querySelector('.pr-shown')?.textContent?.length ?? 0) > 1, null, { timeout: 20000 });
+  await page.waitForTimeout(700); // 대사창이 처음 들어오는 짧은 등장 애니메이션 뒤부터
+  const n0 = await nb();
+  await page.waitForTimeout(3000);
+  const n1 = await nb();
+  check(`${label}: ending next ▶ hidden while the scene animation / typing plays (dialog box does not move)`, n0.vis === 'hidden' && n1.vis === 'hidden' && n1.cur === 0 && n0.top === n1.top && n0.h === n1.h, JSON.stringify({ n0, n1 }));
+  // 장면이 끝나면 나타남 → 누르면 바로 다음 장면 (연타해도 한 번만)
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.pr-next')).visibility === 'visible', null, { timeout: 20000 });
+  const n2 = await nb();
+  await tap('.pr-next'); await tapAt('.pr-next'); await tapAt('.pr-next');
   await page.waitForTimeout(300);
-  const after = await G(() => ({ i: document.querySelector('.pr-box').dataset.index, scene: window.__gona.scene.getScene('Game').ending.sceneNo }));
-  check(`${label}: ending next ▶ — 1st tap completes the typing line, 2nd moves to the next line (mashing advances once)`, typed.typed && typed.i === before.i && Number(after.i) === Number(before.i) + 1, JSON.stringify({ before, typed: typed.typed, after }));
-  // 마지막 대사까지 → 타이틀(크레딧 앞)
-  for (let k = 0; k < 28; k++) {
-    const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
-    if (ph === 'finale') break;
-    await tap('.pr-next'); await page.waitForTimeout(420);
-  }
-  await page.waitForTimeout(600);
+  const n3 = await nb();
+  check(`${label}: next ▶ appears when the scene is done; a tap moves to the next scene immediately (mashing advances once)`, n2.vis === 'visible' && n2.cur === 0 && n3.cur === 1 && n3.i === '1' && n3.vis === 'hidden' && n2.top === n3.top, JSON.stringify({ n2, n3 }));
+  // 아무것도 누르지 않으면 저절로 다음 장면 (장면 7 → 8: 킁카 영상 마지막 프레임 → 가족사진)
+  await G(() => window.__gona.scene.getScene('Game').ending.jumpTo(6));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').ending.cur === 7, null, { timeout: 15000 }).catch(() => {});
+  const auto7 = await nb();
+  check(`${label}: ending advances by itself (sniff last frame → family portrait) without pressing next`, auto7.cur === 7, JSON.stringify(auto7));
+  // 마지막 가족사진 영상이 끝나면 저절로 피날레
+  await page.waitForFunction(() => document.querySelector('.ending-ui')?.dataset.phase === 'finale', null, { timeout: 20000 }).catch(() => {});
   const ph = await G(() => document.querySelector('.ending-ui')?.dataset.phase);
-  check(`${label}: ending next ▶ on the last line goes to the golden-frame finale`, ph === 'finale', ph);
+  check(`${label}: after the last family-photo video the golden-frame finale starts by itself`, ph === 'finale', ph);
   for (let i = 0; i < 3; i++) {
-    await G(() => { window.__gona.scene.getScene('Game').ending.t = 103.5; });
+    await G(() => { const e = window.__gona.scene.getScene('Game').ending; e.jumpTo(8); e.t = e.finaleAt + 29; });
     await page.waitForSelector('.ending-ui.with-btns', { timeout: 15000 });
     await page.waitForTimeout(800);
     await G(() => window.__bus.emit('endingReplay'));
@@ -1027,7 +1080,7 @@ async function endingFixTests(label, device) {
   // 액자: 장면 1~8 모두 같은 자리·크기 · 그림 전체가 보임(contain, 잘림 없음) · 화면 안 · 대사창·위 버튼과 안 겹침
   const frames = [];
   for (let i = 0; i < 8; i++) {
-    await G((k) => { const e = window.__gona.scene.getScene('Game').ending; const at = [0, 9.47, 22.1, 31.58, 37.9, 47.37, 60.0, 66.3][k]; if (e.t < at) e.t = at - 0.02; }, i);
+    await G((k) => { const e = window.__gona.scene.getScene('Game').ending; if (e.cur !== k) e.jumpTo(k); }, i);
     await page.waitForFunction((k) => document.querySelector('.end-frame')?.dataset.scene === String(k + 1), i, { timeout: 15000 });
     await page.waitForTimeout(700);
     await page.waitForTimeout(i >= 3 ? 900 : 0);
