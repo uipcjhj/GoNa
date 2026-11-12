@@ -79,7 +79,8 @@ export class Overlay {
       vibLabel();
       haptics.play('bossHit');
     });
-    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), testBtn, vibBtn);
+    // 소리 테스트(디버그 정보)는 개발 빌드에서만
+    pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), ...(__DEV_TOOLS__ ? [testBtn] : []), vibBtn);
     this.pause.append(pp);
 
     // ── 게임 오버

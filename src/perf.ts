@@ -70,9 +70,10 @@ class Perf {
 
   constructor() {
     const q = new URLSearchParams(window.location.search);
-    let on = q.has('perf');
+    // 성능 표시(개발용)는 개발 빌드에서만 — 정식에서는 측정(저사양 판정)만 하고 화면 표시는 없음
+    let on = __DEV_TOOLS__ && q.has('perf');
     try {
-      on = on || window.localStorage.getItem('gona.perf') === '1';
+      on = on || (__DEV_TOOLS__ && window.localStorage.getItem('gona.perf') === '1');
     } catch {
       /* 저장소 없음 */
     }

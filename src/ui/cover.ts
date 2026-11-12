@@ -60,7 +60,7 @@ export class CoverScreen {
     replay.addEventListener('click', () => this.onReplay?.());
     // 개발용: 보스전 바로가기 · 성능 표시 (config.ts DEV.bossTestMenu = false 면 숨김)
     const dev = el('div', 'cover-dev');
-    if (DEV.bossTestMenu) {
+    if (__DEV_TOOLS__ && DEV.bossTestMenu) {
       // 작은 🧪 버튼을 누르면 펼쳐짐 (로고를 가리지 않게)
       const toggle = el('button', 'ap-open cover-dev-toggle', '🧪');
       toggle.type = 'button';
@@ -89,7 +89,8 @@ export class CoverScreen {
       mk('🧪 기능 테스트 메뉴', () => (window.location.search = '?test=menu'));
     }
 
-    this.root.append(this.title.root, this.ui, test, replay, dev);
+    // 정식 빌드: 소리 테스트(디버그 정보)·개발 메뉴 없음 — 타이틀·게임 시작·이어하기·오프닝 다시 보기만
+    this.root.append(this.title.root, this.ui, ...(__DEV_TOOLS__ ? [test] : []), replay, dev);
     // 테스트 배포(GitHub Pages)에서만: 빌드 때 VITE_BUILD_LABEL 이 주어지면 버전·커밋 표시 (평소 빌드·미리보기엔 없음)
     const buildLabel = import.meta.env.VITE_BUILD_LABEL as string | undefined;
     if (buildLabel) this.root.append(el('div', 'build-badge', buildLabel));

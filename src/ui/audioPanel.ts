@@ -51,7 +51,7 @@ export class AudioPanel {
     this.root.append(box);
     parent.append(this.root);
     sound.onChange(() => this.refresh());
-    if (new URLSearchParams(window.location.search).has('audiotest')) this.open();
+    if (__DEV_TOOLS__ && new URLSearchParams(window.location.search).has('audiotest')) this.open();
   }
 
   get isOpen(): boolean {

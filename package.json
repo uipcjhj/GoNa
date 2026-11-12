@@ -5,11 +5,12 @@
   "description": "우리애기 공룡의 간식 대모험 - 모바일 픽셀 러너 게임",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "VITE_CHANNEL=dev vite --host",
     "build": "tsc --noEmit && vite build",
     "build:single": "tsc --noEmit && vite build --mode single",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:dev": "tsc --noEmit && VITE_CHANNEL=dev vite build"
   },
   "dependencies": {
     "galmuri": "^2.40.3",

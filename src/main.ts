@@ -18,7 +18,6 @@ import { BossTalk } from './ui/bossTalk';
 import { bus, EV } from './events';
 import { sound } from './audio';
 import { perf, setPerfOverlay } from './perf';
-import { runScenario, showTestMenu, testParam } from './devtest';
 import { storage } from './storage';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
 
@@ -47,8 +46,9 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
-  // 개발용 기능 테스트 (?test=menu · ?test=<id>) — 저장하지 않음
-  const scenario = testParam();
+  // 개발용 기능 테스트 (?test=menu · ?test=<id>) — 저장하지 않음. 정식 빌드에는 테스트 코드가 들어 있지 않음 (__DEV_TOOLS__=false → 불러오지 않음)
+  const devtest = __DEV_TOOLS__ ? await import('./devtest') : null;
+  const scenario = devtest ? devtest.testParam() : null;
   if (scenario) storage.readOnly = true;
   // 흐름: 스토리 프롤로그(알 부화 포함, Phaser + 자막) → 카메라가 물러나며 대표 타이틀 → 게임 시작 → 1단계
   const cover = new CoverScreen(ui, (opt) => bus.emit(EV.requestStart, opt));
@@ -155,11 +155,12 @@ async function boot(): Promise<void> {
     cover.reveal(false);
   };
   endingUi.onReplay = () => bus.emit(EV.endingReplay);
-  const audioPanel = new AudioPanel(ui);
+  const audioPanel = __DEV_TOOLS__ ? new AudioPanel(ui) : null;
   new BattleUi(ui);
   new BossTalk(ui);
-  cover.onAudioTest = () => audioPanel.open();
-  overlay.onAudioTest = () => audioPanel.open();
+  // 소리 테스트 화면 (오디오 상태·오류 기록 — 개발 빌드에서만 버튼이 보임)
+  cover.onAudioTest = () => audioPanel?.open();
+  overlay.onAudioTest = () => audioPanel?.open();
 
   const size = computeSize();
   const game = new Phaser.Game({
@@ -186,8 +187,8 @@ async function boot(): Promise<void> {
     else game.loop.wake(true);
   };
 
-  if (scenario === 'menu') showTestMenu(ui);
-  else if (scenario) {
+  if (devtest && scenario === 'menu') devtest.showTestMenu(ui);
+  else if (devtest && scenario) {
     // 프롤로그 외에는 오프닝을 건너뛰고 타이틀 → 곧바로 게임 시작 → 시나리오
     const prologueTest = scenario === 'prologue' || scenario === 'prologue-perf' || scenario === 'prologue-loop';
     bus.once(EV.openingStart, () => {
@@ -195,9 +196,9 @@ async function boot(): Promise<void> {
     });
     if (!prologueTest) {
       bus.once(EV.openingDone, () => window.setTimeout(() => cover.start(), 120));
-      bus.once(EV.start, () => window.setTimeout(() => runScenario(scenario, game, ui), 300));
+      bus.once(EV.start, () => window.setTimeout(() => devtest.runScenario(scenario, game, ui), 300));
     } else {
-      runScenario(scenario, game, ui);
+      devtest.runScenario(scenario, game, ui);
       // 성능 테스트: FPS·끊긴 프레임 기록 표시 (장면별 기록은 '복사'로)
       if (scenario !== 'prologue') setPerfOverlay(true);
       if (scenario === 'prologue-loop') {
@@ -219,7 +220,7 @@ async function boot(): Promise<void> {
   }
 
   // 오디오 디버그 패널 (?debugAudio=1 — 일반 사용자에게는 안 보임)
-  if (new URLSearchParams(window.location.search).get('debugAudio') === '1') {
+  if (__DEV_TOOLS__ && new URLSearchParams(window.location.search).get('debugAudio') === '1') {
     mountAudioDebug(document.body, () => {
       const g = game.scene.getScene('Game') as GameScene | null;
       const st = (g as unknown as { state?: string })?.state ?? '-';
@@ -229,7 +230,7 @@ async function boot(): Promise<void> {
   }
 
   // 자동 테스트용: 주소 끝에 ?test 를 붙였을 때만 게임 객체를 노출
-  if (new URLSearchParams(window.location.search).has('test')) {
+  if (__DEV_TOOLS__ && new URLSearchParams(window.location.search).has('test')) {
     (window as unknown as { __gona: Phaser.Game }).__gona = game;
     (window as unknown as { __sound: typeof sound }).__sound = sound;
     (window as unknown as { __bus: typeof bus }).__bus = bus;

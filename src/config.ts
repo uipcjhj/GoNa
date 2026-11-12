@@ -38,7 +38,8 @@ export const VIEW = {
  *   bossTestMenu: 타이틀 화면의 '보스전 바로가기'(뽀뽀괴물·킁카괴물 테스트) · '성능 표시' 버튼
  */
 export const DEV = {
-  bossTestMenu: true,
+  /** 개발 빌드(개발 사이트 · npm run dev)에서만 — 정식 빌드에서는 코드째 빠짐 (env.ts) */
+  bossTestMenu: __DEV_TOOLS__,
 };
 
 export const PHYSICS = {

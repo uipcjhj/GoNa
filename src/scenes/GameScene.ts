@@ -272,7 +272,7 @@ export class GameScene extends Phaser.Scene {
     // 보스전 다시 도전 · 최종 보스 체크포인트 (또는 테스트용 주소 ?boss=kiss / ?boss=sniff — 처음 한 번만)
     let boss = data?.boss ?? (cp?.id === 'sniff' ? 'sniff' : null);
     if (cp?.id === 'sniff') data = { ...data, score: cp.score, snacks: cp.snacks };
-    if (!boss && !this.registry.get('debugBossUsed')) {
+    if (__DEV_TOOLS__ && !boss && !this.registry.get('debugBossUsed')) {
       const q = new URLSearchParams(window.location.search).get('boss');
       if (q === 'kiss' || q === 'sniff') boss = q;
       this.registry.set('debugBossUsed', true);

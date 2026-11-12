@@ -4,7 +4,7 @@
  * 실패한 리소스 로드(선택 이미지 404)는 오류로 보지 않습니다.
  */
 const { chromium, devices } = require('playwright');
-// 사용법: npm run build && npx vite preview --port 4173  (다른 터미널)
+// 사용법: npm run build:dev && npx vite preview --port 4173  (다른 터미널) — 개발 빌드(테스트 경로 ?test 포함)로 검사
 //        node tools/e2e-test.cjs [스크린샷 폴더]
 const S = process.argv[2] || require('os').tmpdir();
 const URL = process.env.GAME_URL || 'http://localhost:4173/';
@@ -206,7 +206,7 @@ async function growthTests(label, device) {
   await page.locator('.over-screen .retry-btn').click(); await page.waitForTimeout(800);
   const rs = await g();
   check(`${label}: retry restarts as newborn (rule)`, rs.stage === 0 && rs.gauge === 0 && rs.vis === 'newborn', JSON.stringify(rs));
-  const bestStage = await page.evaluate(() => localStorage.getItem('dino-snack-adventure.bestStage'));
+  const bestStage = await page.evaluate(() => localStorage.getItem('gona-dev:dino-snack-adventure.bestStage'));
   check(`${label}: best growth stage saved`, bestStage === '4', bestStage);
   check(`${label}: no page errors (growth)`, errs.length === 0, errs.join(' | '));
   await b.close();
@@ -662,7 +662,7 @@ async function featureTests(label, device) {
   page.on('pageerror', e => errs.push(e.message));
   const G = (f, a) => page.evaluate(f, a);
   await page.goto(URL + '?test');
-  await G(() => localStorage.removeItem('gona.checkpoint'));
+  await G(() => localStorage.removeItem('gona-dev:gona.checkpoint'));
   await startFromTitle(page);
   // HUD: 점수 · 하트+HP+성장 · 일시정지 버튼이 겹치지 않음 (점수 큰 값, 3단계 공격 버튼까지)
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.add('kiss'); g.debugSetStage(2); g.growth.gauge = 30; g.score = 123456; g.updateHud(); });
@@ -730,7 +730,7 @@ async function featureTests(label, device) {
   await G(() => window.__gona.scene.getScene('Game').debugBoss(1));
   for (let i = 0; i < 60 && ['fight', 'cutscene'].includes(await G(() => window.__gona.scene.getScene('Game').debugBattle()?.mode)); i++) { await page.keyboard.press('KeyX'); await page.waitForTimeout(600); }
   await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.growth.stageIndex === 2 && g.state === 'playing'; }, null, { timeout: 35000 }).catch(() => {});
-  const cp = await G(() => JSON.parse(localStorage.getItem('gona.checkpoint') || 'null'));
+  const cp = await G(() => JSON.parse(localStorage.getItem('gona-dev:gona.checkpoint') || 'null'));
   check(`${label}: checkpoint saved after first boss`, cp?.id === 'walker', JSON.stringify(cp));
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); g.hearts = 1; g.hp = 10; g.invincibleUntil = 0; g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.addRock(g.playerX + 25); });
   await page.waitForSelector('.over-screen:not(.hidden)', { timeout: 8000 });

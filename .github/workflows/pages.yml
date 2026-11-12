@@ -1,0 +1,110 @@
+# GitHub Pages 배포 — 정식(Production)과 개발(Development)을 하나의 결과물로 합쳐 배포
+#
+#   정식  https://uipcjhj.github.io/GoNa/      ← main 브랜치  (승인했을 때만 main 을 갱신 → 그때만 내용이 바뀜)
+#   개발  https://uipcjhj.github.io/GoNa/dev/  ← dev 브랜치   (푸시하면 자동 배포)
+#
+#   어느 쪽이 푸시되든 매번 main 과 dev 를 '둘 다' 새로 체크아웃해 빌드하고 site/ (정식) + site/dev/ (개발) 로 합쳐 올림
+#   → 개발 푸시가 정식 파일을 지우거나 바꾸지 않음 (정식은 언제나 main 그대로 · 같은 커밋이면 같은 결과)
+#   빌드·검사(tools/verify-site.cjs)가 하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지됨
+#   main 이 배포되면 정식 릴리스 태그(prod-날짜-커밋)를 자동으로 만듦 → 롤백 지점
+name: Pages (Production + Development)
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout production (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: prod
+      - name: Checkout development (dev)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: devsrc
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            prod/package-lock.json
+            devsrc/package-lock.json
+      - name: Build production (main)
+        working-directory: prod
+        run: |
+          npm ci
+          npm run build
+      - name: Build development (dev)
+        working-directory: devsrc
+        run: |
+          npm ci
+          SHORT=$(git rev-parse --short=7 HEAD)
+          WHEN=$(TZ=Asia/Seoul date '+%m-%d %H:%M')
+          VITE_BUILD_LABEL="🧪 개발 테스트 · ${SHORT} · ${WHEN}" npm run build:dev
+      - name: Assemble site (site/ = production · site/dev/ = development)
+        run: |
+          mkdir -p site
+          cp -R prod/dist/. site/
+          rm -rf site/dev
+          mkdir -p site/dev
+          cp -R devsrc/dist/. site/dev/
+          # 개발 사이트를 홈 화면에 추가하면 이름이 'GONA dev' (정식 'GONA' 와 구분)
+          sed -i 's/"short_name": "GONA"/"short_name": "GONA dev"/' site/dev/manifest.webmanifest
+          sed -i 's/name="apple-mobile-web-app-title" content="GONA"/name="apple-mobile-web-app-title" content="GONA dev"/' site/dev/index.html
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
+          printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
+          touch site/.nojekyll
+      - name: Verify (assets present · no dev tools in production)
+        run: node devsrc/tools/verify-site.cjs site prod devsrc
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  release-tag:
+    # 정식(main) 배포가 끝나면 그 커밋에 롤백용 태그를 붙임 (이미 있으면 건너뜀)
+    if: github.ref == 'refs/heads/main'
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Tag production release
+        run: |
+          SHA=$(git rev-parse HEAD)
+          if git tag --points-at "$SHA" | grep -q '^prod-'; then echo "already tagged"; exit 0; fi
+          NAME="prod-$(TZ=Asia/Seoul date '+%Y%m%d-%H%M')-$(git rev-parse --short=7 HEAD)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NAME" "$SHA" -m "Production release $NAME"
+          git push origin "$NAME"
