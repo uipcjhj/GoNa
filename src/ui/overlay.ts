@@ -70,14 +70,14 @@ export class Overlay {
     const vibBtn = el('button', 'ap-open vib-toggle');
     vibBtn.type = 'button';
     const vibLabel = (): void => {
-      vibBtn.textContent = haptics.supported ? `📳 진동 ${haptics.enabled ? '켜짐' : '꺼짐'}` : '📳 진동 (이 기기는 지원 안 함)';
+      vibBtn.textContent = haptics.method !== 'none' ? `📳 진동 ${haptics.enabled ? '켜짐' : '꺼짐'}` : '📳 진동 (이 기기는 지원 안 함)';
     };
     vibLabel();
     vibBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       haptics.setEnabled(!haptics.enabled);
       vibLabel();
-      haptics.play('bossHit');
+      haptics.play('snack', true);
     });
     // 소리 테스트(디버그 정보)는 개발 빌드에서만
     pp.append(el('h2', '', '잠깐 쉬어요'), el('p', 'blink', '터치하면 계속!'), ...(__DEV_TOOLS__ ? [testBtn] : []), vibBtn);

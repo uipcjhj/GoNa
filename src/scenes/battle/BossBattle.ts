@@ -741,6 +741,7 @@ export abstract class BossBattle {
     const GOLD = 0xffd54a;
     const LIME = 0x9cf05a;
     sound.special();
+    haptics.play('special');
     cam.flash(160, 255, 240, 170);
     scene.tweens.killTweensOf(this.dim);
     scene.tweens.add({ targets: this.dim, fillAlpha: 0.42, duration: 220 });
@@ -971,6 +972,7 @@ export abstract class BossBattle {
     const cam = scene.cameras.main;
     const GREEN = 0x9cf05a;
     sound.special();
+    haptics.play('special');
     cam.flash(160, 190, 255, 150);
     scene.tweens.killTweensOf(this.dim);
     scene.tweens.add({ targets: this.dim, fillAlpha: 0.4, duration: 220 });

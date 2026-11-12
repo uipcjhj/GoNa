@@ -26,7 +26,7 @@ export const TEST_ITEMS: [string, string][] = [
   ['glasses-dash', '12. 화학과안경잽이 돌진'],
   ['farter-dash', '13. 방구할배 돌진'],
   ['hurt', '14. 고나 피격 애니메이션 (4단계)'],
-  ['vibrate', '15. 진동 테스트'],
+  ['vibrate', '15. 햅틱(진동) 테스트 — 아이폰·안드로이드 (직접 느꼈는지 확인)'],
   ['family-ending', '16. 엔딩 전체 (8장면 영상 → 황금 왕궁 액자 피날레)'],
   ['ending-hug', '17. 엔딩 달려가 안기기·뽀뽀·킁카 영상부터'],
   ['layout', '18. 세로·가로 화면 확인 (엔딩 가족사진 장면)'],
@@ -287,26 +287,77 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
       break;
     }
     case 'vibrate': {
+      // 햅틱 테스트: 지원 방식 표시 → 버튼을 눌러 직접 느껴 보고 '느껴졌어요/안 느껴졌어요' 로 확인 (환경별 저장)
+      //   API 가 있다는 것만으로 성공이라 하지 않음 — 실제로 느꼈는지는 사람만 알 수 있음
       sc.debugGod();
       clearWorld();
       const panel = el('div', 'tm-vib');
-      panel.append(el('p', '', haptics.supported ? `이 브라우저는 진동을 지원해요 · 설정: ${haptics.enabled ? '켜짐' : '꺼짐'}` : '이 브라우저(예: iPhone Safari)는 웹 진동을 지원하지 않아요 — 눌러도 아무 일 없음(오류 없음)'));
-      const kinds: [HapticKind, string][] = [
-        ['monsterHit', '몬스터 타격 (짧고 약하게)'],
-        ['hurt', '고나 피격 (중간)'],
-        ['bossHit', '보스 타격 (짧고 강하게)'],
-        ['specialFinal', '필살기 마지막 강타 (강조)'],
-        ['bossDown', '보스 쓰러짐'],
-      ];
-      for (const [k, label] of kinds) {
-        const b = el('button', 'ap-open', label);
+      const methodText =
+        haptics.method === 'vibrate'
+          ? '📳 진동 API (안드로이드 등) — 패턴·길이까지 지원'
+          : haptics.method === 'ios-switch'
+            ? '🍎 iPhone 스위치 햅틱 (실험) — iOS 18 이상에서 짧은 \'톡\' 한 번 (세기·길이는 못 바꿈)'
+            : '❌ 지원 불가 — 이 브라우저는 웹에서 진동을 낼 방법이 없어요 (게임은 그대로)';
+      const info = el('div', 'hp-info');
+      const res = el('p', 'hp-res');
+      const showRes = (): void => {
+        const r = haptics.results;
+        const keys = Object.keys(r);
+        res.textContent = keys.length ? '확인 기록: ' + keys.map((k) => `${k} → ${r[k] === 'felt' ? '✅ 느껴짐' : '❌ 안 느껴짐'}`).join(' / ') : '확인 기록: 아직 없음';
+      };
+      info.append(
+        el('p', 'hp-title', '📳 햅틱 테스트'),
+        el('p', '', `지금 환경: ${haptics.envName}`),
+        el('p', '', `방식: ${methodText}`),
+        el('p', '', `설정: 진동 ${haptics.enabled ? 'ON' : 'OFF'}`),
+        el('p', 'hp-how', haptics.method === 'ios-switch' ? '아이폰: 설정 → 사운드 및 햅틱 → \'시스템 햅틱\'이 켜져 있어야 해요. Safari 탭과 홈 화면 앱(공유 → 홈 화면에 추가 → GONA dev)에서 각각 해 보세요.' : '버튼을 누르고 손에 진동이 느껴지는지 확인해 주세요.'),
+      );
+      panel.append(info);
+      const row = (label: string, fn: () => void): HTMLButtonElement => {
+        const b = el('button', 'ap-open', label) as HTMLButtonElement;
         b.type = 'button';
         b.addEventListener('click', (e) => {
           e.stopPropagation();
-          haptics.play(k);
+          fn();
         });
         panel.append(b);
+        return b;
+      };
+      const onOff = row(`진동 ${haptics.enabled ? 'ON' : 'OFF'} (눌러서 바꾸기)`, () => {
+        haptics.setEnabled(!haptics.enabled);
+        onOff.textContent = `진동 ${haptics.enabled ? 'ON' : 'OFF'} (눌러서 바꾸기)`;
+      });
+      if (haptics.method === 'ios-switch') {
+        const multi = row(`아이폰 여러 번 톡 실험: ${haptics.multi ? 'ON' : 'OFF'}`, () => {
+          haptics.setMulti(!haptics.multi);
+          multi.textContent = `아이폰 여러 번 톡 실험: ${haptics.multi ? 'ON' : 'OFF'}`;
+        });
       }
+      const kinds: [HapticKind, string][] = [
+        ['jump', '점프 (아주 짧게)'],
+        ['snack', '간식 획득 (가볍게 한 번)'],
+        ['hurt', '피격 (강하게 한 번)'],
+        ['monsterHit', '부메랑 명중 (짧게 두 번)'],
+        ['special', '필살기 (강한 패턴)'],
+        ['evolve', '성장·진화 (두근두근)'],
+        ['bossDown', '보스 처치 (강하게 세 번)'],
+      ];
+      for (const [k, label] of kinds) row(label, () => haptics.play(k, true));
+      // 아이폰 실험: 터치 안(바로) / 터치 밖(1초 뒤) — 게임 속 간식·피격처럼 터치와 상관없이 울릴 때도 되는지
+      row('⏱ 1초 뒤에 울리기 (터치 밖에서도 되는지)', () => window.setTimeout(() => haptics.play('hurt', true), 1000));
+      if (haptics.method !== 'none') {
+        panel.append(el('p', 'hp-q', '진동이 손에 느껴졌나요?'));
+        row('✅ 느껴졌어요', () => {
+          haptics.saveResult(haptics.envName, true);
+          showRes();
+        });
+        row('❌ 안 느껴졌어요', () => {
+          haptics.saveResult(haptics.envName, false);
+          showRes();
+        });
+      } else panel.append(el('p', 'hp-q', '이 환경은 지원 불가 — 버튼을 눌러도 진동이 나지 않아요'));
+      showRes();
+      panel.append(res);
       parent.append(panel);
       break;
     }

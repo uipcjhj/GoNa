@@ -1,3 +1,4 @@
+import { haptics } from '../haptics';
 import { DEV } from '../config';
 import { perf, setPerfOverlay } from '../perf';
 import type { RestartOptions } from '../events';
@@ -87,6 +88,14 @@ export class CoverScreen {
         perfBtn.textContent = label();
       });
       mk('🧪 기능 테스트 메뉴', () => (window.location.search = '?test=menu'));
+      // 햅틱(진동): 켜기/끄기 · 테스트 화면
+      const vibLabel = (): string => `📳 진동 ${haptics.enabled ? 'ON' : 'OFF'}`;
+      const vibBtn = mk(vibLabel(), () => {
+        haptics.setEnabled(!haptics.enabled);
+        vibBtn.textContent = vibLabel();
+        haptics.play('snack', true);
+      });
+      mk('📳 햅틱 테스트', () => (window.location.search = '?test=vibrate'));
     }
 
     // 정식 빌드: 소리 테스트(디버그 정보)·개발 메뉴 없음 — 타이틀·게임 시작·이어하기·오프닝 다시 보기만

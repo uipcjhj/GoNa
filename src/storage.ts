@@ -11,8 +11,9 @@ export const storage = {
       return null;
     }
   },
-  set(key: string, value: string): void {
-    if (storage.readOnly) return;
+  /** force: 테스트 모드(readOnly)에서도 저장 — 햅틱 설정·햅틱 테스트 확인 결과처럼 테스트 자체가 기록하는 값만 */
+  set(key: string, value: string, force = false): void {
+    if (storage.readOnly && !force) return;
     try {
       window.localStorage.setItem(STORAGE_PREFIX + key, value);
     } catch {

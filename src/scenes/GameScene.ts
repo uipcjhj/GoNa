@@ -609,6 +609,7 @@ export class GameScene extends Phaser.Scene {
     this.grounded = false;
     this.jumpsUsed = isDouble ? 2 : 1;
     this.squash = isDouble ? 1.12 : 1.18;
+    haptics.play('jump');
     if (this.inNest) {
       // 둥지째 튀어오름: 아기는 둥지에 꾹 눌렸다가 따라 올라감 (아기가 직접 뛰지 않음)
       this.babyVel += isDouble ? 90 : 70;
@@ -1365,6 +1366,7 @@ export class GameScene extends Phaser.Scene {
     this.snacksEaten++;
     this.updateHud();
     sound.pickup(info.points);
+    haptics.play('snack');
     if (this.vis.happyFrame >= 0) this.showExpression(this.vis.happyFrame, CHARACTER_ASSET.happyMs);
     else if (this.inNest) this.babyVel = -150; // 둥지에서 퐁! 솟았다 쏙
     else this.squash = 0.8; // 표정 프레임이 없는 단계는 통통 반응
@@ -1622,6 +1624,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setAngle(0).setAlpha(1);
     this.squash = 1;
     sound.evolve();
+    haptics.play('evolve');
     this.cameras.main.flash(220, 255, 250, 225);
     bus.emit(EV.evolveStart, { level: next.level });
   }
