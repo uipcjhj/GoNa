@@ -5,9 +5,10 @@
 | | 주소 | 만드는 브랜치 | 언제 바뀌나 |
 |---|---|---|---|
 | **정식 (Production)** | https://uipcjhj.github.io/GoNa/ | `main` | 주인이 "정식 배포해"라고 승인했을 때만 (`main` 갱신) |
-| **개발 (Development)** | https://uipcjhj.github.io/GoNa/dev/ | `dev` | `dev` 에 푸시할 때마다 자동 |
+| **개발 (Development)** | https://uipcjhj.github.io/GoNa/dev/ | `claude/dino-snack-game` (작업 브랜치) | 그 브랜치에 푸시할 때마다 자동 |
 
-- 두 사이트는 GitHub Pages 하나에 함께 올라감. 배포할 때마다 `main` 과 `dev` 를 둘 다 새로 빌드해 `site/`(정식) + `site/dev/`(개발)로 합침
+- GitHub 의 github-pages 배포 허용 브랜치가 `main` · `claude/dino-snack-game` 이라 개발 사이트도 작업 브랜치에서 배포함.
+- 두 사이트는 GitHub Pages 하나에 함께 올라감. 배포할 때마다 `main` 과 작업 브랜치를 둘 다 새로 빌드해 `site/`(정식) + `site/dev/`(개발)로 합침
   (`.github/workflows/pages.yml`). 개발 푸시는 정식 파일을 바꾸지 않음 — 정식은 언제나 `main` 그대로.
 - 배포 전 검사(`tools/verify-site.cjs`): 두 사이트에 영상·BGM·그림·아이콘·manifest 가 모두 있는지, 정식 빌드에 개발용 기능이 섞이지 않았는지.
   **검사나 빌드가 하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지.**
@@ -25,10 +26,10 @@
 
 ## 개발 → 정식 흐름
 
-1. 새 기능은 작업 브랜치에서 만들고 `dev` 에 푸시 → 개발 사이트 자동 배포
-2. 아이폰으로 https://uipcjhj.github.io/GoNa/dev/ 테스트 → 수정 → 다시 `dev` 푸시
+1. 새 기능은 작업 브랜치(`claude/dino-snack-game`)에서 만들고 푸시 → 개발 사이트 자동 배포
+2. 아이폰으로 https://uipcjhj.github.io/GoNa/dev/ 테스트 → 수정 → 다시 푸시
 3. 주인이 **"정식 배포해"** 라고 승인
-4. 승인된 `dev` 커밋을 `main` 으로 (fast-forward): `git push origin <커밋>:main`
+4. 승인된 작업 브랜치 커밋을 `main` 으로 (fast-forward): `git push origin <커밋>:main`
 5. Actions 가 빌드·검사 → 정식 배포 → `prod-날짜-커밋` 태그 자동 생성 (롤백 지점)
 6. 정식 주소에서 게임·엔딩 영상·BGM·아이콘 확인
 
@@ -42,14 +43,15 @@
 ```bash
 git fetch origin --tags
 git checkout main && git pull origin main
-git checkout <prod-태그 또는 커밋> -- .        # 그 버전의 파일로 바꿈
+git restore --source=<prod-태그 또는 커밋> --staged --worktree -- .   # 그 버전의 파일로 바꿈 (그 뒤에 생긴 파일은 지움)
 git commit -m "Rollback production to <prod-태그>"
 git push origin main                            # → 정식만 그 버전으로 다시 배포
 ```
 
-- 개발 사이트는 `dev` 그대로라 롤백의 영향을 받지 않음
+- 개발 사이트는 작업 브랜치 그대로라 롤백의 영향을 받지 않음
 
 ## 주의
 
-- `main` 과 `dev` 의 `.github/workflows/pages.yml` 은 같은 내용으로 유지 (어느 쪽 푸시든 같은 방식으로 둘 다 빌드)
+- `main` 과 작업 브랜치의 `.github/workflows/pages.yml` 은 정식 배포 때 같은 내용이 됨 (어느 쪽 푸시든 같은 방식으로 둘 다 빌드)
+- `dev` 브랜치: 처음 분리 때 만든 것 — 지금 `main` 에 있는 워크플로가 개발 사이트를 이 브랜치로 빌드하므로, 다음 정식 배포 전까지는 지우지 않음
 - `public/dev/` 폴더는 만들지 않음 (개발 사이트 자리와 겹침 — 검사가 막음)

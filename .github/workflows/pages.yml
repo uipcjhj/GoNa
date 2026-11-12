@@ -1,7 +1,8 @@
 # GitHub Pages 배포 — 정식(Production)과 개발(Development)을 하나의 결과물로 합쳐 배포
 #
 #   정식  https://uipcjhj.github.io/GoNa/      ← main 브랜치  (승인했을 때만 main 을 갱신 → 그때만 내용이 바뀜)
-#   개발  https://uipcjhj.github.io/GoNa/dev/  ← dev 브랜치   (푸시하면 자동 배포)
+#   개발  https://uipcjhj.github.io/GoNa/dev/  ← claude/dino-snack-game 브랜치 (작업 브랜치 · 푸시하면 자동 배포)
+#         (github-pages 환경의 배포 허용 브랜치가 main · claude/dino-snack-game 이라 개발도 이 브랜치에서 배포)
 #
 #   어느 쪽이 푸시되든 매번 main 과 dev 를 '둘 다' 새로 체크아웃해 빌드하고 site/ (정식) + site/dev/ (개발) 로 합쳐 올림
 #   → 개발 푸시가 정식 파일을 지우거나 바꾸지 않음 (정식은 언제나 main 그대로 · 같은 커밋이면 같은 결과)
@@ -11,7 +12,7 @@ name: Pages (Production + Development)
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, claude/dino-snack-game]
   workflow_dispatch:
 
 permissions:
@@ -30,10 +31,10 @@ jobs:
         with:
           ref: main
           path: prod
-      - name: Checkout development (dev)
+      - name: Checkout development (claude/dino-snack-game)
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: claude/dino-snack-game
           path: devsrc
       - uses: actions/setup-node@v4
         with:
@@ -47,7 +48,7 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Build development (dev)
+      - name: Build development
         working-directory: devsrc
         run: |
           npm ci
@@ -66,7 +67,7 @@ jobs:
           sed -i 's/name="apple-mobile-web-app-title" content="GONA"/name="apple-mobile-web-app-title" content="GONA dev"/' site/dev/index.html
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
-          printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
+          printf '{"channel":"development","branch":"claude/dino-snack-game","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
           touch site/.nojekyll
       - name: Verify (assets present · no dev tools in production)
         run: node devsrc/tools/verify-site.cjs site prod devsrc
