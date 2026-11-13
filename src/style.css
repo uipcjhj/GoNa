@@ -3714,9 +3714,18 @@ body.in-ending .prologue-ui .pr-box {
 .bt-special2 .bt-label {
   font-size: 11px;
 }
-/* 두 필살 버튼의 터치 영역이 겹치지 않게 (기존 필살 버튼만 공격 버튼 쪽으로 살짝 겹쳐 둠) */
+/* 두 필살 버튼의 터치 영역이 서로·공격·방패 버튼과 겹치지 않게 (필살 버튼이 둘일 땐 터치 폭만 조금 좁힘 — 보이는 버튼 크기는 그대로) */
 .bt-special.bt-special2 {
   margin-right: 0;
+}
+.battle-pad.has-sp2 .bt-special {
+  width: calc(var(--sp-face) + 10px);
+}
+/* 좁은 세로 화면(iPhone SE 등): 두 필살 버튼을 방패 버튼보다 위로 (터치 영역이 겹치지 않게) */
+@media (orientation: portrait) and (max-width: 359px) {
+  .battle-pad.has-sp2 .bt-special {
+    margin-bottom: calc(var(--sh-hit) + 6px);
+  }
 }
 
 /* 버티기! — 강력한 흡입 동안만 화면 가운데 (점수·체력 아래, 고나·보스 얼굴 위 빈 곳) */
