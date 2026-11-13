@@ -60,7 +60,7 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-size', '46. 마녀 크기 변경 전후 비교 (1.6배 ↔ 1.2배 버튼)'],
   ['witch-chop', '47. 후드리챱챱! 난타 (처음부터 → 방해 → 피니시 → 엔딩 · 그림 대기 — 흐름만)'],
   ['witch-full', '48. 1~3페이즈 연속 플레이 (처음부터 끝까지 · 고나 무적 아님)'],
-  ['witch-last', '49. 마지막 발악 → 처치 → 엔딩'],
+  ['witch-last', '49. (그림이 없을 때의 대체) 마지막 발악 → 처치 → 엔딩 · 실제 마지막은 후드리챱챱'],
   ['witch-run3', '50. 3페이즈 연속 플레이 (35%부터)'],
   ['witch-parry', '51. ① 이유식 받아치기 (퉤! 타이밍)'],
   ['witch-rhythm', '52. ② 으아앙! 울음 리듬 배틀 (2페이즈 → 3페이즈 빠른 판)'],
@@ -515,7 +515,11 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         ready(() => wb().debugPhase(3));
         say('3페이즈부터 끝까지: 부메랑 · 소나기 · 강화 으깨기 · 냄비 … → 마지막 발악 → 엔딩');
       } else if (id === 'witch-last') {
-        ready(() => wb().debugLast());
+        // 그림이 없을 때의 대체 마지막(마지막 발악) 확인 — 실제 전투의 마지막은 후드리챱챱(47·54·55)
+        ready(() => {
+          wb().debugNoArt = true;
+          wb().debugLast();
+        });
         say('마지막 발악: 휘두르기를 점프로 피하면 무방비 → 부메랑 한 방!');
       } else if (id === 'witch-intro') say('등장 컷신 → 대사(다음 ▶) → 전투 시작');
       else if (id === 'witch-p1') ready(() => wb().debugSkipIntro());

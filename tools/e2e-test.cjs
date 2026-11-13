@@ -1282,6 +1282,13 @@ async function witchTests(label, device) {
     await page.waitForTimeout(500);
   }
   check(`${label}: last stand — one boomerang hit in the open window → defeat → family ending`, lv === 'victory' && (await G(() => window.__gona.scene.isActive('EndingCine'))), lv);
+  // 6-2) 실제 전투의 마지막은 후드리챱챱 (그림이 있으므로 마지막 발악 대신)
+  await page.goto(URL + '?test=witch-p1');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.battle?.mode === 'fight', null, { timeout: 40000 }).catch(() => {});
+  await G(() => window.__gona.scene.getScene('Game').battle.debugLast());
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.lastPhase === 'chop', null, { timeout: 15000 }).catch(() => {});
+  const fin = await G(() => window.__gona.scene.getScene('Game').battle?.lastPhase);
+  check(`${label}: the real final is 후드리챱챱 (last stand only without the art)`, fin === 'chop', fin);
   // 7) 강제 이유식 의자 · 후드리챱챱: 사용자 시안에서 정리한 그림이 실제 전투에 켜져 있고, 의자에 고나가 앉으면 원래 고나 그림은 숨김
   await page.goto(URL + '?test=witch-chair');
   await page.waitForFunction(() => !!window.__gona?.scene.getScene('Game')?.battle?.chairS, null, { timeout: 40000 }).catch(() => {});

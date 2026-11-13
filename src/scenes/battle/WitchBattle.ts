@@ -121,6 +121,8 @@ export class WitchBattle extends BossBattle {
   private chopped = false;
   /** (개발 메뉴) 그림이 없어도 의자·후드리챱챱 흐름을 미리 실행 (승인 그림 자리는 비워 둠) */
   debugForceArt = false;
+  /** (개발 메뉴 49) 그림이 없을 때의 대체 흐름(마지막 발악) 확인용 */
+  debugNoArt = false;
   private lastTalked = false;
   /** 공격 중에만 쓰는 예고·효과 (고나 필살기 등으로 공격이 끊기면 바로 정리 — 깜빡이는 고리·점선이 남아 쌓이지 않게) */
   private temps: Phaser.GameObjects.GameObject[] = [];
@@ -1339,6 +1341,7 @@ export class WitchBattle extends BossBattle {
 
   /** 신규 연출의 승인 그림이 다 있는지 (없으면 그 연출은 실제 전투에서 건너뜀 — 임시 그림으로 채우지 않음) */
   artReady(kind: keyof typeof WITCH_EXTRA_ART): boolean {
+    if (this.debugNoArt) return false;
     if (this.debugForceArt) return true;
     const tm = this.host.scene.textures;
     return WITCH_EXTRA_ART[kind].every((k) => tm.exists(k));
