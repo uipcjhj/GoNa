@@ -10,6 +10,15 @@
 - 현재 개발판에 남아 있는 임시 코드 그림(승인 에셋으로 교체 예정, 그때까지 숨기거나 지우지 않음):
   src/art/castleArt.ts 의 흔적 소품(clueSpoon·clueBush·cluePrint), src/art/witchArt.ts 의 witchPot(3페이즈 냄비) · witchSheet(PNG 를 못 읽을 때만 쓰는 비상용).
 
+## 승인 에셋 대기 중인 기능 (그림을 받기 전엔 임시 그림으로 만들지 않음)
+- 강제 이유식 의자 미니게임: 이유식 의자(등장·고나가 붙잡힘·부서지는 파편) · 고나 울며 몸부림/크게 울기 · (실패) 마녀가 먹이려는 모습.
+  받으면: 2페이즈 전환 때 1번 · 3페이즈 후반 강화형 1번, 연타 UI 는 킁카괴물 버티기(resist) 화면 재사용. 지금은 개발 메뉴 41~43 이 '에셋 대기' 안내만.
+- 이유식 으깨기의 '거대한 손바닥': 지금은 기존 숟가락 늘이기 동작으로 내리침 (WitchBattle.mash). 손바닥 PNG 를 받으면 숟가락 대신 씀.
+
+## 최종 보스 확인 도구
+- tools/witch-dodge-test.cjs : 공격별로 예고만 보고 피하면 피해 0 · 가만히 있으면 피해 (예고 = 판정)
+- tools/witch-soak-test.cjs : 1페이즈~처치까지 봇 전투, 오브젝트·트윈·메모리 증가 확인
+
 ## 배포
 - 정식(main → https://uipcjhj.github.io/GoNa/)은 사용자가 명시적으로 승인할 때만. 개발은 claude/dino-snack-game → /GoNa/dev/.
 - 자세한 절차: RELEASE.md

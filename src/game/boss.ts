@@ -101,7 +101,8 @@ export const BOSSES: Record<BossId, BossDef> = {
     name: '이유식 드래곤 셰프 마녀',
     intro: '뽀뽀괴물과 킁카괴물을 키운 진짜 흑막!',
     // 최종 보스 3페이즈 (HP 100~70% · 70~35% · 35~0%) — 수치는 아래 WITCH 에서 조절
-    maxHp: 210,
+    // 공격 종류가 늘어 반격 기회(약점·어질어질·회수 중)도 늘었으므로 210 → 200 (전투가 너무 길어지지 않게)
+    maxHp: 200,
     phase2At: 0.7,
     specialDamage: 8,
     scoreBonus: 1000,
@@ -138,6 +139,22 @@ export const WITCH = {
   pot: { drops: 6, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 3.2, tiredMul: 1.8 },
   /** 공격이 끝난 직후 약점 노출 (초 · 피해 배율) */
   weak: { sec: 1.1, mul: 1.4 },
+  // ── 확장 공격 (기존 A~E 는 그대로) ──
+  /** 숟가락 삼연타: 늘어나는 숟가락 3번 · 마지막은 lastDelay 초 늦게 (연속 피격은 고나의 피격 무적이 막음) */
+  triple: { lastDelay: 0.4 },
+  /** 통통 폭탄: 덩어리가 바닥에서 통통 튀며 다가옴 — 튀는 높이가 점점 낮아져 고나 자리에서 가장 낮게 (점프로 넘음) */
+  //   (덩어리가 고나 몸을 지나가는 시간이 점프 한 번(약 0.67초)보다 짧아야 피할 수 있음 → 통통을 짧고 빠르게: 가로 약 40px/s 이상)
+  bounce: { count: 3, gap: 1.3, heights: [28, 16, 9], g: 500, throwSec: 0.25, telegraph: 0.9, dmg: 18 },
+  /** 이유식 소나기: 착탄 자리 예고 → 동시에 떨어짐 → 아주 짧은 바닥 장판. 가운데 물결은 고나 자리가 비어 있음(안전) */
+  rain: { waves: 3, gap: 1.6, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
+  /** 숟가락 부메랑: 낮은 줄(점프)로 날아가 화면 끝에서 잠깐 멈췄다가 높은 줄(가만히)로 돌아옴 */
+  boomer: { telegraph: 1.0, out: 150, back: 120, pause: 0.6, dmg: 20, low: 8, high: 34 },
+  /** 이유식 으깨기 (2페이즈~): 고나 앞 바닥을 내리쳐 이유식이 좌우로 퍼짐 (고나 쪽 물결 = 점프) · 3페이즈는 두 번 퍼짐
+   *  끝나면 손(숟가락)을 천천히 거두는 동안 반격 기회 */
+  mash: { telegraph: 1.25, front: 34, strike: 0.25, dmg: 25, waveSpeed: 70, waveDmg: 18, waves: [1, 1, 2], secondDelay: 1.05, spread: [0, 1, 1.6], recover: 1.8, recoverMul: 1.5 },
+  /** 마지막 발악: HP 가 at 비율 아래로 → 대사 → 거대한 숟가락 휘두르기(낮은 줄 = 점프) → 무방비(window 초, 한 방이면 끝)
+   *  못 맞히면 다시 휘두름 · retries 번 넘게 놓치면 맞을 때까지 어질어질 (무한정 늘어지지 않게) */
+  last: { at: 0.07, telegraph: 1.2, speed: 190, dmg: 22, window: [4, 5], retries: 2, mul: 2 },
 };
 
 /** 필살 게이지 충전량 (0~1 기준) */

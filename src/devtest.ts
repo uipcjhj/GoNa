@@ -49,8 +49,18 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-p1', '35. 최종 보스 1페이즈 (이유식의 유혹)'],
   ['witch-p2', '36. 최종 보스 2페이즈 (마녀의 분노)'],
   ['witch-p3', '37. 최종 보스 3페이즈 (최후의 한 숟가락)'],
-  ['witch-attacks', '38. 최종 보스 공격 패턴별 테스트 (A~E 버튼)'],
+  ['witch-attacks', '38. 최종 보스 공격 패턴별 테스트 (A~E · 신규 공격 버튼)'],
   ['witch-ending', '39. 최종 보스 처치 → 패배 컷신 → 가족 엔딩 연결'],
+  ['witch-mash', '40. 이유식 으깨기 필살기 (2페이즈 · 고나 무적 아님)'],
+  ['witch-chair', '41. 강제 이유식 의자 미니게임 — 에셋 대기'],
+  ['witch-chair-ok', '42. 연타 성공 테스트 — 에셋 대기'],
+  ['witch-chair-fail', '43. 연타 실패 테스트 — 에셋 대기'],
+  ['witch-triple', '44. 숟가락 삼연타'],
+  ['witch-bounce', '45. 이유식 통통 폭탄'],
+  ['witch-rain', '46. 이유식 소나기 (3페이즈)'],
+  ['witch-boomer', '47. 마법 숟가락 부메랑 (3페이즈)'],
+  ['witch-run3', '48. 3페이즈 연속 플레이 (35%부터 끝까지 · 고나 무적 아님)'],
+  ['witch-last', '49. 마지막 발악 → 처치 → 엔딩'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -328,10 +338,18 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'witch-p2':
     case 'witch-p3':
     case 'witch-attacks':
-    case 'witch-ending': {
+    case 'witch-ending':
+    case 'witch-mash':
+    case 'witch-triple':
+    case 'witch-bounce':
+    case 'witch-rain':
+    case 'witch-boomer':
+    case 'witch-run3':
+    case 'witch-last': {
       sc.debugSetStage(3);
       sc.boomerangAwake = true;
-      if (id !== 'witch-intro' && id !== 'witch-p1') sc.debugGod();
+      // 공격을 직접 피해 보는 테스트는 무적 아님 (맞으면 HP 가 깎임)
+      if (!['witch-intro', 'witch-p1', 'witch-mash', 'witch-triple', 'witch-bounce', 'witch-rain', 'witch-boomer', 'witch-run3', 'witch-last'].includes(id)) sc.debugGod();
       sc.debugStartBoss('witch');
       const wb = (): Any => g().battle;
       const ready = (fn: () => void): void => {
@@ -342,21 +360,46 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
           }
         }, 100);
       };
-      if (id === 'witch-intro') say('등장 컷신 → 대사(다음 ▶) → 전투 시작');
+      // 신규 공격 하나를 반복 (끝나면 2초 뒤 다시)
+      const single: Record<string, [string, number, string]> = {
+        'witch-mash': ['mash', 1, '이유식 으깨기: 고리 자리를 콰직 → 빨간 점선으로 퍼지는 이유식 = 점프! 손을 거둘 때 반격'],
+        'witch-triple': ['triple', 1, '숟가락 삼연타: 고리를 보고 세 번 점프 (마지막은 조금 늦게)'],
+        'witch-bounce': ['bounce', 0, '통통 폭탄: 가장 낮게 튈 때 고나 위를 지나가요 — 가까이 오면 점프'],
+        'witch-rain': ['rain', 2, '이유식 소나기: 고나 자리에 고리가 있으면 떨어질 때 점프 (가운데 물결은 안전)'],
+        'witch-boomer': ['boomer', 2, '숟가락 부메랑: 빨간 줄(낮게) = 점프 · 파란 줄(높게) = 가만히'],
+      };
+      if (single[id]) {
+        const [atk, rage, tip] = single[id];
+        ready(() => {
+          const b = wb();
+          b.debugSkipIntro();
+          b.rage = rage;
+          b.applyTint();
+          const loop = (): void => {
+            const bt = wb();
+            if (!bt || bt.mode === 'victory' || bt.mode === 'done') return;
+            if (bt.mode === 'fight' && !bt.busy && bt.stunT <= 0) bt.debugAttack(atk);
+            window.setTimeout(loop, 2000);
+          };
+          window.setTimeout(loop, 600);
+        });
+        say(tip);
+      } else if (id === 'witch-run3') {
+        ready(() => wb().debugPhase(3));
+        say('3페이즈부터 끝까지: 부메랑 · 소나기 · 강화 으깨기 · 냄비 … → 마지막 발악 → 엔딩');
+      } else if (id === 'witch-last') {
+        ready(() => wb().debugLast());
+        say('마지막 발악: 휘두르기를 점프로 피하면 무방비 → 부메랑 한 방!');
+      } else if (id === 'witch-intro') say('등장 컷신 → 대사(다음 ▶) → 전투 시작');
       else if (id === 'witch-p1') ready(() => wb().debugSkipIntro());
       else if (id === 'witch-p2') ready(() => wb().debugPhase(2));
       else if (id === 'witch-p3') ready(() => wb().debugPhase(3));
       else if (id === 'witch-ending') {
         ready(() => {
           wb().debugSkipIntro();
-          window.setTimeout(() => {
-            const b = wb();
-            b.rage = 2;
-            b.hp = 2;
-            b.damage(5);
-          }, 600);
+          window.setTimeout(() => wb().debugKill(), 600);
         });
-        say('마녀 처치 → 패배 대사 → 퇴장 → 가족 엔딩');
+        say('마녀 처치(마지막 발악 건너뜀) → 패배 대사 → 퇴장 → 가족 엔딩 · 마지막 발악은 49번');
       } else {
         ready(() => wb().debugSkipIntro());
         const panel = el('div', 'tm-vib');
@@ -365,7 +408,7 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         panel.style.flexDirection = 'row';
         panel.style.flexWrap = 'wrap';
         panel.style.padding = '6px';
-        for (const [k, label] of [['spoon', 'A 숟가락'], ['bomb', 'B 폭탄'], ['swirl', 'C 회오리'], ['combo', 'D 연속'], ['pot', 'E 냄비']] as const) {
+        for (const [k, label] of [['spoon', 'A 숟가락'], ['bomb', 'B 폭탄'], ['swirl', 'C 회오리'], ['combo', 'D 연속'], ['pot', 'E 냄비'], ['triple', '삼연타'], ['bounce', '통통'], ['mash', '으깨기'], ['rain', '소나기'], ['boomer', '부메랑']] as const) {
           const b = el('button', 'ap-open', label) as HTMLButtonElement;
           b.type = 'button';
           b.style.minHeight = '36px';
@@ -384,6 +427,22 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         parent.append(panel);
         say('버튼으로 공격 하나씩 (고나 무적) · 예고 자리 = 판정 자리');
       }
+      break;
+    }
+    case 'witch-chair':
+    case 'witch-chair-ok':
+    case 'witch-chair-fail': {
+      // 강제 이유식 의자: 핵심 그림(의자 · 고나 울음·몸부림)이 아직 없어 구현 대기 (CLAUDE.md — 임시 그림으로 대체하지 않음)
+      const box = el('div', 'tm-art');
+      box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;color:#fff8e6;padding:16px;font-size:14px;line-height:1.6';
+      box.innerHTML =
+        '<h3 style="margin:0 0 8px">🪑 강제 이유식 의자 — 에셋 대기</h3>' +
+        '<p>이 미니게임의 핵심 그림이 아직 없어 구현을 멈춰 두었어요. 아래 그림을 받으면 바로 완성합니다.</p>' +
+        '<ul style="padding-left:18px"><li>마법의 이유식 의자 (등장 · 고나가 붙잡힌 모습 · 부서지는 파편)</li>' +
+        '<li>고나(자이언트 곤룡) 울며 몸부림치기 · 크게 우는 모습(으앙!)</li>' +
+        '<li>(실패) 마녀가 이유식을 먹이려는 모습</li></ul>' +
+        '<p>연타 규칙·버튼·게이지는 기존 버티기 화면을 재사용할 예정입니다.</p>';
+      parent.append(box);
       break;
     }
     case 'witch-art': {

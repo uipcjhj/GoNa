@@ -398,13 +398,16 @@ export function witchSmoke(): HTMLCanvasElement {
 
 /** 땅 위 낙하 예고 고리 (초록 점선 타원) 21x7 */
 export function witchTarget(): HTMLCanvasElement {
-  const pc = new PixelCanvas(21, 7);
-  for (let a = 0; a < 24; a++) {
-    if (a % 2) continue;
-    const t = (a / 24) * Math.PI * 2;
-    pc.px(Math.round(10 + Math.cos(t) * 9.5), Math.round(3 + Math.sin(t) * 2.6), '#c8ff6a');
+  // 공격 예고 고리 (효과): 어두운 성 바닥에서도 잘 보이게 — 반투명 빨강 바탕 + 2줄 밝은 테두리 + 가운데 표시
+  const pc = new PixelCanvas(23, 9);
+  for (let y = 0; y < 9; y++) {
+    for (let x = 0; x < 23; x++) {
+      const d = ((x - 11) / 11) ** 2 + ((y - 4) / 4) ** 2;
+      if (d <= 1.02 && d > 0.62) pc.px(x, y, d > 0.82 ? '#fff27a' : '#ff5a6a');
+      else if (d <= 0.62) pc.px(x, y, 'rgba(255, 90, 106, 0.35)');
+    }
   }
-  pc.rect(9, 3, 3, 1, '#ff5a6a');
-  pc.rect(10, 2, 1, 3, '#ff5a6a');
+  pc.rect(10, 4, 3, 1, '#ffffff');
+  pc.rect(11, 3, 1, 3, '#ffffff');
   return pc.canvas;
 }

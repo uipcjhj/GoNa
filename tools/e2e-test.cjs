@@ -357,11 +357,12 @@ async function bossTests(label, device) {
   check(`${label}: boss HP bar visible`, bar);
   check(`${label}: 3 buttons shown from battle start, attack locked before awakening`, !c0.canThrow && (await page.locator('.bt-shield').isVisible()) && (await page.locator('.bt-attack').isVisible()) && (await page.locator('.bt-special:not(.bt-special2)').isVisible()) && (await page.locator('.bt-attack').getAttribute('class')).includes('locked'));
   await G(() => window.__gona.scene.getScene('Game').debugGod());
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 30000 });
+  // (전체 묶음에서 가끔 느려질 때 테스트 전체가 멈추지 않게 — 실패는 아래 check 로 보고)
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.frozen, null, { timeout: 45000 }).catch(() => {});
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugCombat().canThrow, null, { timeout: 6000 }).catch(() => {});
   const aw = await page.locator('.bt-attack').getAttribute('class');
   check(`${label}: hair boomerang awakens mid-battle (button unlocks)`, (await combat()).canThrow && !aw.includes('locked'), aw);
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 }).catch(() => {});
   const hp0 = (await battle()).hp;
   // 날아오는 하트탄에 막히지 않게 (부메랑은 투사체를 먼저 부숨 — 정상 동작)
   await G(() => { const bt = window.__gona.scene.getScene('Game').battle; bt.hostiles.forEach((h) => { h.dead = true; h.sprite.destroy(); }); bt.hostiles = []; bt.cooldown = 3; });
@@ -467,7 +468,7 @@ async function bossTests(label, device) {
   check(`${label}: final adventure → castle → witch intro`, w0.id === 'witch' && w0.mode === 'intro' && w0.castle, JSON.stringify(w0));
   await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.debugSkipIntro(); });
   await page.waitForTimeout(800);
-  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.rage = 2; b.hp = 2; b.damage(5); });
+  await G(() => window.__gona.scene.getScene('Game').battle.debugKill());
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(700);
   const talk3 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
@@ -1215,7 +1216,7 @@ async function witchTests(label, device) {
   check(`${label}: witch intro — 7 lines in the dialog box, then the fight starts`, lines.length === 7 && lines[0].startsWith('여기까지') && lines[6].startsWith('각오는') && f0.mode === 'fight' && f0.castle && !f0.padHidden, JSON.stringify({ lines, f0, pad0 }));
   // 2) 숟가락: 예고(점선·고리) = 판정 · 가만히 있으면 맞고, 점프하면 안 맞음 · 바닥에 꽂히면 어질어질(기절)
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.hearts = 3; g.battle.debugAttack('spoon'); });
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.telegraph?.impactAt, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => { const t = window.__gona.scene.getScene('Game').battle.telegraph; return t?.kind === 'spoon' && t.impactAt; }, null, { timeout: 8000 }).catch(() => {});
   const tg = await G(() => window.__gona.scene.getScene('Game').battle.telegraph);
   await page.waitForTimeout(3500);
   const hit = await G(() => ({ hp: window.__gona.scene.getScene('Game').hp, hearts: window.__gona.scene.getScene('Game').hearts, log: window.__gona.scene.getScene('Game').battle.spoonLog?.slice(-1)[0] }));
@@ -1251,6 +1252,42 @@ async function witchTests(label, device) {
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 20000 }).catch(() => {});
   const fa = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, mode: g.battle?.mode, bg: g.bgImage?.texture?.key ?? null, finale: !!g.finale }; });
   check(`${label}: final adventure castle part → arrive → castle interior → witch intro`, fc.phase === 'castle' && fa.id === 'witch' && fa.mode === 'intro' && !fa.finale, JSON.stringify({ fc, fa }));
+  // 6) 마지막 발악: 대사 → 휘두르기(점프로 피함) → 무방비 → 부메랑 한 방 → 처치 → 엔딩 · 놓치면 다시 휘두름
+  await page.goto(URL + '?test=witch-last');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.battle?.lastPhase === 'swing', null, { timeout: 40000 });
+  await G(() => {
+    const g = window.__gona.scene.getScene('Game');
+    const done = new Set();
+    const tick = () => { const bt = g.battle; if (bt) for (const t of bt.threatsAhead) { const k = t.at.toFixed(3); if (!done.has(k) && !t.high && t.at - bt.time < 0.2 && t.at - bt.time > -0.05 && g.grounded) { done.add(k); g.pressJump(); } } requestAnimationFrame(tick); };
+    tick();
+  });
+  const seen = [];
+  for (let i = 0; i < 90 && seen.filter((x) => x === 'open').length < 2; i++) {
+    const nx = page.locator('.boss-talk:not(.hidden) .btk-next');
+    if (await nx.isVisible().catch(() => false)) await nx.click({ timeout: 800 }).catch(() => {});
+    const ph = await G(() => window.__gona.scene.getScene('Game').battle?.lastPhase);
+    if (seen[seen.length - 1] !== ph) seen.push(ph);
+    await page.waitForTimeout(400);
+  }
+  const hpLast = await G(() => { const g = window.__gona.scene.getScene('Game'); return g.hearts * 100 + g.hp; });
+  const lastDbg = await G(() => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; return bt ? { ph: bt.lastPhase, st: +bt.stunT.toFixed(1), busy: bt.busy, mode: bt.mode, state: g.state, t: +bt.time.toFixed(1) } : null; });
+  check(`${label}: last stand — swing dodged by jumping, missed window → swings again (retry)`, seen.join(',').startsWith('swing,open,none,swing') && hpLast === 400, JSON.stringify({ seen, hpLast, lastDbg }));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.lastPhase === 'open', null, { timeout: 20000 }).catch(() => {});
+  await G(() => window.__bus.emit('attack'));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.mode === 'victory', null, { timeout: 8000 }).catch(() => {});
+  const lv = await G(() => window.__gona.scene.getScene('Game').battle?.mode ?? 'none');
+  for (let i = 0; i < 20 && !(await G(() => window.__gona.scene.isActive('EndingCine'))); i++) {
+    const sk = page.locator('.boss-talk:not(.hidden) .bt-skip');
+    if (await sk.isVisible().catch(() => false)) await sk.click({ timeout: 800 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  check(`${label}: last stand — one boomerang hit in the open window → defeat → family ending`, lv === 'victory' && (await G(() => window.__gona.scene.isActive('EndingCine'))), lv);
+  // 7) 강제 이유식 의자: 핵심 그림이 없어 '에셋 대기' 안내만 (임시 그림 없음)
+  await page.goto(URL + '?test=witch-chair');
+  await page.waitForSelector('.tm-art', { timeout: 40000 }).catch(() => {});
+  const chair = await G(() => document.querySelector('.tm-art')?.textContent ?? '');
+  check(`${label}: chair minigame waits for approved art (no placeholder drawn)`, /에셋 대기/.test(chair) && !(await G(() => !!window.__gona.scene.getScene('Game')?.battle)), chair.slice(0, 40));
+  check(`${label}: no page errors (witch extended)`, errs.length === 0, errs.join(' | '));
   await ctx.browser().close();
 }
 
