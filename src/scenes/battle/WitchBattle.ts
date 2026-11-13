@@ -439,7 +439,7 @@ export class WitchBattle extends BossBattle {
     if (!info || this.seen.has(a)) return 0;
     this.seen.add(a);
     this.banner({ top: '⚠ 새 공격!', name: info.name, desc: info.hint, ms: 1500, tone: 'boss' });
-    return 1.0;
+    return this.atFloor ? 0.5 : 1.0; // 문턱에서 이어지는 필수 이벤트는 안내 대기를 짧게
   }
 
   /** 이번 페이즈에 이미 나온 공격 (mustShow 확인용) */

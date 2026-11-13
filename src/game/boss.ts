@@ -136,7 +136,7 @@ export const WITCH = {
   /** C 이유식 회오리: 방울이 위·아래 줄로 날아옴 (오른쪽 화살표: 아래=점프 · 위=가만히) */
   swirl: { count: 6, gap: 1.0, arrow: 0.9, speed: 120, dmg: 20 },
   /** E 초대형 이유식 폭발: 냄비에서 솟아 차례로 떨어짐 (고나 자리 = 점프·방패) → 끝나면 지쳐서 멈춤 */
-  pot: { drops: 4, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 2.6, tiredMul: 1.8 },
+  pot: { drops: 3, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 2.6, tiredMul: 1.8 },
   /** 공격이 끝난 직후 약점 노출 (초 · 피해 배율) */
   weak: { sec: 1.1, mul: 1.4 },
   // ── 확장 공격 (기존 A~E 는 그대로) ──
@@ -146,7 +146,7 @@ export const WITCH = {
   //   (덩어리가 고나 몸을 지나가는 시간이 점프 한 번(약 0.67초)보다 짧아야 피할 수 있음 → 통통을 짧고 빠르게: 가로 약 40px/s 이상)
   bounce: { count: 3, gap: 1.3, heights: [28, 16, 9], g: 500, throwSec: 0.25, telegraph: 0.9, dmg: 18 },
   /** 이유식 소나기: 착탄 자리 예고 → 동시에 떨어짐 → 아주 짧은 바닥 장판. 가운데 물결은 고나 자리가 비어 있음(안전) */
-  rain: { waves: 2, gap: 1.3, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
+  rain: { waves: 2, gap: 1.1, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
   /** 숟가락 부메랑: 낮은 줄(점프)로 날아가 화면 끝에서 잠깐 멈췄다가 높은 줄(가만히)로 돌아옴 */
   boomer: { telegraph: 1.0, out: 150, back: 120, pause: 0.6, dmg: 20, low: 8, high: 30 },
   /** 높은 숟가락 (가만히): 손잡이가 늘어나 숟가락이 고나 머리 위 높이로 쓸고 지나감 — 서 있으면 안전 · 점프하면 맞음 */
@@ -189,7 +189,7 @@ export const WITCH = {
   /** ④ 이유식 의자 탈출 (2페이즈 1번 · 3페이즈 강화 1번 — [2페이즈, 3페이즈])
    *   '으아앙!' 연타 mash 초 (탭마다 perTap · 초당 decay 감소) → 숟가락이 입으로 (warn 초 안에 hold 초 꾸욱) → 성공: 음파 강타(dmg × (0.6+게이지)) + 기절
    *   실패: 고나 hurt 피해 + 자동 탈출 */
-  chair: { mash: [3.0, 2.6], perTap: 0.07, decay: [0.08, 0.12], warn: [1.8, 1.5], hold: 0.55, dmg: 20, stun: 2.2, stunMul: 1.6, hurt: 10 },
+  chair: { mash: [3.0, 2.4], perTap: 0.07, decay: [0.08, 0.12], warn: [1.8, 1.4], hold: 0.55, dmg: 20, stun: 2.2, stunMul: 1.6, hurt: 10 },
   /** ⑤ 후드리챱챱! (마지막): '챱챱!' 탭마다 perTap · interruptAt 에서 마녀 방해 → '으아앙!' cryWindow 초 안에 hold 초 꾸욱
    *   (실패하면 cryHurt 피해 · retry 초 뒤 다시) → 100% → '후드리챱챱!!!' 한 번 */
   chop: { perTap: 0.06, interruptAt: 0.6, cryWindow: 3.2, hold: 0.55, cryHurt: 8, retry: 1.0 },
