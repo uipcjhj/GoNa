@@ -65,6 +65,8 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-parry', '51. ① 이유식 받아치기 (퉤! 타이밍)'],
   ['witch-rhythm', '52. ② 으아앙! 울음 리듬 배틀 (2페이즈 → 3페이즈 빠른 판)'],
   ['witch-reflect', '53. ③ 이유식 폭탄 방패 반사'],
+  ['witch-ui-chair', '54. 의자 탈출 조작 화면 미리보기 (으아앙!! 연타 + 탈출 게이지 · 그림 대기)'],
+  ['witch-ui-crush', '55. 최종 콰직 조작 화면 미리보기 (왼손·오른손 · 그림 대기)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -343,6 +345,8 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'witch-p3':
     case 'witch-attacks':
     case 'witch-ending':
+    case 'witch-ui-chair':
+    case 'witch-ui-crush':
     case 'witch-parry':
     case 'witch-rhythm':
     case 'witch-reflect':
@@ -381,6 +385,21 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         'witch-rhythm': [['rhythm', 1], ['rhythm', 2]],
         'witch-reflect': [['reflect', 0], ['reflect', 1], ['reflect', 2]],
       };
+      // 의자 탈출 · 콰직: 그림이 없어 조작 화면(버튼·게이지)만 미리보기 — 끝나면 3초 뒤 다시
+      if (id === 'witch-ui-chair' || id === 'witch-ui-crush') {
+        ready(() => {
+          wb().debugSkipIntro();
+          const loop = (): void => {
+            const bt = wb();
+            if (!bt || bt.mode === 'victory' || bt.mode === 'done') return;
+            if (bt.mode === 'fight' && !bt.busy && !bt.uiPreview && bt.stunT <= 0) bt.debugUiPreview(id === 'witch-ui-chair' ? 'chair' : 'crush');
+            window.setTimeout(loop, 3000);
+          };
+          window.setTimeout(loop, 800);
+        });
+        say('그림 대기 기능 — 조작 버튼·게이지 배치만 확인 (전투 판정 없음)');
+        break;
+      }
       if (sets[id]) {
         let i = 0;
         ready(() => {

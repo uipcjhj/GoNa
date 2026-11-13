@@ -13,7 +13,7 @@
  *   수치: src/game/boss.ts 의 WITCH
  */
 import Phaser from 'phaser';
-import { bus, EV, type BannerInfo, type QteHud } from '../../events';
+import { bus, EV, type BannerInfo, type QteBtn, type QteHud } from '../../events';
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
@@ -105,7 +105,9 @@ export class WitchBattle extends BossBattle {
   rhythmS: { notes: { t: number; hold: number; state: 'wait' | 'ok' | 'miss' | 'hold'; downAt: number }[]; lead: number; holding: boolean; ok: number; waves: number; end: number; ticked: number } | null = null;
   /** (검증용) 미니게임 결과 기록 */
   readonly qteLog: string[] = [];
-  private onQte = (e: { btn: 'spit' | 'cry'; down: boolean }): void => this.qteInput(e.btn, e.down);
+  private onQte = (e: { btn: QteBtn; down: boolean }): void => this.qteInput(e.btn, e.down);
+  /** (개발 메뉴) 의자 탈출 · 콰직 조작 화면 미리보기 — 그림이 없어 버튼·게이지만 (전투 판정 없음) */
+  uiPreview: { kind: 'chair' | 'crush'; gauge: number; count: number; next: 'L' | 'R'; t0: number; end: number } | null = null;
   private lastTalked = false;
   /** 공격 중에만 쓰는 예고·효과 (고나 필살기 등으로 공격이 끊기면 바로 정리 — 깜빡이는 고리·점선이 남아 쌓이지 않게) */
   private temps: Phaser.GameObjects.GameObject[] = [];
@@ -1254,7 +1256,7 @@ export class WitchBattle extends BossBattle {
 
   /** 미니게임 버튼이 떠 있는 동안: 공격·방패·필살 버튼 잠금 */
   get qteBusy(): boolean {
-    return this.spitVisible || !!this.rhythmS;
+    return (!!this.parryS && !this.parryS.done) || !!this.rhythmS || !!this.uiPreview;
   }
 
   /** 미니게임 동안 화면 터치 점프 막기 */
@@ -1269,7 +1271,11 @@ export class WitchBattle extends BossBattle {
 
   qteHud(): QteHud | null {
     const p = this.parryS;
-    if (p && this.spitVisible) return { kind: 'spit', ready: this.time >= p.arrive - WITCH.parry.early };
+    // 받아치기 공격 내내 '받아치기 화면' (기존 버튼 숨김) · 퉤! 버튼은 이유식이 다가올 때만
+    if (p && !p.done) return { kind: 'spit', show: this.spitVisible, ready: this.spitVisible && this.time >= p.arrive - WITCH.parry.early };
+    const u = this.uiPreview;
+    if (u?.kind === 'chair') return { kind: 'chair', gauge: u.gauge, left: Math.max(0, u.end - this.time) };
+    if (u?.kind === 'crush') return { kind: 'crush', next: u.next, count: u.count, total: 10, left: Math.max(0, u.end - this.time) };
     const r = this.rhythmS;
     if (r) {
       return {
@@ -1289,11 +1295,50 @@ export class WitchBattle extends BossBattle {
   }
 
   /** 미니게임 버튼 (퉤! · 으앙!) — 일시정지·대사 중엔 무시 */
-  private qteInput(btn: 'spit' | 'cry', down: boolean): void {
+  private qteInput(btn: QteBtn, down: boolean): void {
     const state = (this.host.scene as unknown as { state?: string }).state;
     if (state !== 'playing' || this.frozen || this.mode !== 'fight') return;
+    if (this.uiPreview) {
+      if (down) this.previewPress(btn);
+      return;
+    }
     if (btn === 'spit' && down) this.spitPress();
     else if (btn === 'cry') this.cryPress(down);
+  }
+
+  /** (개발 메뉴) 의자 탈출 · 콰직 조작 화면 미리보기 시작 — 그림 대기라 고나·마녀·의자 연출 없이 조작 UI 만 */
+  debugUiPreview(kind: 'chair' | 'crush'): void {
+    this.debugHold = true;
+    this.uiPreview = { kind, gauge: 0.3, count: 0, next: 'L', t0: this.time, end: this.time + (kind === 'chair' ? 4 : 6) };
+    this.banner({ top: '🧪 UI 미리보기', name: kind === 'chair' ? '이유식 의자 탈출 (그림 대기)' : '이유식 콰직! (그림 대기)', desc: kind === 'chair' ? '으아앙!! 연타로 게이지 채우기' : '왼손·오른손 번갈아 누르기', ms: 1400, tone: 'aim' });
+  }
+
+  private previewPress(btn: QteBtn): void {
+    const u = this.uiPreview!;
+    if (u.kind === 'chair' && btn === 'mash') {
+      u.gauge = Math.min(1, u.gauge + 0.08);
+      sound.cry(1);
+      if (u.gauge >= 1) this.endPreview(true);
+    } else if (u.kind === 'crush' && (btn === 'left' || btn === 'right')) {
+      if ((btn === 'left') === (u.next === 'L')) {
+        u.count++;
+        u.next = u.next === 'L' ? 'R' : 'L';
+        sound.splat();
+        if (u.count >= 10) this.endPreview(true);
+      }
+    }
+  }
+
+  private updatePreview(dt: number): void {
+    const u = this.uiPreview;
+    if (!u) return;
+    if (u.kind === 'chair') u.gauge = Math.max(0, u.gauge - 0.12 * dt);
+    if (this.time >= u.end) this.endPreview(false);
+  }
+
+  private endPreview(ok: boolean): void {
+    this.uiPreview = null;
+    this.banner({ top: '🧪 UI 미리보기', name: ok ? '성공!' : '실패', desc: '조작 화면이 일반 전투로 돌아왔어요', ms: 1200, tone: ok ? 'good' : 'aim' });
   }
 
   /** 마녀 얼굴 자리 (스프라이트 칸 66×53 에서 얼굴 가운데 28,27) */
@@ -1640,6 +1685,7 @@ export class WitchBattle extends BossBattle {
     this.reflectS?.s.destroy();
     this.reflectS = null;
     this.rhythmS = null;
+    this.uiPreview = null;
     this.faceGoo?.s.destroy();
     this.faceGoo = null;
   }
@@ -1654,6 +1700,7 @@ export class WitchBattle extends BossBattle {
     this.updateParry();
     this.updateReflect();
     this.updateRhythm();
+    this.updatePreview(dt);
     if (this.faceGoo) {
       // 얼굴에 붙은 이유식: 마녀를 따라다니다 흘러내림
       const f = this.face();

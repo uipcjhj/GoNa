@@ -2649,7 +2649,9 @@ export class GameScene extends Phaser.Scene {
   private qteKey(q: CombatHud['qte']): string {
     if (!q) return '-';
     if (q.kind === 'resist') return `r${Math.round(q.gauge * 50)}`;
-    if (q.kind === 'spit') return `s${q.ready ? 1 : 0}`;
+    if (q.kind === 'spit') return `s${q.show ? 1 : 0}${q.ready ? 1 : 0}`;
+    if (q.kind === 'chair') return `c${Math.round(q.gauge * 50)}:${Math.ceil(q.left)}`;
+    if (q.kind === 'crush') return `k${q.next}${q.count}:${Math.ceil(q.left)}`;
     if (q.kind === 'rhythm') return `m${q.holding ? 1 : 0}${q.score}:${q.notes.map((n) => `${Math.round(n.x * 300)}${n.state[0]}`).join(',')}`;
     return q.kind;
   }

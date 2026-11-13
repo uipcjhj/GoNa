@@ -2014,7 +2014,8 @@ h2 {
   width: var(--sp-hit);
   height: var(--sp-hit);
   margin-bottom: calc(var(--atk-hit) * 0.62);
-  margin-right: -14px;
+  /* 공격 버튼 터치 영역과 겹치지 않게 (예전 -14px 는 두 버튼 판정이 겹쳤음) */
+  margin-right: 0;
 }
 .bt-face {
   position: absolute;
@@ -3831,20 +3832,48 @@ body.in-ending .prologue-ui .pr-box {
   color: #fff6c0;
 }
 
-/* ───────── 최종 보스 미니게임: 퉤! · 으앙! 버튼 · 울음 리듬 줄 ───────── */
-/* 그때만 아래 가운데 — 방패(왼쪽)·공격(오른쪽) 버튼 사이 빈 곳 (겹치지 않게 · 엄지로 누르기 쉬운 자리) */
-.bt-qte {
+/* ───────── 최종 보스 미니게임 조작 줄 ─────────
+   상태마다 아래 조작 영역을 통째로 바꿈 (battleUi.setUiState):
+     ui-normal = 방패·공격·필살 / ui-spit = 퉤! / ui-rhythm = 리듬 줄 + 으앙! / ui-chair = 탈출 게이지 + 으아앙!! / ui-crush = 왼손 · 진행 · 오른손
+   일반 버튼은 display:none — 화면과 터치 판정에서 모두 빠짐 (투명하게만 하지 않음).
+   조작 줄은 화면 아래 안전 영역(홈 인디케이터 위) · 땅 아래 흙 부분 — 고나·마녀·투사체·위 HP 바를 가리지 않음 */
+.battle-pad:not(.ui-normal) .bt-group,
+.battle-pad:not(.ui-normal) .bt-resist {
+  display: none;
+}
+.qte-dock {
   position: absolute;
-  left: 46%;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(36vw, 150px);
+  left: max(6px, env(safe-area-inset-left));
+  right: max(6px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  height: 96px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 7;
+}
+.qte-dock.hidden,
+.qte-dock .hidden {
+  display: none !important;
+}
+.battle-pad.ui-crush .qte-dock {
+  justify-content: space-between;
+}
+.battle-pad.ui-spit .qte-dock {
+  justify-content: center !important;
+}
+.bt-qte {
+  flex: 0 0 auto;
+  position: relative;
+  width: 132px;
   height: 92px;
   margin: 0;
   padding: 0 0 6px;
   font: inherit;
-  font-size: clamp(28px, 8.4vw, 36px);
-  letter-spacing: 0.06em;
+  font-size: 30px;
+  letter-spacing: 0.04em;
   color: #fff8e0;
   border: 4px solid #2a1236;
   border-radius: 16px;
@@ -3855,16 +3884,18 @@ body.in-ending .prologue-ui .pr-box {
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
-  z-index: 7;
+  white-space: nowrap;
 }
-.bt-qte.hidden {
-  display: none;
+.bt-qte.pressed {
+  transform: translateY(4px) scale(0.97);
 }
 .bt-spit {
+  width: min(220px, 60vw);
+  font-size: 36px;
   text-shadow: 0 3px 0 #1d5a08, 2px 0 0 #1d5a08, -2px 0 0 #1d5a08;
   background: linear-gradient(#a8f05a, #5cbf2a);
   box-shadow: inset 0 4px 0 #d8ffa0, inset 0 -8px 0 #3e8a18, 0 5px 0 #1a3a08, 0 0 0 3px #fff3a0;
-  opacity: 0.82;
+  opacity: 0.85;
 }
 /* 지금 누르면 맞는 때: 밝게 번쩍 */
 .bt-spit.ready {
@@ -3872,41 +3903,62 @@ body.in-ending .prologue-ui .pr-box {
   box-shadow: inset 0 4px 0 #d8ffa0, inset 0 -8px 0 #3e8a18, 0 5px 0 #1a3a08, 0 0 0 4px #ffe14a, 0 0 24px 8px rgba(255, 230, 80, 0.85);
   animation: resist-pulse 0.16s ease-in-out infinite alternate;
 }
-.bt-cry {
+.bt-cry,
+.bt-mash {
   text-shadow: 0 3px 0 #1a2a7a, 2px 0 0 #1a2a7a, -2px 0 0 #1a2a7a;
   background: linear-gradient(#8fd0ff, #3d7cf0);
   box-shadow: inset 0 4px 0 #cfeaff, inset 0 -8px 0 #2148a8, 0 5px 0 #0e1a4a, 0 0 0 3px #ffd54a, 0 0 18px 4px rgba(90, 160, 255, 0.55);
 }
-.bt-qte.pressed {
-  transform: translateX(-50%) translateY(4px) scale(0.97);
-}
 .bt-cry.holding {
   background: linear-gradient(#ffd27a, #f08a2a);
 }
-.rhythm-box {
-  /* 고나 오른쪽 빈 공간 (리듬 동안엔 날아오는 공격 없음) · 버튼 줄 바로 위 */
-  position: absolute;
-  right: 6px;
-  bottom: calc(max(6px, env(safe-area-inset-bottom)) + 140px);
-  width: min(250px, 62vw);
+.bt-mash {
+  width: 140px;
+  font-size: 26px;
+  animation: qte-pulse 0.3s ease-in-out infinite alternate;
+}
+.bt-hand {
+  width: 96px;
+  font-size: 18px;
+  color: #4a2a10;
+  text-shadow: 0 2px 0 #fff2d0;
+  background: linear-gradient(#ffe0a8, #e8a050);
+  box-shadow: inset 0 4px 0 #fff2d0, inset 0 -8px 0 #b8702a, 0 5px 0 #4a2a10;
+  opacity: 0.7;
+}
+/* 지금 눌러야 하는 손: 밝게 */
+.bt-hand.next {
+  opacity: 1;
+  box-shadow: inset 0 4px 0 #fff2d0, inset 0 -8px 0 #b8702a, 0 5px 0 #4a2a10, 0 0 0 4px #ffe14a, 0 0 20px 6px rgba(255, 230, 80, 0.8);
+}
+/* 게이지 상자 (리듬 줄 · 의자 탈출 · 콰직 진행) — 버튼과 같은 줄에 나란히 (겹치지 않게) */
+.rhythm-box,
+.qte-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 300px;
   padding: 6px 10px 6px;
-  background: rgba(30, 16, 40, 0.8);
+  background: rgba(30, 16, 40, 0.86);
   border: 2px solid #8fd0ff;
   border-radius: 8px;
   pointer-events: none;
-  z-index: 6;
+  box-sizing: border-box;
 }
-.rhythm-box.hidden {
-  display: none;
+.qte-panel {
+  border-color: #ffd54a;
 }
-.rhythm-title {
+.rhythm-title,
+.qte-panel-title {
   display: flex;
   justify-content: space-between;
+  gap: 6px;
   margin: 0 0 4px;
   font-size: 13px;
   color: #cfeaff;
+  white-space: nowrap;
 }
-.rhythm-score {
+.rhythm-score,
+.qte-panel-sub {
   color: #ffe14a;
 }
 .rhythm-track {
@@ -3952,28 +4004,73 @@ body.in-ending .prologue-ui .pr-box {
 .rhythm-note.hidden {
   display: none;
 }
-.rhythm-hint {
+.rhythm-hint,
+.qte-panel-hint {
   margin: 4px 0 0;
   font-size: 11px;
   text-align: center;
   color: #fff6d8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qte-gauge {
+  position: relative;
+  height: 20px;
+  background: #3a2440;
+  border: 2px solid #fff6d8;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.qte-gauge-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(#b8ff7a, #6ccf3a);
+  transition: width 0.08s linear;
+}
+.qte-gauge-fill.low {
+  background: linear-gradient(#ff9f9f, #e0504a);
+}
+.qte-gauge-fill.crush {
+  background: linear-gradient(#ffe68a, #f0a23a);
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .bt-qte {
-    left: 50%;
-    height: 64px;
-    width: 170px;
-    font-size: 26px;
-  }
-  .rhythm-box {
+  /* 가로 화면: 고나(왼쪽 앞) 발밑을 피해 고나 오른쪽부터 아래 줄 · 위 마녀·투사체보다 아래 */
+  .qte-dock {
+    left: max(30vw, calc(env(safe-area-inset-left) + 210px));
     right: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(max(6px, env(safe-area-inset-bottom)) + 74px);
-    width: min(300px, 46vw);
+    width: min(440px, calc(70vw - max(6px, env(safe-area-inset-right))));
+    bottom: max(6px, env(safe-area-inset-bottom));
+    height: 66px;
+    justify-content: flex-start;
+  }
+  .battle-pad.ui-crush .qte-dock {
+    right: max(6px, env(safe-area-inset-right));
+    width: auto;
+  }
+  .bt-qte {
+    width: 120px;
+    height: 62px;
+    font-size: 24px;
+  }
+  .bt-spit {
+    width: 190px;
+    font-size: 30px;
+  }
+  .bt-mash {
+    width: 130px;
+    font-size: 22px;
+  }
+  .bt-hand {
+    width: 104px;
+    font-size: 18px;
+  }
+  .rhythm-box,
+  .qte-panel {
     padding: 4px 8px;
   }
-  .rhythm-hint {
+  .rhythm-hint,
+  .qte-panel-hint {
     display: none;
   }
 }

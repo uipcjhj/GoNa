@@ -75,7 +75,7 @@ export const EV = {
   endingNextReady: 'endingNextReady',
   /** 킁카괴물 코 타이밍 바: { show, pos(0~1), perfect, good, left, paused } */
   aimBar: 'aimBar',
-  /** 최종 보스 미니게임 버튼 (퉤! · 으앙!): { btn: 'spit' | 'cry', down: boolean } */
+  /** 최종 보스 미니게임 버튼 (퉤! · 으앙!): { btn: QteBtn, down: boolean } */
   qteInput: 'qteInput',
   /** 타이밍 바 판정 'perfect' | 'good' | 'miss' */
   aimJudge: 'aimJudge',
@@ -124,10 +124,17 @@ export interface CombatHud {
  *   spit = 이유식 받아치기 '퉤!' 버튼 (ready = 지금 누르면 맞는 때)
  *   rhythm = 울음 리듬 배틀: 음표가 오른쪽에서 판정선(x≈0.18)으로 다가옴 (x 0~1 · len = 꾸욱 길이) + '으앙!' 버튼
  */
+/** 미니게임 버튼: 퉤! · 으앙!(리듬) · 으아앙!!(의자 연타) · 왼손 · 오른손 */
+export type QteBtn = 'spit' | 'cry' | 'mash' | 'left' | 'right';
+
 export type QteHud =
   | { kind: 'aim' | 'aimIntro' }
   | { kind: 'resist'; gauge: number; left: number }
-  | { kind: 'spit'; ready: boolean }
+  | { kind: 'spit'; show: boolean; ready: boolean }
+  /** 이유식 의자 탈출: '으아앙!!' 연타 + 탈출 게이지 (그림 대기 — 지금은 개발 메뉴 UI 미리보기만) */
+  | { kind: 'chair'; gauge: number; left: number }
+  /** 최종 이유식 콰직: 왼손·오른손 번갈아 (그림 대기 — 지금은 개발 메뉴 UI 미리보기만) */
+  | { kind: 'crush'; next: 'L' | 'R'; count: number; total: number; left: number }
   | { kind: 'rhythm'; notes: { x: number; len: number; hold: boolean; state: 'wait' | 'ok' | 'miss' | 'hold' }[]; holding: boolean; title: string; score: number; total: number };
 
 export interface BannerInfo {

@@ -85,6 +85,21 @@ export class BattleUi {
   private rhythmTitle: HTMLParagraphElement;
   private rhythmScore: HTMLSpanElement;
   private rhythmNotes: HTMLDivElement[] = [];
+  /** 미니게임 조작 줄 (아래 조작 영역을 그대로 씀 — 그동안 방패·공격·필살 버튼은 화면·터치 판정에서 모두 빠짐) */
+  private dock: HTMLDivElement;
+  private uiState: 'normal' | 'spit' | 'rhythm' | 'chair' | 'crush' = 'normal';
+  /** 이유식 의자 탈출: '으아앙!!' 연타 + 탈출 게이지 */
+  private mashBtn: HTMLButtonElement;
+  private chairBox: HTMLDivElement;
+  private chairFill: HTMLDivElement;
+  private chairLeft: HTMLSpanElement;
+  /** 최종 이유식 콰직: 왼손 · 오른손 + 가운데 진행 */
+  private leftBtn: HTMLButtonElement;
+  private rightBtn: HTMLButtonElement;
+  private crushBox: HTMLDivElement;
+  private crushFill: HTMLDivElement;
+  private crushCount: HTMLSpanElement;
+  private crushHint: HTMLParagraphElement;
   private bannerTimer = 0;
   private lastHp = -1;
   private lastPlayerHp = -1;
@@ -92,7 +107,7 @@ export class BattleUi {
   private heartSrc = { full: '', empty: '' };
 
   constructor(root: HTMLElement) {
-    this.pad = el('div', 'battle-pad mode-none');
+    this.pad = el('div', 'battle-pad mode-none ui-normal');
     this.shieldBtn = this.makeBtn('bt-shield', '방패', SHIELD_ICON, 4);
     this.shieldCool = el('div', 'bt-cool');
     this.shieldBtn.querySelector('.bt-face')!.prepend(this.shieldCool);
@@ -123,7 +138,17 @@ export class BattleUi {
     this.cryBtn = el('button', 'bt-qte bt-cry hidden', '으앙!') as HTMLButtonElement;
     this.cryBtn.type = 'button';
     this.cryBtn.setAttribute('aria-label', '으앙');
-    this.pad.append(left, right, this.resistBtn, this.spitBtn, this.cryBtn);
+    this.mashBtn = el('button', 'bt-qte bt-mash hidden', '으아앙!!') as HTMLButtonElement;
+    this.mashBtn.type = 'button';
+    this.mashBtn.setAttribute('aria-label', '으아앙 연타');
+    this.leftBtn = el('button', 'bt-qte bt-hand bt-hand-l hidden', '✋ 왼손') as HTMLButtonElement;
+    this.leftBtn.type = 'button';
+    this.leftBtn.setAttribute('aria-label', '왼손');
+    this.rightBtn = el('button', 'bt-qte bt-hand bt-hand-r hidden', '오른손 🤚') as HTMLButtonElement;
+    this.rightBtn.type = 'button';
+    this.rightBtn.setAttribute('aria-label', '오른손');
+    this.dock = el('div', 'qte-dock hidden') as HTMLDivElement;
+    this.pad.append(left, right, this.resistBtn, this.dock);
 
     // 위: 고나 하트 + HP · 보스 체력
     this.top = el('div', 'battle-top hidden');
@@ -184,6 +209,27 @@ export class BattleUi {
       rhTrack.append(n);
     }
     this.rhythmBox.append(rhHead, rhTrack, el('p', 'rhythm-hint', '● 톡 = 짧게 · ▬ 꾸욱 = 길게 누르기'));
+    // 이유식 의자 탈출 게이지
+    this.chairBox = el('div', 'qte-panel chair-box hidden') as HTMLDivElement;
+    const chHead = el('p', 'qte-panel-title');
+    this.chairLeft = el('span', 'qte-panel-sub', '') as HTMLSpanElement;
+    chHead.append(el('span', '', '🪑 의자 탈출!'), this.chairLeft);
+    const chTrack = el('div', 'qte-gauge');
+    this.chairFill = el('div', 'qte-gauge-fill') as HTMLDivElement;
+    chTrack.append(this.chairFill);
+    this.chairBox.append(chHead, chTrack, el('p', 'qte-panel-hint', '으아앙!! 을 마구 눌러서 탈출!'));
+    // 최종 콰직 진행
+    this.crushBox = el('div', 'qte-panel crush-box hidden') as HTMLDivElement;
+    const crHead = el('p', 'qte-panel-title');
+    this.crushCount = el('span', 'qte-panel-sub', '0/10') as HTMLSpanElement;
+    crHead.append(el('span', '', '💥 콰직!'), this.crushCount);
+    const crTrack = el('div', 'qte-gauge');
+    this.crushFill = el('div', 'qte-gauge-fill crush') as HTMLDivElement;
+    crTrack.append(this.crushFill);
+    this.crushHint = el('p', 'qte-panel-hint', '왼손 → 오른손 번갈아!') as HTMLParagraphElement;
+    this.crushBox.append(crHead, crTrack, this.crushHint);
+    // 조작 줄 순서: [왼손] [게이지/리듬 줄] [퉤!·으앙!·으아앙!!] [오른손]
+    this.dock.append(this.leftBtn, this.rhythmBox, this.chairBox, this.crushBox, this.spitBtn, this.cryBtn, this.mashBtn, this.rightBtn);
     // 킁카괴물 코 타이밍 바 (지친 동안만): 커서가 양 끝을 왕복 · 가운데 PERFECT(코) · 주변 GOOD
     this.aimBox = el('div', 'aimbar hidden');
     const at = el('div', 'aimbar-track');
@@ -219,7 +265,7 @@ export class BattleUi {
     });
     // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
     this.scoreEl = el('div', 'hud-score hidden', '점수 0');
-    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.rhythmBox, this.pad);
+    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.pad);
 
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
@@ -230,6 +276,9 @@ export class BattleUi {
     // 퉤!: 누르는 순간 한 번 · 으앙!: 누름·뗌 둘 다 (톡과 꾸욱 구분)
     this.bindPress(this.spitBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'spit', down: true }));
     this.bindPress(this.cryBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'cry', down: true }), () => bus.emit(EV.qteInput, { btn: 'cry', down: false }));
+    this.bindPress(this.mashBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'mash', down: true }));
+    this.bindPress(this.leftBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'left', down: true }));
+    this.bindPress(this.rightBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'right', down: true }));
 
     bus.on(EV.combatHud, (h: CombatHud) => this.render(h));
     bus.on(EV.banner, (b: BannerInfo) => this.showBanner(b));
@@ -300,7 +349,7 @@ export class BattleUi {
     const prev = this.hud;
     this.hud = h;
     if (prev?.mode !== h.mode) {
-      this.pad.className = `battle-pad mode-${h.mode}`;
+      this.pad.className = `battle-pad mode-${h.mode} ui-${this.uiState}`;
       document.body.classList.toggle('in-battle', h.mode === 'battle');
       document.body.classList.toggle('has-pad', h.mode !== 'none');
     }
@@ -321,13 +370,32 @@ export class BattleUi {
       this.setStyle(this.resistFill, 'width', `${Math.round(resist.gauge * 100)}%`);
       this.resistFill.classList.toggle('low', resist.gauge < 0.25);
     }
-    // 최종 보스: 퉤! (이유식이 다가올 때만) · 울음 리듬 (줄 + 으앙! 버튼)
+    // 최종 보스 미니게임: 상태마다 조작 줄을 통째로 바꿈 (기존 방패·공격·필살 버튼은 display:none → 터치 판정도 없음)
     const spit = h.qte?.kind === 'spit' ? h.qte : null;
-    this.spitBtn.classList.toggle('hidden', !spit);
-    this.spitBtn.classList.toggle('ready', !!spit?.ready);
     const rh = h.qte?.kind === 'rhythm' ? h.qte : null;
+    const chair = h.qte?.kind === 'chair' ? h.qte : null;
+    const crush = h.qte?.kind === 'crush' ? h.qte : null;
+    this.setUiState(spit ? 'spit' : rh ? 'rhythm' : chair ? 'chair' : crush ? 'crush' : 'normal');
+    this.spitBtn.classList.toggle('hidden', !spit?.show);
+    this.spitBtn.classList.toggle('ready', !!spit?.ready);
     this.cryBtn.classList.toggle('hidden', !rh);
     this.rhythmBox.classList.toggle('hidden', !rh);
+    this.mashBtn.classList.toggle('hidden', !chair);
+    this.chairBox.classList.toggle('hidden', !chair);
+    if (chair) {
+      this.setStyle(this.chairFill, 'width', `${Math.round(chair.gauge * 100)}%`);
+      this.chairFill.classList.toggle('low', chair.gauge < 0.25);
+      this.setText(this.chairLeft, `${Math.ceil(chair.left)}초`);
+    }
+    for (const b of [this.leftBtn, this.rightBtn]) b.classList.toggle('hidden', !crush);
+    this.crushBox.classList.toggle('hidden', !crush);
+    if (crush) {
+      this.leftBtn.classList.toggle('next', crush.next === 'L');
+      this.rightBtn.classList.toggle('next', crush.next === 'R');
+      this.setStyle(this.crushFill, 'width', `${Math.round((crush.count / crush.total) * 100)}%`);
+      this.setText(this.crushCount, `${crush.count}/${crush.total}`);
+      this.setText(this.crushHint, crush.next === 'L' ? '지금: ✋ 왼손!' : '지금: 오른손 🤚!');
+    }
     if (rh) {
       this.cryBtn.classList.toggle('holding', rh.holding);
       this.setText(this.rhythmTitle, rh.title);
@@ -401,6 +469,14 @@ export class BattleUi {
     } else this.lastHp = -1;
   }
 
+  /** 조작 상태 전환: normal = 방패·공격·필살 / 그 밖 = 그 미니게임 버튼·게이지만 */
+  private setUiState(s: BattleUi['uiState']): void {
+    if (s === this.uiState) return;
+    this.uiState = s;
+    for (const k of ['normal', 'spit', 'rhythm', 'chair', 'crush']) this.pad.classList.toggle(`ui-${k}`, k === s);
+    this.dock.classList.toggle('hidden', s === 'normal');
+  }
+
   /** 흔들림 (강제 레이아웃 없이 Web Animations) */
   private shake(n: HTMLElement): void {
     n.animate?.([{ transform: 'translateX(0)' }, { transform: 'translateX(-3px)' }, { transform: 'translateX(3px)' }, { transform: 'translateX(0)' }], { duration: 240, easing: 'steps(4)' });
@@ -421,6 +497,9 @@ export class BattleUi {
 
   private reset(): void {
     this.pad.className = 'battle-pad mode-none';
+    this.uiState = 'normal';
+    this.pad.classList.add('ui-normal');
+    this.dock.classList.add('hidden');
     document.body.classList.remove('in-battle');
     document.body.classList.remove('has-pad');
     this.top.classList.add('hidden');
