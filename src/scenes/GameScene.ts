@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_ASSET, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
+import { CHARACTER_ASSET, CASTLE_ART, GAME_BG, PHYSICS, PLAYER, SNACKS, SPEED, STORAGE_KEYS, VIEW, type SnackKind } from '../config';
 import { addCanvas, addSheet, FAR_H, GROUND_TILE_H, MID_H, NEAR_H, TEX } from '../art/textures';
 import { bus, EV, type AttackState, type BossId, type CombatHud, type GameOverInfo, type RestartOptions } from '../events';
 import { haptics } from '../haptics';
@@ -20,7 +20,7 @@ import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/fa
 import { queueEndingArt, type EndingScene } from './EndingScene';
 import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, targetSheet, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
 import { witchArm, witchDrop, witchGoo, witchPot, witchPuddle, witchSheet, witchSmoke, witchSpoon, witchTarget, WITCH_SHEET_FRAMES } from '../art/witchArt';
-import { castleBolt, castleGround, castleInterior, castleMoon, castleSilhouette, clueBush, cluePrint, clueSpoon } from '../art/castleArt';
+import { castleBolt, clueBush, cluePrint, clueSpoon } from '../art/castleArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
@@ -79,6 +79,9 @@ const SNACK_TEX: Record<SnackKind, string> = {
   cookie: TEX.cookie,
   jelly: TEX.jelly,
 };
+
+/** 성 입구에서 멈출 때 감속 (px/s²) */
+const HALT_DECEL = 140;
 
 export class GameScene extends Phaser.Scene {
   private state: State = 'ready';
@@ -172,6 +175,11 @@ export class GameScene extends Phaser.Scene {
   private bgImage: Phaser.GameObjects.TileSprite | null = null;
   private bgHaze: Phaser.GameObjects.Graphics | null = null;
   private bgScale = 1;
+  /** 지금 배경 그림의 지면선 줄 · 위쪽 숨김 줄 (숲·성 앞: 400·100 / 성 안 그림은 바닥선이 336줄: 336·36) */
+  private bgRow = GAME_BG.groundRow;
+  private bgTop = GAME_BG.extraTop;
+  /** 마지막 모험의 승인된 성 배경 (숲 배경과 같은 좌표·배율로 겹침 · 좌우 반복 없이 그림 안에서만 천천히 다가감) */
+  private backdrops: { key: string; spr: Phaser.GameObjects.TileSprite; focus: number; t: number; pan: number; stop: boolean }[] = [];
   private ground!: Phaser.GameObjects.TileSprite;
 
   // 플레이어
@@ -274,6 +282,9 @@ export class GameScene extends Phaser.Scene {
     this.pendingFinale = null;
     this.inCastle = false;
     this.halt = false;
+    this.bgRow = GAME_BG.groundRow;
+    this.bgTop = GAME_BG.extraTop;
+    this.backdrops = [];
     // 체크포인트에서 이어하기 (개발용 몬스터 테스트는 3단계 체크포인트와 같은 상태, 저장은 안 함)
     const cp = data?.checkpoint ? loadCheckpoint() : data?.devMonsters ? { id: 'walker' as const, score: 0, snacks: 0, at: 0 } : null;
     if (cp?.id === 'walker') {
@@ -502,16 +513,19 @@ export class GameScene extends Phaser.Scene {
       // 원본의 groundRow 줄이 게임 땅 윗면에 오도록 확대 (위쪽은 화면 맨 위부터)
       const src = this.textures.get(TEX.bgImage).getSourceImage() as HTMLImageElement;
       // 가로: 원본 그림(숲 지붕 제외)의 맨 위가 화면 맨 위에 오도록 / 세로: 덜 확대해서 숲을 넓게 (위는 숲 지붕이 채움)
-      const landscapeScale = this.groundY / (GAME_BG.groundRow - GAME_BG.extraTop);
-      const minScale = this.groundY / GAME_BG.groundRow; // 이보다 작으면 화면 위가 빔
+      const landscapeScale = this.groundY / (this.bgRow - this.bgTop);
+      const minScale = this.groundY / this.bgRow; // 이보다 작으면 화면 위가 빔
       this.bgScale = this.H > VIEW.baseHeight ? Math.max(GAME_BG.portraitScale, minScale) : landscapeScale;
       this.bgImage
-        .setPosition(0, Math.round((this.groundY - GAME_BG.groundRow * this.bgScale) * VIEW.renderScale) / VIEW.renderScale)
+        .setPosition(0, Math.round((this.groundY - this.bgRow * this.bgScale) * VIEW.renderScale) / VIEW.renderScale)
         .setSize(this.W, Math.ceil(src.height * this.bgScale))
         .setTileScale(this.bgScale, this.bgScale);
-      this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -80, this.W, this.groundY + 80);
+      if (!this.inCastle) this.bgHaze?.clear().fillStyle(GAME_BG.hazeColor, GAME_BG.haze).fillRect(0, -80, this.W, this.groundY + 80);
+      for (const b of this.backdrops) this.placeBackdrop(b.spr);
     }
     this.ground.setPosition(0, this.groundY).setSize(this.W, GROUND_TILE_H);
+    // 성 안: 땅 띠도 승인된 성 안 그림의 바닥 부분 (같은 배율 · 바닥선 2줄 위부터)
+    if (this.inCastle && this.ground.texture.key === CASTLE_ART.interior.key) this.ground.setTileScale(this.bgScale, this.bgScale).setTilePosition(this.ground.tilePositionX, this.bgRow - 2);
 
     this.deepDirt.clear();
     const dirtTop = this.groundY + GROUND_TILE_H;
@@ -709,7 +723,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.state === 'playing' && this.battle) {
+    if (this.halt && this.battle?.mode === 'fight') this.halt = false;
+    if (this.halt && this.state === 'playing') {
+      // 성 입구 도착 · 등장 컷신: 일정하게 감속해 완전히 멈춰 섬 (속도 회복 계산을 건너뜀 — 멈추는 지점에 성 입구 문이 오게)
+      this.speed = Math.max(0, this.speed - HALT_DECEL * dt);
+    } else if (this.state === 'playing' && this.battle) {
       // 보스전: 속도 고정, 장애물 없음
       this.speed += (SPEED.start - this.speed) * Math.min(1, dt * 2);
     } else if (this.state === 'playing') {
@@ -733,11 +751,6 @@ export class GameScene extends Phaser.Scene {
       this.speed = SPEED.start * 0.8;
     }
 
-    // 성 입구 도착 · 등장 컷신: 천천히 멈춰 섬 (전투가 시작되면 다시 달림)
-    if (this.halt) {
-      if (this.battle?.mode === 'fight') this.halt = false;
-      else this.speed = Math.max(0, this.speed - 140 * dt);
-    }
     const move = this.speed * dt;
     this.distance += move;
     this.scrollBackground(dt);
@@ -764,7 +777,8 @@ export class GameScene extends Phaser.Scene {
   private scrollBackground(dt: number): void {
     // 스크롤은 캔버스 픽셀(논리 1/5) 단위로 — 논리 1px(=5 캔버스 px) 단위로 자르면 한 프레임 5px·10px 로 들쭉날쭉 움직여 끊겨 보임
     const sp = (v: number): number => Math.round(v * VIEW.renderScale) / VIEW.renderScale;
-    this.ground.tilePositionX = sp(this.distance);
+    this.ground.tilePositionX = this.inCastle && this.ground.texture.key === CASTLE_ART.interior.key ? sp(this.distance) / this.bgScale : sp(this.distance);
+    this.updateBackdrops(dt);
     if (this.near.visible) this.near.tilePositionX = sp(this.distance * 0.7);
     if (this.mid.visible) this.mid.tilePositionX = sp(this.distance * 0.35);
     if (this.far.visible) this.far.tilePositionX = sp(this.distance * 0.1);
@@ -1790,10 +1804,6 @@ export class GameScene extends Phaser.Scene {
       ['witch-pot', witchPot],
       ['witch-smoke', witchSmoke],
       ['witch-target', witchTarget],
-      ['castle-bg', castleInterior],
-      ['castle-ground', castleGround],
-      ['castle-sil', castleSilhouette],
-      ['castle-moon', castleMoon],
       ['castle-bolt', castleBolt],
       ['clue-spoon', clueSpoon],
       ['clue-bush', clueBush],
@@ -2169,6 +2179,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 마지막 모험 시작 (킁카괴물 뒤 · 이어하기 · 테스트: from = 시작 시각 초) */
   startFinale(from = 0): void {
+    this.loadCastleArt();
     this.finale?.destroy();
     this.clearedBosses.add('kiss');
     this.clearedBosses.add('sniff');
@@ -2197,11 +2208,109 @@ export class GameScene extends Phaser.Scene {
           this.moodTint.setFillStyle(color, this.moodTint.fillAlpha);
           this.tweens.add({ targets: this.moodTint, fillAlpha: alpha, duration: ms, ease: 'Sine.InOut' });
         },
+        backdrop: (kind, ms, pan) => this.finaleBackdrop(kind, ms, pan),
         arrive: () => this.enterCastle(false),
       },
       from,
     );
     bus.emit(EV.finaleStart, { from });
+  }
+
+  /** 승인된 성 배경 그림 4장 불러오기 (처음 로딩을 무겁게 하지 않으려고 킁카괴물전·마지막 모험 때 미리) → 다 있으면 done */
+  loadCastleArt(done?: () => void): void {
+    const all = [CASTLE_ART.far, CASTLE_ART.near, CASTLE_ART.gate, CASTLE_ART.interior];
+    const missing = all.filter((a) => !this.textures.exists(a.key));
+    if (!missing.length) {
+      done?.();
+      return;
+    }
+    for (const a of missing) this.load.image(a.key, a.url);
+    if (done) {
+      const check = (): void => {
+        if (all.every((a) => this.textures.exists(a.key))) {
+          this.load.off(Phaser.Loader.Events.COMPLETE, check);
+          done();
+        }
+      };
+      this.load.on(Phaser.Loader.Events.COMPLETE, check);
+    }
+    if (!this.load.isLoading()) this.load.start();
+  }
+
+  /**
+   * 성 배경 그림을 지금 배경(숲·앞 단계 그림) 위에 ms 동안 겹쳐 나타나게 함.
+   * 숲 배경과 같은 위치·배율. far·near: pan 초 동안 그림 안에서 성 쪽으로 천천히 다가감 / gate: 고나가 멈추는 순간 문이 제자리
+   */
+  private finaleBackdrop(kind: 'far' | 'near' | 'gate', ms: number, pan: number): void {
+    const art = CASTLE_ART[kind];
+    if (!this.bgImage) return;
+    if (!this.textures.exists(art.key)) {
+      this.loadCastleArt(() => this.finaleBackdrop(kind, Math.min(ms, 800), pan));
+      return;
+    }
+    if (this.backdrops.some((b) => b.key === art.key)) return;
+    const spr = this.add.tileSprite(0, 0, 10, 10, art.key).setOrigin(0, 0).setAlpha(0);
+    this.placeBackdrop(spr);
+    this.children.moveAbove(spr, this.backdrops.length ? this.backdrops[this.backdrops.length - 1].spr : this.bgImage);
+    const b = { key: art.key, spr, focus: art.focus, t: 0, pan: Math.max(0.1, pan), stop: kind === 'gate' };
+    this.backdrops.push(b);
+    this.updateBackdrops(0);
+    this.tweens.add({
+      targets: spr,
+      alpha: 1,
+      duration: Math.max(10, ms),
+      ease: 'Sine.InOut',
+      onComplete: () => {
+        // 다 덮었으면 아래 단계 그림은 정리 (겹친 채 계속 그리지 않게)
+        for (const o of this.backdrops.filter((x) => x !== b && x.spr.depth === b.spr.depth && this.children.getIndex(x.spr) < this.children.getIndex(b.spr))) o.spr.setVisible(false);
+      },
+    });
+  }
+
+  /**
+   * 성 배경 배율: 숲 배경과 같은 배율 · 같은 지면선(400줄) — 단, 그림 폭(772)이 화면보다 좁아지는 가로 화면에서는
+   * 화면 폭을 덮을 만큼만 키움 (좌우 끝이 이어지지 않는 그림이라 반복하면 경계가 보임)
+   */
+  private get backdropScale(): number {
+    return Math.max(this.bgScale, this.W / 772);
+  }
+
+  private placeBackdrop(spr: Phaser.GameObjects.TileSprite): void {
+    const k = this.backdropScale;
+    spr
+      .setPosition(0, Math.round((this.groundY - GAME_BG.groundRow * k) * VIEW.renderScale) / VIEW.renderScale)
+      .setSize(this.W, Math.ceil(460 * k))
+      .setTileScale(k, k);
+  }
+
+  /** 성 배경의 보이는 범위: 그림 안에서만 (좌우 반복 경계가 보이지 않게) · 성(문)은 고나보다 오른쪽 */
+  private updateBackdrops(dt: number): void {
+    if (!this.backdrops.length) return;
+    const sc = this.backdropScale;
+    const ww = this.W / sc;
+    const maxLeft = Math.max(0, 772 - ww);
+    for (const b of this.backdrops) {
+      if (!b.spr.visible) continue;
+      const end = Phaser.Math.Clamp(b.focus - CASTLE_ART.screenAt * ww, 0, maxLeft);
+      let left: number;
+      if (b.stop) {
+        // 남은 감속 거리만큼 앞에서 시작 → 멈추는 순간 문이 제자리 (배경은 땅의 GAME_BG.scroll 배 속도)
+        const rem = (GAME_BG.scroll * this.speed * this.speed) / (2 * HALT_DECEL) / sc;
+        left = Math.max(0, end - rem);
+      } else {
+        b.t += dt;
+        const k = Math.min(1, b.t / b.pan);
+        const e = k * k * (3 - 2 * k);
+        const start = Math.max(0, end - CASTLE_ART.drift);
+        left = start + (end - start) * e;
+      }
+      b.spr.tilePositionX = Math.round(left * sc * VIEW.renderScale) / (VIEW.renderScale * sc);
+    }
+  }
+
+  private clearBackdrops(): void {
+    for (const b of this.backdrops) b.spr.destroy();
+    this.backdrops = [];
   }
 
   /** (검증용) 마지막 모험 상태 */
@@ -2229,16 +2338,24 @@ export class GameScene extends Phaser.Scene {
     };
     if (instant) {
       this.speed = 0;
-      go();
+      // 이어하기·다시하기: 성 안 그림을 불러온 뒤 바로 성 안
+      this.loadCastleArt(() => {
+        if (!this.inCastle && !this.battle) go();
+      });
       return;
     }
+    // 성 입구 그림이 겹쳐 나타나며 감속 → 멈춘 채 잠깐 → 암전 → 성 안 → 등장 컷신
+    this.finaleBackdrop('gate', 1100, 1);
     const cam = this.cameras.main;
-    this.time.delayedCall(1300, () => {
+    const stopSec = this.speed / HALT_DECEL;
+    this.time.delayedCall(Math.round(stopSec * 1000) + 1100, () => {
       if (this.state !== 'playing' && this.state !== 'paused') return;
-      cam.fadeOut(500, 12, 6, 22);
-      this.time.delayedCall(560, () => {
-        go();
-        cam.fadeIn(600, 12, 6, 22);
+      cam.fadeOut(600, 12, 6, 22);
+      this.time.delayedCall(660, () => {
+        this.loadCastleArt(() => {
+          go();
+          cam.fadeIn(700, 12, 6, 22);
+        });
       });
     });
   }
@@ -2246,13 +2363,21 @@ export class GameScene extends Phaser.Scene {
   /** 성 안 모습: 배경·바닥을 성으로 바꿈 (배치·스크롤은 숲 배경과 같은 방식) */
   private setCastleLook(): void {
     this.inCastle = true;
-    if (this.bgImage && this.textures.exists('castle-bg')) this.bgImage.setTexture('castle-bg');
-    if (this.textures.exists('castle-ground')) this.ground.setTexture('castle-ground');
+    this.clearBackdrops();
+    // 승인된 성 안 그림: 배경 + 땅 띠(같은 그림의 바닥 부분) — 그림 속 바닥선 336줄을 게임 땅 윗면에
+    const art = CASTLE_ART.interior;
+    if (this.bgImage && this.textures.exists(art.key)) {
+      this.bgImage.setTexture(art.key);
+      this.ground.setTexture(art.key);
+      this.bgRow = art.groundRow;
+      this.bgTop = art.extraTop;
+    }
     this.bgHaze?.clear();
     this.deepDirt.clear();
     const dirtTop = this.groundY + GROUND_TILE_H;
     if (dirtTop < this.H) {
-      const bands = ['#3e2c58', '#36264d', '#2f2143', '#281c3a', '#22172f'];
+      // 땅 띠 아래(세로 화면의 남는 아래쪽): 성 안 그림 맨 아래 흙과 같은 색으로 점점 어둡게
+      const bands = ['#6f3850', '#68344b', '#603046', '#572c41', '#4e273b'];
       const bandH = Math.ceil((this.H - dirtTop) / bands.length);
       bands.forEach((c, i) => {
         this.deepDirt.fillStyle(Phaser.Display.Color.HexStringToColor(c).color, 1);
@@ -2287,6 +2412,7 @@ export class GameScene extends Phaser.Scene {
       void sound.prepareEnding();
       this.preloadEndingArt();
     }
+    if (id === 'sniff') this.loadCastleArt(); // 킁카괴물 다음 마지막 모험에서 쓸 성 그림을 미리
     // 일반 스테이지에서 모은 필살 게이지를 이어서
     this.battle.special = this.specialCarry;
     this.specialCarry = 0;

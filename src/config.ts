@@ -119,6 +119,22 @@ export const GAME_BG = {
   hazeColor: 0xeef6ec,
 };
 
+/**
+ * 암흑의 이유식 성 — 승인된 배경 그림 4장 (public/assets/castle, 772×460 · 그림 그대로 사용)
+ *   far·near·gate: 숲 배경과 같은 좌표계(지면선 400줄 · 위 100줄 숲 지붕)
+ *   interior: 그림 속 바닥선이 336줄 → 그 줄을 게임 땅 윗면에 맞춤 (위 36줄은 가로 화면에서 숨음 → 숲과 같은 배율)
+ *   focus = 그림 속 성(입구 문) 가운데 x — 고나보다 오른쪽(화면 폭의 screenAt)에 오게 맞춤
+ *   far·near 는 좌우 끝이 이어지지 않는 그림이라 반복(타일)하지 않고 그림 안에서만 drift 만큼 천천히 다가감
+ */
+export const CASTLE_ART = {
+  far: { key: 'castle-far', url: 'assets/castle/finale-bg-far.png', focus: 560 },
+  near: { key: 'castle-near', url: 'assets/castle/finale-bg-near.png', focus: 508 },
+  gate: { key: 'castle-gate', url: 'assets/castle/finale-bg-gate.png', focus: 578 },
+  interior: { key: 'castle-interior', url: 'assets/castle/castle-interior.png', groundRow: 336, extraTop: 36 },
+  screenAt: 0.68,
+  drift: 90,
+} as const;
+
 export const STORAGE_KEYS = {
   best: 'dino-snack-adventure.best',
   muted: 'dino-snack-adventure.muted',

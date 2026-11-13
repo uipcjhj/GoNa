@@ -3,10 +3,11 @@
  *   A 평화로운 시작 (0~22초): 버섯숲 그대로 · 딸기·바나나·쿠키가 줄줄이 (점프·이단 점프로 모으기) · 쉬운 바위 몇 개
  *   B 수상한 흔적 (22~48초): 바닥의 초록 이유식 자국 · 이유식 묻은 작은 발자국 · 덤불 뒤 커다란 숟가락 · 옅은 보라 안개 · 멀리서 웃음소리
  *     (최종 보스의 정체는 보여 주지 않음)
- *   C 암흑의 성으로 (48~72초): 하늘이 천천히 보라색으로 · 보라 달 · 멀리 성 그림자가 점점 다가옴 · 작은 번개 · 배경의 초록 방울
- *     · 음악이 긴장감 있는 '성으로 가는 길'로 자연스럽게 바뀜
- *   도착 (72초~): 달리기를 멈춤 → GameScene 이 성 안으로 → 등장 컷신
- * 화면이 갑자기 바뀌지 않게 색·그림을 천천히 겹침. 성 그림자·달·방울은 땅보다 뒤(배경), 흔적은 땅과 함께 흘러감.
+ *   C 암흑의 성으로 (48~72초): 승인된 배경 그림으로 천천히 바뀜 — 원경(먼 성, finale-bg-far) → 60초 근경(finale-bg-near)
+ *     · 작은 번개 · 배경의 초록 방울 · 음악이 긴장감 있는 '성으로 가는 길'로 자연스럽게 바뀜
+ *   도착 (72초~): 성 입구(finale-bg-gate)가 겹쳐 나타나며 달리기를 멈춤 → 암전 → 성 안(castle-interior) → 등장 컷신
+ * 배경 그림은 GameScene.finaleBackdrop 이 숲 배경과 같은 좌표계(772×460 · 지면선 400)로 지면 뒤에 겹쳐 그림.
+ * 흔적은 땅과 함께 흘러감.
  */
 import Phaser from 'phaser';
 import { sound } from '../audio';
@@ -24,12 +25,14 @@ export interface FinaleHost {
   addProp(tex: string, x: number, alt: number, depth: number, scale?: number): void;
   /** 화면 전체 색 덮개 (보스 분위기와 같은 층) */
   tint(color: number, alpha: number, ms: number): void;
+  /** 승인된 성 배경 그림을 지금 배경 위에 겹쳐 나타나게 함 (ms = 겹치는 시간 · pan = 다가가는 시간(초)) */
+  backdrop(kind: 'far' | 'near', ms: number, pan: number): void;
   /** 도착 (달리기 멈춤 → 성 안으로) */
   arrive(): void;
 }
 
 /** 구간 시각(초) */
-export const FINALE = { clues: 22, castle: 48, arrive: 72 };
+export const FINALE = { clues: 22, castle: 48, near: 60, arrive: 72 };
 
 export class FinaleRun {
   t = 0;
@@ -38,8 +41,6 @@ export class FinaleRun {
   private snackT = 1.2;
   private rockT = 7;
   private objs: Phaser.GameObjects.GameObject[] = [];
-  private castle: Phaser.GameObjects.Image | null = null;
-  private moon: Phaser.GameObjects.Image | null = null;
   private drops: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private fog: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private pattern = 0;
@@ -48,11 +49,8 @@ export class FinaleRun {
     this.t = start;
     this.build();
     // 건너뛴 시각의 연출은 바로 적용 (테스트로 중간부터 시작할 때)
-    for (const c of this.cues) if (c.at < start) {
-      c.done = true;
-      if (c.at >= FINALE.castle - 0.01) c.fn();
-    }
-    if (start >= FINALE.castle) this.applyCastleNow();
+    for (const c of this.cues) if (c.at < start) c.done = true;
+    if (start >= FINALE.castle) this.applyCastleNow(start);
   }
 
   get phase(): 'peace' | 'clues' | 'castle' | 'arrive' {
@@ -92,13 +90,14 @@ export class FinaleRun {
     this.at(44.5, () => sound.witchLaugh(false));
     this.at(45.5, () => prints(6));
     // ── C 암흑의 성으로
+    // 그림 자체가 보라 하늘이라 색 덮개는 옅게 (숲 → 원경 사이를 부드럽게 잇는 정도)
     this.at(FINALE.castle, () => {
-      h.tint(0x2a1046, 0.5, 9000);
+      h.tint(0x2a1046, 0.16, 6000);
+      h.backdrop('far', 4000, FINALE.near - FINALE.castle);
       sound.fadeOutMusic(1800);
     });
     this.at(FINALE.castle + 2, () => sound.startMusic('castle'));
-    this.at(FINALE.castle + 1, () => this.showMoon());
-    this.at(FINALE.castle + 3, () => this.showCastle());
+    this.at(FINALE.near, () => h.backdrop('near', 3500, FINALE.arrive - FINALE.near));
     this.at(FINALE.castle + 5, () => this.startDrops());
     for (const tt of [53, 58.5, 63, 67.5, 70.5]) this.at(tt, () => this.lightning());
     this.at(60, () => sound.witchLaugh(true));
@@ -110,10 +109,10 @@ export class FinaleRun {
   }
 
   /** 테스트로 C 구간부터 시작할 때 (분위기 즉시) */
-  private applyCastleNow(): void {
-    this.host.tint(0x2a1046, 0.5, 10);
-    this.showMoon(true);
-    this.showCastle(true);
+  private applyCastleNow(start: number): void {
+    this.host.tint(0x2a1046, 0.16, 10);
+    if (start >= FINALE.near) this.host.backdrop('near', 10, Math.max(1, FINALE.arrive - start));
+    else this.host.backdrop('far', 10, Math.max(1, FINALE.near - start));
     this.startDrops();
     this.startFog(0.3);
     sound.startMusic('castle');
@@ -127,14 +126,6 @@ export class FinaleRun {
         c.done = true;
         c.fn();
       }
-    }
-    // 성 그림자: 점점 다가옴 (커지고 가운데 쪽으로)
-    if (this.castle) {
-      const k = Phaser.Math.Clamp((this.t - FINALE.castle - 3) / (FINALE.arrive - FINALE.castle - 3), 0, 1);
-      const e = k * k;
-      this.castle.setScale(0.55 + e * 1.15);
-      this.castle.x = Math.round(this.host.W * (0.86 - e * 0.18));
-      this.castle.y = this.host.groundY + 1;
     }
     if (this.t >= FINALE.castle - 4) return; // 성 앞 구간은 간식만 조금
     // ── A·B 간식 줄 · 쉬운 바위
@@ -159,20 +150,6 @@ export class FinaleRun {
       const alt = p === 0 ? 4 : p === 1 ? Math.round(10 + Math.sin((i / 4) * Math.PI) * 30) : 46 + (i % 2) * 6;
       this.host.addSnack(kinds[(i + p) % 3], x0 + i * 16, alt);
     }
-  }
-
-  private showMoon(instant = false): void {
-    const s = this.host.scene;
-    this.moon = s.add.image(this.host.W - 26, 26, 'castle-moon').setDepth(3.05).setAlpha(instant ? 1 : 0).setScrollFactor(0);
-    this.objs.push(this.moon);
-    if (!instant) s.tweens.add({ targets: this.moon, alpha: 1, duration: 3000 });
-  }
-
-  private showCastle(instant = false): void {
-    const s = this.host.scene;
-    this.castle = s.add.image(this.host.W * 0.86, this.host.groundY + 1, 'castle-sil').setOrigin(0.5, 1).setDepth(3.06).setScale(0.55).setAlpha(instant ? 1 : 0);
-    this.objs.push(this.castle);
-    if (!instant) s.tweens.add({ targets: this.castle, alpha: 1, duration: 2500 });
   }
 
   private startDrops(): void {
@@ -222,8 +199,6 @@ export class FinaleRun {
   destroy(): void {
     for (const o of this.objs) if (o.active) o.destroy();
     this.objs = [];
-    this.castle = null;
-    this.moon = null;
     this.drops = null;
     this.fog = null;
   }

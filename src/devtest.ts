@@ -425,10 +425,16 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         sc2.getContext('2d')!.drawImage(spoonSrc, 0, 0);
         show(sc2, 4);
         for (const f of [W.witchGoo, W.witchPuddle, W.witchDrop, W.witchPot, W.witchSmoke, W.witchTarget, W.witchArm]) show(f(), 4);
+        // 승인된 성 배경 그림 4장 (원본 그대로, 0.5배로 보기)
+        for (const f of ['finale-bg-far', 'finale-bg-near', 'finale-bg-gate', 'castle-interior']) {
+          const im = document.createElement('img');
+          im.src = `assets/castle/${f}.png`;
+          im.title = f;
+          im.style.cssText = 'width:386px;height:230px;image-rendering:pixelated';
+          box.append(im);
+        }
         void import('./art/castleArt').then((Cs) => {
-          show(Cs.castleInterior(), 1);
-          show(Cs.castleGround(), 4);
-          for (const f of [Cs.castleSilhouette, Cs.castleMoon, Cs.castleBolt, Cs.clueSpoon, Cs.clueBush, Cs.cluePrint]) show(f(), 3);
+          for (const f of [Cs.castleBolt, Cs.clueSpoon, Cs.clueBush, Cs.cluePrint]) show(f(), 3);
         });
         parent.append(box);
       });
