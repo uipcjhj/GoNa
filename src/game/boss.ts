@@ -207,6 +207,24 @@ export const WITCH_EXTRA_ART = {
   chop: ['gona-chop', 'giant-goo', 'witch-goo-face', 'witch-hat'],
 } as const;
 
+/**
+ * 위 그림의 스프라이트 시트 (사용자 시안에서 잘라 정리 — tools/art/witch_finale_from_sheet.py · 고나·마녀와 같은 도트 크기 · 게임에서 1.2배)
+ *   witch-chair    0 등장(반짝) · 1 흔들림(!!) · 2 흔들림(진동선) · 3 부서짐
+ *   gona-chair-cry 0 의자에 앉음 · 1 울기 · 2 크게 울며 몸부림(팔 번쩍) · 3 의자를 부수고 탈출
+ *   gona-chop      0 준비 · 1 주먹(휙) · 2 주먹(!) · 3 크게 휘두르기(마지막 한 방)
+ *   giant-goo      0 그대로 · 1 맞아서 움푹 · 2 크게 찌그러짐 · 3 철퍼덕 퍼짐
+ *   witch-goo-face 0 이유식 뒤집어씀 · 1 어질어질 · 2 쓰러짐
+ *   witch-hat      0 모자 · 1 튕겨 나감 · 2~3 빙글빙글 · 4 떨어짐
+ */
+export const WITCH_EXTRA_SHEETS: Record<string, { url: string; fw: number; fh: number; frames: number }> = {
+  'witch-chair': { url: 'assets/boss/witch-chair.png', fw: 64, fh: 61, frames: 4 },
+  'gona-chair-cry': { url: 'assets/boss/gona-chair-cry.png', fw: 63, fh: 62, frames: 4 },
+  'gona-chop': { url: 'assets/boss/gona-chop.png', fw: 64, fh: 45, frames: 4 },
+  'giant-goo': { url: 'assets/boss/giant-goo.png', fw: 69, fh: 44, frames: 4 },
+  'witch-goo-face': { url: 'assets/boss/witch-goo-face.png', fw: 58, fh: 42, frames: 3 },
+  'witch-hat': { url: 'assets/boss/witch-hat.png', fw: 30, fh: 26, frames: 5 },
+};
+
 /** 필살 게이지 충전량 (0~1 기준) */
 export const SPECIAL_GAIN = {
   boomerangHit: 0.2,

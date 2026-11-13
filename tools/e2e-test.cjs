@@ -1282,11 +1282,12 @@ async function witchTests(label, device) {
     await page.waitForTimeout(500);
   }
   check(`${label}: last stand — one boomerang hit in the open window → defeat → family ending`, lv === 'victory' && (await G(() => window.__gona.scene.isActive('EndingCine'))), lv);
-  // 7) 강제 이유식 의자 · 후드리챱챱: 승인 그림이 없으면 실제 전투엔 안 나오고(임시 그림 없음) 개발 메뉴에서 흐름만
+  // 7) 강제 이유식 의자 · 후드리챱챱: 사용자 시안에서 정리한 그림이 실제 전투에 켜져 있고, 의자에 고나가 앉으면 원래 고나 그림은 숨김
   await page.goto(URL + '?test=witch-chair');
   await page.waitForFunction(() => !!window.__gona?.scene.getScene('Game')?.battle?.chairS, null, { timeout: 40000 }).catch(() => {});
-  const chair = await G(() => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; const tm = g.textures; const forced = bt.debugForceArt; bt.debugForceArt = false; const r = { flow: !!bt.chairS, artReal: bt.artReady('chair') || bt.artReady('chop'), noTex: ['witch-chair', 'gona-chair-cry', 'gona-chop', 'giant-goo'].every((k) => !tm.exists(k)), ui: !!document.querySelector('.chair-box')?.getClientRects().length }; bt.debugForceArt = forced; return r; });
-  check(`${label}: chair / 후드리챱챱 wait for approved art (not in the real fight, no placeholder textures) · dev menu runs the flow`, chair.flow && !chair.artReal && chair.noTex && chair.ui, JSON.stringify(chair));
+  await page.waitForTimeout(900);
+  const chair = await G(() => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; const forced = bt.debugForceArt; bt.debugForceArt = false; const r = { flow: !!bt.chairS, artReal: bt.artReady('chair') && bt.artReady('chop'), tex: ['witch-chair', 'gona-chair-cry', 'gona-chop', 'giant-goo', 'witch-goo-face', 'witch-hat'].every((k) => g.textures.exists(k)), seated: bt.chairArt?.texture.key === 'gona-chair-cry', gonaHidden: !g.player.visible, ui: !!document.querySelector('.chair-box')?.getClientRects().length }; bt.debugForceArt = forced; return r; });
+  check(`${label}: chair / 후드리챱챱 art loaded and used in the real fight · GONA sits in the chair (normal sprite hidden)`, chair.flow && chair.artReal && chair.tex && chair.seated && chair.gonaHidden && chair.ui, JSON.stringify(chair));
   check(`${label}: no page errors (witch extended)`, errs.length === 0, errs.join(' | '));
   await ctx.browser().close();
 }

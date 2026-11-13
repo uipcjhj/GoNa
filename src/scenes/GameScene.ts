@@ -2008,6 +2008,11 @@ export class GameScene extends Phaser.Scene {
       seriousTexture: () => `serious-${this.vis.id}`,
       setSpecialLook: (look) => this.setSpecialLook(look),
       onBattleEnd: (win) => this.endBattle(win),
+      setPlayerHidden: (on) => {
+        this.player.setVisible(!on);
+        this.shadow.setVisible(!on);
+      },
+      playerFoot: () => ({ x: this.player.x, y: this.groundY }),
       startBattleMusic: () => {
         if (this.state === 'playing') sound.startMusic(this.musicNow());
       },

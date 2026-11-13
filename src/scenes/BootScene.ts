@@ -6,7 +6,7 @@ import { mapToCanvas } from '../art/PixelCanvas';
 import { cropHairTuft } from '../art/nest';
 import { bus, EV } from '../events';
 import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
-import { BOSSES } from '../game/boss';
+import { BOSSES, WITCH_EXTRA_SHEETS } from '../game/boss';
 import { MONSTERS } from '../game/monsters';
 
 const CUSTOM_KEY = 'dino-custom-src';
@@ -88,6 +88,8 @@ export class BootScene extends Phaser.Scene {
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
     this.load.image('witch-spoon-src', 'assets/boss/witch-spoon.png'); // 마녀의 이유식 숟가락 (레퍼런스에서 추출)
+    // 마녀전 신규 연출 (이유식 의자 탈출 · 후드리챱챱) — 사용자 시안에서 잘라 정리한 시트
+    for (const [key, a] of Object.entries(WITCH_EXTRA_SHEETS)) this.load.spritesheet(key, a.url, { frameWidth: a.fw, frameHeight: a.fh });
     // 일반 몬스터 정식 그림 (선택)
     for (const m of Object.values(MONSTERS)) this.load.image(`mon-src-${m.kind}`, m.sheetUrl);
   }

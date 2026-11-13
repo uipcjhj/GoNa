@@ -17,7 +17,7 @@ import { bus, EV, type BannerInfo, type QteBtn, type QteHud } from '../../events
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
-import { WITCH, WITCH_EXTRA_ART } from '../../game/boss';
+import { WITCH, WITCH_EXTRA_ART, WITCH_EXTRA_SHEETS } from '../../game/boss';
 import { BossBattle, type Hostile } from './BossBattle';
 import type { BattleHost } from './types';
 
@@ -47,7 +47,8 @@ const MINIGAME_INFO: Partial<Record<Attack, { name: string; hint: string }>> = {
   rhythm: { name: '으아앙! 울음 리듬', hint: '음표가 노란 줄에 오면 「으앙!」 · 긴 음표는 꾸욱 누르기' },
   chair: { name: '이유식 의자 탈출!', hint: '「으아앙!」 마구 누르기 → 숟가락이 오면 꾸욱 길게!' },
 };
-export const WITCH_CHAIR_LINE = '얌전히 앉아서 이유식 먹어!';
+export const WITCH_CHAIR_LINE = '얌전히 앉아서 이유식 먹어!!';
+export const WITCH_CHOP_LINE = '이유식을 안 먹겠다고?! 그럼 전부 먹어라!!';
 export const WITCH_CHOP_INTERRUPT = '내 이유식에 무슨 짓이야!!!';
 export const WITCH_CHOP_DEFEAT = '내… 이유식이… 그렇게 맛없었니…?';
 export const WITCH_RHYTHM_LINE = '이것도 안 먹을 거야?!';
@@ -167,8 +168,21 @@ export class WitchBattle extends BossBattle {
     }
   }
 
+  update(rawDt: number): void {
+    super.update(rawDt);
+    // 패배 연출(전투 아님) 동안에도 이유식 뒤집어쓴 마녀가 따라가게
+    this.followGooFace();
+  }
+
   destroy(): void {
     bus.off(EV.qteInput, this.onQte);
+    this.showChairArt('off');
+    this.showChopArt('off');
+    this.gooFace?.destroy();
+    this.gooFace = null;
+    this.gooHat?.destroy();
+    this.gooHat = null;
+    this.host.setPlayerHidden?.(false);
     super.destroy();
   }
 
@@ -1350,7 +1364,7 @@ export class WitchBattle extends BossBattle {
       return { kind: 'chair', stage: c.stage, gauge: c.gauge, left: Math.max(0, c.end - this.time), hold: c.holdAt >= 0 ? Math.min(1, (this.time - c.holdAt) / C.hold) : 0 };
     }
     const ch = this.chopS;
-    if (ch && ch.stage !== 'finish') {
+    if (ch) {
       return { kind: 'chop', stage: ch.stage, gauge: ch.gauge, left: ch.stage === 'cry' ? Math.max(0, ch.cryEnd - this.time) : 0, hold: ch.holdAt >= 0 ? Math.min(1, (this.time - ch.holdAt) / WITCH.chop.hold) : 0 };
     }
     const r = this.rhythmS;
@@ -1733,7 +1747,7 @@ export class WitchBattle extends BossBattle {
     this.setPose(5, 0.9);
     sound.witchLaugh(true);
     this.floatText(WITCH_CHAIR_LINE, this.bx - 34, this.host.groundY - this.balt - this.fh * this.k - 4, '#ff9ad0');
-    this.showChairArt(true);
+    this.showChairArt('appear');
     this.chairS = { stage: 'mash', gauge: 0, end: this.time + 0.6 + C.mash[i], holdAt: -1, strong, taps: 0 };
     this.telegraph = { kind: 'chair', x: this.host.basePlayerX, y: this.host.groundY - 20, r: 0 };
   }
@@ -1748,10 +1762,15 @@ export class WitchBattle extends BossBattle {
       sound.cry(c.gauge);
       this.soundWave(c.gauge * 0.8, false);
       haptics.play('monsterHit');
+      this.showChairArt('cry', c.taps);
     } else if (down) {
       c.holdAt = this.time;
       sound.cry(1);
-    } else c.holdAt = -1; // 일찍 뗌 → 다시 꾸욱
+      this.showChairArt('charge');
+    } else {
+      c.holdAt = -1; // 일찍 뗌 → 다시 꾸욱
+      this.showChairArt('hold');
+    }
   }
 
   private updateChair(dt: number): void {
@@ -1770,6 +1789,7 @@ export class WitchBattle extends BossBattle {
         this.warn(C.warn[i]);
         this.moveTo(Math.min(this.homeX, m.x + 46), this.hov(-8), C.warn[i] * 0.9);
         this.floatText('숟가락이 온다! 꾸욱!', m.x - 10, m.y - 26, '#ffe14a');
+        this.showChairArt('hold');
       }
       return;
     }
@@ -1783,7 +1803,7 @@ export class WitchBattle extends BossBattle {
     this.chairS = null;
     this.telegraph = null;
     this.qteLog.push(`chair:${ok ? 'ok' : 'fail'}:${Math.round(c.gauge * 100)}`);
-    this.showChairArt(false);
+    this.showChairArt(ok ? 'break' : 'fail');
     if (ok) {
       // 강력한 울음 음파 → 의자 부서짐 · 마녀가 뒤로 밀려나 기절
       this.soundWave(1, true);
@@ -1804,9 +1824,67 @@ export class WitchBattle extends BossBattle {
     }
   }
 
-  /** 의자 그림 (승인 에셋 witch-chair · gona-chair-cry) — 받으면 여기서 붙임. 없으면 아무것도 그리지 않음 */
-  private showChairArt(_on: boolean): void {
-    /* 승인 그림 대기 (CLAUDE.md — 임시 그림 없음) */
+  /**
+   * 의자 그림 (witch-chair · gona-chair-cry — 사용자 시안에서 정리) · 고나 자리에 대신 나옴 (그동안 고나 그림은 숨김)
+   *   appear: 의자가 뿅(0 반짝 → 1·2 흔들림) → 고나가 앉음(울음 시트 0) · cry: 연타마다 울기(1)/몸부림(2) 번갈아 + 흔들림
+   *   hold: 숟가락 경고 — 울며 덜덜 · charge: 꾸욱 누르는 중(크게 울며 몸부림 · 빠르게 떨림) · break: 의자를 부수고 탈출(3) · fail: 억지로 한 입 → 빠져나옴(3)
+   */
+  private chairArt: Phaser.GameObjects.Sprite | null = null;
+
+  private showChairArt(step: 'appear' | 'cry' | 'hold' | 'charge' | 'break' | 'fail' | 'off', n = 0): void {
+    if (!this.host.scene.textures.exists('gona-chair-cry')) return; // (개발 메뉴 흐름 미리보기 · 그림이 없을 때)
+    const scene = this.host.scene;
+    const S = WitchBattle.SCALE;
+    const foot = this.host.playerFoot?.() ?? { x: this.host.basePlayerX, y: this.host.groundY };
+    let a = this.chairArt;
+    if (step === 'appear') {
+      a?.destroy();
+      a = this.chairArt = scene.add.sprite(foot.x, foot.y + 1, 'witch-chair', 0).setOrigin(0.5, 1).setDepth(10.3).setScale(0);
+      sound.puff();
+      scene.tweens.add({ targets: a, scale: S, duration: 260, ease: 'Back.Out' });
+      this.after(0.2, () => this.chairArt?.texture.key === 'witch-chair' && this.chairArt.setFrame(1));
+      this.after(0.3, () => this.chairArt?.texture.key === 'witch-chair' && this.chairArt.setFrame(2));
+      // 고나가 의자에 붙잡혀 앉음
+      this.after(0.4, () => {
+        if (!this.chairArt) return;
+        this.host.setPlayerHidden?.(true);
+        this.chairArt.setTexture('gona-chair-cry', 0);
+        sound.nestJump();
+      });
+      return;
+    }
+    if (!a) return;
+    if (step === 'off') {
+      scene.tweens.killTweensOf(a);
+      a.destroy();
+      this.chairArt = null;
+      this.host.setPlayerHidden?.(false);
+      return;
+    }
+    if (a.texture.key !== 'gona-chair-cry') {
+      this.host.setPlayerHidden?.(true);
+      a.setTexture('gona-chair-cry', 0).setScale(S);
+    }
+    scene.tweens.killTweensOf(a);
+    a.setAngle(0).setX(foot.x);
+    if (step === 'cry') {
+      // 연타마다 울기 ↔ 몸부림 + 좌우로 흔들
+      a.setFrame(n % 2 ? 1 : 2);
+      scene.tweens.add({ targets: a, x: foot.x + (n % 2 ? -1.5 : 1.5), duration: 60, yoyo: true });
+    } else if (step === 'hold' || step === 'charge') {
+      a.setFrame(step === 'charge' ? 2 : 1);
+      scene.tweens.add({ targets: a, angle: { from: -2.5, to: 2.5 }, duration: step === 'charge' ? 50 : 110, yoyo: true, repeat: -1 });
+    } else if (step === 'break' || step === 'fail') {
+      // 의자를 부수고 탈출 (실패: 억지로 한 입 먹고 겨우 빠져나옴)
+      a.setFrame(step === 'break' ? 2 : 0);
+      this.after(step === 'break' ? 0.12 : 0.55, () => {
+        if (!this.chairArt) return;
+        this.chairArt.setFrame(3);
+        sound.bossHit();
+        this.host.scene.cameras.main.shake(140, 0.008);
+      });
+      this.after(step === 'break' ? 0.75 : 1.1, () => this.showChairArt('off'));
+    }
   }
 
   // ───────── ⑤ 후드리챱챱! (마지막 · 승인 그림: 고나 양손 난타 · 거대한 이유식 덩어리 · 이유식 뒤집어쓴 마녀 · 날아가는 모자 — artReady('chop')) ─────────
@@ -1817,7 +1895,7 @@ export class WitchBattle extends BossBattle {
     this.lastPhase = 'chop';
     this.busy = true;
     this.moveTo(this.homeX, this.hov(), 0.3);
-    this.talk([WITCH_LAST_LINE], () => {
+    this.talk([WITCH_CHOP_LINE], () => {
       sound.rage();
       this.host.scene.cameras.main.shake(300, 0.012);
       this.setPose(5, 0.8);
@@ -1836,12 +1914,12 @@ export class WitchBattle extends BossBattle {
     c.gauge = Math.min(1, c.gauge + K.perTap);
     sound.chop(c.taps);
     haptics.play('monsterHit');
-    this.showChopArt('hit');
-    // 초록 이유식 방울이 튐 (작은 픽셀 효과)
+    this.showChopArt('hit', c.taps);
+    // 초록 이유식 방울이 튐 (작은 픽셀 효과) — 이유식 덩어리에서
     const scene = this.host.scene;
-    const m = this.mouth();
-    const x = m.x + 16;
-    const y = this.host.groundY - 14;
+    const hp = this.chopHitPoint();
+    const x = hp.x;
+    const y = hp.y;
     for (let i = 0; i < (perf.low ? 2 : 4); i++) {
       const d = this.tmp(scene.add.image(x, y, 'witch-drop').setDepth(11.4));
       scene.tweens.add({ targets: d, x: x + (Math.random() - 0.3) * 40, y: y - 10 - Math.random() * 26, alpha: 0, duration: 380, ease: 'Quad.Out', onComplete: () => d.destroy() });
@@ -1863,6 +1941,7 @@ export class WitchBattle extends BossBattle {
     sound.rage();
     this.setPose(2, K.cryWindow);
     this.warn(K.cryWindow);
+    this.showChopArt('cry');
     this.floatText(WITCH_CHOP_INTERRUPT, this.bx - 40, this.host.groundY - this.balt - this.fh * this.k - 4, '#ff9ad0');
     this.moveTo(Math.min(this.homeX, m.x + 50), this.hov(-6), K.cryWindow * 0.8);
   }
@@ -1895,9 +1974,10 @@ export class WitchBattle extends BossBattle {
       this.after(i * 0.1, () => {
         sound.chop(i);
         scene.cameras.main.shake(60, 0.005);
-        const m = this.mouth();
+        this.showChopArt('rush', i);
+        const hp = this.chopHitPoint();
         for (let j = 0; j < (perf.low ? 2 : 3); j++) {
-          const d = this.tmp(scene.add.image(m.x + 16, this.host.groundY - 14, 'witch-drop').setDepth(11.4));
+          const d = this.tmp(scene.add.image(hp.x, hp.y, 'witch-drop').setDepth(11.4));
           scene.tweens.add({ targets: d, x: d.x + (Math.random() - 0.5) * 60, y: d.y - 14 - Math.random() * 30, alpha: 0, duration: 360, onComplete: () => d.destroy() });
         }
       }, true);
@@ -1906,7 +1986,6 @@ export class WitchBattle extends BossBattle {
       sound.spit(true);
       scene.cameras.main.shake(260, 0.014);
       this.showChopArt('launch');
-      this.faceSplat(true);
       this.setPose(4, 1.2);
     }, true);
     this.after(1.6, () => {
@@ -1932,6 +2011,7 @@ export class WitchBattle extends BossBattle {
       sound.cry(1);
       this.host.scene.cameras.main.shake(200, 0.01);
       this.qteLog.push('chop:cry:ok');
+      this.showChopArt('resume');
       this.after(0.3, () => {
         this.moveTo(this.homeX, this.hov(), 0.35);
         this.setPose(4, 1.4);
@@ -1951,10 +2031,173 @@ export class WitchBattle extends BossBattle {
     }
   }
 
-  /** 후드리챱챱 그림 (승인 에셋 gona-chop · giant-goo · witch-goo-face · witch-hat) — 받으면 여기서 붙임. 없으면 그리지 않음 */
-  private showChopArt(_step: 'summon' | 'hit' | 'rush' | 'launch'): void {
-    /* 승인 그림 대기 (CLAUDE.md — 임시 그림 없음) */
+  /**
+   * 후드리챱챱 그림 (gona-chop · giant-goo · witch-goo-face · witch-hat — 사용자 시안에서 정리)
+   *   summon: 거대한 이유식 덩어리가 고나 앞에 쿵 · 고나는 난타 자세(0)로 (원래 고나 그림은 숨김)
+   *   hit: 챱챱! 누를 때마다 주먹(1·2 번갈아) → 덩어리가 움푹(1)·크게 찌그러짐(2) + 출렁 · 60% 넘으면 덩어리가 움푹 들어간 채
+   *   cry: 마녀 방해 — 고나 준비 자세로 덜덜 (방해 때 우는 전용 그림은 시안에 없음) · resume: 다시 난타
+   *   rush: 초고속 난타 · launch: 크게 휘두르기(3) → 덩어리가 마녀 얼굴로 날아감 → 이유식 뒤집어쓴 마녀 · 모자가 빙글빙글 날아감
+   */
+  private chopArt: { gona: Phaser.GameObjects.Sprite; goo: Phaser.GameObjects.Sprite; back: number } | null = null;
+  /** 이유식 뒤집어쓴 마녀 (패배 연출 동안 마녀 그림 대신 · 마녀 위치·기울기·투명도를 그대로 따라감) */
+  private gooFace: Phaser.GameObjects.Sprite | null = null;
+  private gooHat: Phaser.GameObjects.Sprite | null = null;
+
+  /** 이유식 덩어리 맞는 자리 (방울이 튀는 곳) */
+  private chopHitPoint(): { x: number; y: number } {
+    const g = this.chopArt?.goo;
+    if (g) return { x: g.x - g.displayWidth * 0.3, y: g.y - g.displayHeight * 0.5 };
+    const m = this.mouth();
+    return { x: m.x + 16, y: this.host.groundY - 14 };
   }
+
+  private showChopArt(step: 'summon' | 'hit' | 'cry' | 'resume' | 'rush' | 'launch' | 'off', n = 0): void {
+    const scene = this.host.scene;
+    if (!scene.textures.exists('gona-chop')) return; // (그림이 없을 때 — 흐름만)
+    const S = WitchBattle.SCALE;
+    const foot = this.host.playerFoot?.() ?? { x: this.host.basePlayerX, y: this.host.groundY };
+    const art = this.chopArt;
+    if (step === 'summon') {
+      this.showChopArt('off');
+      this.host.setPlayerHidden?.(true);
+      const gona = scene.add.sprite(foot.x, foot.y + 1, 'gona-chop', 0).setOrigin(0.5, 1).setDepth(10.2).setScale(S);
+      // 덩어리: 고나 주먹이 닿는 바로 앞 (왼쪽 끝이 고나 몸 앞)
+      const gx = foot.x + 24 + (WITCH_EXTRA_SHEETS['giant-goo'].fw * S) / 2;
+      const goo = scene.add.sprite(gx, foot.y - 70, 'giant-goo', 0).setOrigin(0.5, 1).setDepth(10.1).setScale(S);
+      scene.tweens.add({
+        targets: goo,
+        y: foot.y + 1,
+        duration: 360,
+        ease: 'Bounce.Out',
+        onComplete: () => {
+          sound.splat();
+          scene.cameras.main.shake(160, 0.008);
+        },
+      });
+      this.chopArt = { gona, goo, back: 0 };
+      return;
+    }
+    if (step === 'off') {
+      if (art) {
+        scene.tweens.killTweensOf([art.gona, art.goo]);
+        art.gona.destroy();
+        art.goo.destroy();
+        this.chopArt = null;
+      }
+      this.host.setPlayerHidden?.(false);
+      return;
+    }
+    if (!art) return;
+    const dentedNow = (): boolean => !!this.chopS && this.chopS.gauge >= WITCH.chop.interruptAt;
+    scene.tweens.killTweensOf(art.gona);
+    art.gona.setAngle(0).setX(foot.x);
+    if (step === 'hit' || step === 'rush') {
+      // 주먹 → 덩어리가 맞은 만큼 찌그러졌다가 출렁 (타격과 같은 순간)
+      art.gona.setFrame(n % 2 ? 1 : 2);
+      art.goo.setFrame(step === 'rush' || dentedNow() ? 2 : 1);
+      scene.tweens.killTweensOf(art.goo);
+      art.goo.setScale(S * 1.08, S * 0.86);
+      scene.tweens.add({ targets: art.goo, scaleX: S, scaleY: S, duration: 140, ease: 'Back.Out' });
+      const id = ++art.back;
+      this.after(
+        0.13,
+        () => {
+          if (this.chopArt !== art || art.back !== id) return;
+          if (this.chopS?.stage === 'mash' || this.chopS?.stage === 'final') art.gona.setFrame(0);
+          if (this.chopS?.stage !== 'finish') art.goo.setFrame(dentedNow() ? 1 : 0);
+        },
+        true,
+      );
+    } else if (step === 'cry') {
+      art.gona.setFrame(0);
+      scene.tweens.add({ targets: art.gona, angle: { from: -3, to: 3 }, duration: 70, yoyo: true, repeat: -1 });
+    } else if (step === 'resume') {
+      art.gona.setFrame(0);
+      art.goo.setFrame(dentedNow() ? 1 : 0);
+    } else if (step === 'launch') {
+      // 마지막 한 방: 크게 휘두르기 → 덩어리가 마녀 얼굴로 휙
+      art.gona.setFrame(3);
+      const goo = art.goo;
+      const f = this.face();
+      scene.tweens.killTweensOf(goo);
+      goo.setFrame(2);
+      scene.tweens.add({
+        targets: goo,
+        x: f.x,
+        y: f.y + goo.displayHeight * 0.5,
+        angle: -200,
+        scale: S * 0.7,
+        duration: 360,
+        ease: 'Quad.In',
+        onComplete: () => {
+          goo.setVisible(false);
+          this.faceSplat(true);
+          this.coverWitch();
+        },
+      });
+      this.after(
+        0.7,
+        () => {
+          // 고나는 원래 모습으로 (에퉤!)
+          if (this.chopArt === art) {
+            art.gona.destroy();
+            art.goo.destroy();
+            this.chopArt = null;
+          }
+          this.host.setPlayerHidden?.(false);
+        },
+        true,
+      );
+    }
+  }
+
+  /** 이유식을 뒤집어쓴 마녀 · 모자가 빙글빙글 날아감 */
+  private coverWitch(): void {
+    const scene = this.host.scene;
+    const S = WitchBattle.SCALE;
+    this.gooFace?.destroy();
+    this.gooFace = scene.add.sprite(this.boss.x, this.boss.y, 'witch-goo-face', 0).setOrigin(0.5, 1).setDepth(this.boss.depth + 0.01).setScale(S);
+    this.boss.setVisible(false);
+    // 모자: 머리 위에서 튕겨 올라 빙글빙글 → 바닥에 툭
+    const top = this.host.groundY - this.balt - this.fh * this.k;
+    this.gooHat?.destroy();
+    const hat = (this.gooHat = scene.add.sprite(this.bx, top + 4, 'witch-hat', 1).setDepth(this.boss.depth + 0.02).setScale(S));
+    const x1 = Math.min(this.host.W - 12, this.bx + 30);
+    scene.tweens.add({ targets: hat, x: x1, duration: 1100, ease: 'Linear' });
+    scene.tweens.add({
+      targets: hat,
+      y: { from: top + 4, to: top - 26 },
+      duration: 420,
+      ease: 'Quad.Out',
+      onComplete: () =>
+        scene.tweens.add({
+          targets: hat,
+          y: this.host.groundY - 2,
+          duration: 680,
+          ease: 'Bounce.Out',
+          onComplete: () => {
+            hat.setFrame(4).setAngle(0);
+            // (마녀 그림에도 모자가 그려져 있어 오래 두 개로 보이지 않게 — 떨어진 모자는 곧 사라짐)
+            scene.tweens.add({ targets: hat, alpha: 0, delay: 500, duration: 400 });
+          },
+        }),
+    });
+    scene.tweens.add({ targets: hat, angle: 720, duration: 1000, ease: 'Linear', onUpdate: (tw) => hat.setFrame(1 + (Math.floor(tw.progress * 6) % 3)) });
+  }
+
+  /** 이유식 뒤집어쓴 마녀가 마녀 그림(숨김)의 위치·기울기·투명도를 따라감 · 쓰러지면 쓰러진 그림 */
+  private followGooFace(): void {
+    const g = this.gooFace;
+    if (!g) return;
+    const b = this.boss;
+    const fallen = this.mode === 'victory' && this.stunT > 50;
+    const r = this.restScale || WitchBattle.SCALE;
+    g.setPosition(b.x, b.y).setAngle(fallen ? 0 : b.angle).setAlpha(b.alpha);
+    g.setScale((WitchBattle.SCALE * b.scaleX) / r, (WitchBattle.SCALE * b.scaleY) / r);
+    g.setFrame(fallen ? 2 : Math.floor(this.time * 3) % 2);
+    if (b.visible) b.setVisible(false);
+  }
+
 
   private clearMinigames(): void {
     this.parryS?.s.destroy();
@@ -1963,6 +2206,8 @@ export class WitchBattle extends BossBattle {
     this.reflectS = null;
     this.rhythmS = null;
     this.qtePending = false;
+    if (this.chairArt) this.showChairArt('off');
+    if (this.chopArt) this.showChopArt('off');
     this.chairS = null;
     this.chopS = null;
     this.faceGoo?.s.destroy();

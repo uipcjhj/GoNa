@@ -134,7 +134,7 @@ export type QteHud =
   /** 이유식 의자 탈출: mash = '으아앙!' 연타 + 탈출 게이지 · hold = 숟가락이 입으로 — 꾸욱 (hold 0~1 = 누른 정도) */
   | { kind: 'chair'; stage: 'mash' | 'hold'; gauge: number; left: number; hold: number }
   /** 후드리챱챱: mash = '챱챱!' 연타 · cry = 마녀 방해 — '으아앙!' 꾸욱 · final = '후드리챱챱!!!' 한 번 */
-  | { kind: 'chop'; stage: 'mash' | 'cry' | 'final'; gauge: number; left: number; hold: number }
+  | { kind: 'chop'; stage: 'mash' | 'cry' | 'final' | 'finish'; gauge: number; left: number; hold: number }
   | { kind: 'rhythm'; notes: { x: number; len: number; hold: boolean; state: 'wait' | 'ok' | 'miss' | 'hold' }[]; holding: boolean; title: string; score: number; total: number };
 
 export interface BannerInfo {

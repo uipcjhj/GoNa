@@ -49,6 +49,10 @@ export interface BattleHost {
   setSpecialLook(look: 'serious' | 'bald' | null): void;
   /** 이 보스의 전투 음악 시작 (등장 연출이 끝나고 싸움이 시작될 때 — 최종 보스) */
   startBattleMusic?(): void;
+  /** 고나 그림 숨기기 (의자·후드리챱챱처럼 전용 그림이 고나 자리에 대신 나올 때) */
+  setPlayerHidden?(on: boolean): void;
+  /** 고나 발밑 가운데 (화면 좌표) */
+  playerFoot?(): { x: number; y: number };
   /** 보스전 끝 (승리 연출까지 끝난 뒤) */
   onBattleEnd(win: boolean): void;
 }

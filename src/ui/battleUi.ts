@@ -403,7 +403,7 @@ export class BattleUi {
     if (chop) {
       this.setStyle(this.chopFill, 'width', `${Math.round(chop.gauge * 100)}%`);
       this.setText(this.chopPct, `${Math.round(chop.gauge * 100)}%`);
-      this.setText(this.chopHint, chop.stage === 'mash' ? '챱챱! 을 마구 눌러요' : chop.stage === 'cry' ? `⚠ 마녀 방해! 으아앙을 꾸욱 (${Math.ceil(chop.left)}초)` : '마지막 한 방!');
+      this.setText(this.chopHint, chop.stage === 'mash' ? '챱챱! 을 마구 눌러요' : chop.stage === 'cry' ? `⚠ 마녀 방해! 으아앙을 꾸욱 (${Math.ceil(chop.left)}초)` : chop.stage === 'final' ? '마지막 한 방!' : '후드리챱챱!!!');
       this.chopBox.classList.toggle('warn', chop.stage === 'cry');
     }
     this.chopBtn.classList.toggle('hidden', chop?.stage !== 'mash');
