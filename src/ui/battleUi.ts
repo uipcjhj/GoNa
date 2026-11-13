@@ -78,6 +78,13 @@ export class BattleUi {
   private aimCursor: HTMLDivElement;
   private aimJudgeEl: HTMLDivElement;
   private resistFill: HTMLDivElement;
+  /** 최종 보스: 이유식 받아치기 '퉤!' · 울음 리듬 '으앙!' 버튼 + 리듬 줄 */
+  private spitBtn: HTMLButtonElement;
+  private cryBtn: HTMLButtonElement;
+  private rhythmBox: HTMLDivElement;
+  private rhythmTitle: HTMLParagraphElement;
+  private rhythmScore: HTMLSpanElement;
+  private rhythmNotes: HTMLDivElement[] = [];
   private bannerTimer = 0;
   private lastHp = -1;
   private lastPlayerHp = -1;
@@ -109,7 +116,14 @@ export class BattleUi {
     this.resistBtn = el('button', 'bt-resist hidden', '버티기!');
     this.resistBtn.type = 'button';
     this.resistBtn.setAttribute('aria-label', '버티기');
-    this.pad.append(left, right, this.resistBtn);
+    // 최종 보스 미니게임 버튼 (그때만 화면 가운데 아래 — 엄지로 누르기 쉬운 자리)
+    this.spitBtn = el('button', 'bt-qte bt-spit hidden', '퉤!') as HTMLButtonElement;
+    this.spitBtn.type = 'button';
+    this.spitBtn.setAttribute('aria-label', '퉤');
+    this.cryBtn = el('button', 'bt-qte bt-cry hidden', '으앙!') as HTMLButtonElement;
+    this.cryBtn.type = 'button';
+    this.cryBtn.setAttribute('aria-label', '으앙');
+    this.pad.append(left, right, this.resistBtn, this.spitBtn, this.cryBtn);
 
     // 위: 고나 하트 + HP · 보스 체력
     this.top = el('div', 'battle-top hidden');
@@ -156,6 +170,20 @@ export class BattleUi {
     this.resistFill = el('div', 'resist-fill');
     rt.append(this.resistFill, el('span', 'resist-goal'));
     this.resistBox.append(rt);
+    // 울음 리듬 배틀: 음표가 오른쪽에서 판정선으로 (톡 = 동그라미 · 꾸욱 = 긴 막대)
+    this.rhythmBox = el('div', 'rhythm-box hidden') as HTMLDivElement;
+    const rhHead = el('p', 'rhythm-title');
+    this.rhythmTitle = el('span', 'rhythm-name', '😭 으아앙! 울음 리듬') as unknown as HTMLParagraphElement;
+    this.rhythmScore = el('span', 'rhythm-score', '0/5') as HTMLSpanElement;
+    rhHead.append(this.rhythmTitle, this.rhythmScore);
+    const rhTrack = el('div', 'rhythm-track');
+    rhTrack.append(el('span', 'rhythm-line'));
+    for (let i = 0; i < 8; i++) {
+      const n = el('div', 'rhythm-note hidden') as HTMLDivElement;
+      this.rhythmNotes.push(n);
+      rhTrack.append(n);
+    }
+    this.rhythmBox.append(rhHead, rhTrack, el('p', 'rhythm-hint', '● 톡 = 짧게 · ▬ 꾸욱 = 길게 누르기'));
     // 킁카괴물 코 타이밍 바 (지친 동안만): 커서가 양 끝을 왕복 · 가운데 PERFECT(코) · 주변 GOOD
     this.aimBox = el('div', 'aimbar hidden');
     const at = el('div', 'aimbar-track');
@@ -191,7 +219,7 @@ export class BattleUi {
     });
     // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
     this.scoreEl = el('div', 'hud-score hidden', '점수 0');
-    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.pad);
+    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.rhythmBox, this.pad);
 
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
@@ -199,6 +227,9 @@ export class BattleUi {
     this.bindPress(this.sp2, () => bus.emit(EV.special2));
     // 버티기: 한 번 누를 때마다 한 번 (게임의 방패 입력이 흡입 중엔 버티기로 처리)
     this.bindPress(this.resistBtn, () => bus.emit(EV.shield));
+    // 퉤!: 누르는 순간 한 번 · 으앙!: 누름·뗌 둘 다 (톡과 꾸욱 구분)
+    this.bindPress(this.spitBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'spit', down: true }));
+    this.bindPress(this.cryBtn as Btn, () => bus.emit(EV.qteInput, { btn: 'cry', down: true }), () => bus.emit(EV.qteInput, { btn: 'cry', down: false }));
 
     bus.on(EV.combatHud, (h: CombatHud) => this.render(h));
     bus.on(EV.banner, (b: BannerInfo) => this.showBanner(b));
@@ -225,11 +256,15 @@ export class BattleUi {
   }
 
   /** 누르는 즉시 실행 + 손가락별로 따로 추적 (멀티터치) */
-  private bindPress(btn: Btn, fire: () => void): void {
+  private bindPress(btn: Btn, fire: () => void, onRelease?: () => void): void {
     const active = new Set<number>();
     const release = (e: PointerEvent): void => {
+      if (!active.has(e.pointerId)) return;
       active.delete(e.pointerId);
-      if (!active.size) btn.classList.remove('pressed');
+      if (!active.size) {
+        btn.classList.remove('pressed');
+        onRelease?.();
+      }
     };
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -257,7 +292,7 @@ export class BattleUi {
     if (n.textContent !== v) n.textContent = v;
   }
 
-  private setStyle(n: HTMLElement, k: 'height' | 'width', v: string): void {
+  private setStyle(n: HTMLElement, k: 'height' | 'width' | 'left', v: string): void {
     if (n.style[k] !== v) n.style[k] = v;
   }
 
@@ -285,6 +320,27 @@ export class BattleUi {
     if (resist) {
       this.setStyle(this.resistFill, 'width', `${Math.round(resist.gauge * 100)}%`);
       this.resistFill.classList.toggle('low', resist.gauge < 0.25);
+    }
+    // 최종 보스: 퉤! (이유식이 다가올 때만) · 울음 리듬 (줄 + 으앙! 버튼)
+    const spit = h.qte?.kind === 'spit' ? h.qte : null;
+    this.spitBtn.classList.toggle('hidden', !spit);
+    this.spitBtn.classList.toggle('ready', !!spit?.ready);
+    const rh = h.qte?.kind === 'rhythm' ? h.qte : null;
+    this.cryBtn.classList.toggle('hidden', !rh);
+    this.rhythmBox.classList.toggle('hidden', !rh);
+    if (rh) {
+      this.cryBtn.classList.toggle('holding', rh.holding);
+      this.setText(this.rhythmTitle, rh.title);
+      this.setText(this.rhythmScore, `${rh.score}/${rh.total}`);
+      this.rhythmNotes.forEach((n, i) => {
+        const nt = rh.notes[i];
+        const show = !!nt && nt.x > -0.1 && nt.x < 1.05 && nt.state !== 'ok';
+        n.classList.toggle('hidden', !show);
+        if (!nt || !show) return;
+        this.setStyle(n, 'left', `${(nt.x * 100).toFixed(1)}%`);
+        this.setStyle(n, 'width', nt.hold ? `calc(${(nt.len * 100).toFixed(1)}% + 22px)` : '22px');
+        n.className = `rhythm-note${nt.hold ? ' hold' : ''} st-${nt.state}`;
+      });
     }
     // 공격: 잠김(각성 전) / 준비 / 돌아오는 중(쿨타임)
     this.atk.classList.toggle('off', off || h.attack !== 'ready' || (qteLock && !aim));

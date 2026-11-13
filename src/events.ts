@@ -75,6 +75,8 @@ export const EV = {
   endingNextReady: 'endingNextReady',
   /** 킁카괴물 코 타이밍 바: { show, pos(0~1), perfect, good, left, paused } */
   aimBar: 'aimBar',
+  /** 최종 보스 미니게임 버튼 (퉤! · 으앙!): { btn: 'spit' | 'cry', down: boolean } */
+  qteInput: 'qteInput',
   /** 타이밍 바 판정 'perfect' | 'good' | 'miss' */
   aimJudge: 'aimJudge',
   /** 엔딩 액자 효과 ('kiss' | 'sniff') */
@@ -111,10 +113,22 @@ export interface CombatHud {
   /** 점수 (화면 위 왼쪽) */
   score: number;
   /** 잠깐 바뀌는 버튼: 'aim' = 공격 버튼이 '조준!' · 'resist' = 방패 버튼이 '버티기!' (+ 버티기 게이지 0~1) */
-  qte?: { kind: 'aim' | 'aimIntro' } | { kind: 'resist'; gauge: number; left: number } | null;
+  qte?: QteHud | null;
   /** 성장 게이지 (보스전 중엔 null) */
   growth: { ratio: number; level: number; levels: number; final: boolean } | null;
 }
+
+/**
+ * 잠깐 바뀌는 버튼·화면:
+ *   aim·aimIntro = 공격 버튼이 '조준!' (킁카괴물) · resist = 방패 버튼이 '버티기!' (+ 게이지)
+ *   spit = 이유식 받아치기 '퉤!' 버튼 (ready = 지금 누르면 맞는 때)
+ *   rhythm = 울음 리듬 배틀: 음표가 오른쪽에서 판정선(x≈0.18)으로 다가옴 (x 0~1 · len = 꾸욱 길이) + '으앙!' 버튼
+ */
+export type QteHud =
+  | { kind: 'aim' | 'aimIntro' }
+  | { kind: 'resist'; gauge: number; left: number }
+  | { kind: 'spit'; ready: boolean }
+  | { kind: 'rhythm'; notes: { x: number; len: number; hold: boolean; state: 'wait' | 'ok' | 'miss' | 'hold' }[]; holding: boolean; title: string; score: number; total: number };
 
 export interface BannerInfo {
   top: string;

@@ -129,17 +129,26 @@ const WITCH_TRIAD: string[][] = [
   ['A3', 'C4', 'E4'], ['A3', 'C4', 'E4'], ['F3', 'A3', 'C4'], ['E3', 'G#3', 'B3'],
   ['A3', 'C4', 'E4'], ['D3', 'F3', 'A3'], ['F3', 'A3', 'C4'], ['E3', 'G#3', 'B3'],
 ];
-/** 전투 리드 (통통 튀는 마녀 춤곡 — 귀엽고 긴장감 있게) */
-const WITCH_LEAD: Notes = [
-  [[0, 'A4', 2], [2, 'C5', 2], [4, 'E5', 3], [7, 'D#5', 1], [8, 'E5', 2], [10, 'C5', 2], [12, 'A4', 4]],
-  [[0, 'B4', 2], [2, 'C5', 2], [4, 'D5', 2], [6, 'C5', 2], [8, 'B4', 4], [12, 'G#4', 4]],
-  [[0, 'A4', 2], [2, 'C5', 2], [4, 'F5', 3], [7, 'E5', 1], [8, 'F5', 2], [10, 'A5', 2], [12, 'F5', 4]],
-  [[0, 'E5', 2], [2, 'D5', 2], [4, 'C5', 2], [6, 'B4', 2], [8, 'G#4', 6], [14, 'B4', 2]],
-  [[0, 'A5', 2], [2, 'G#5', 2], [4, 'A5', 2], [6, 'E5', 2], [8, 'C5', 2], [10, 'E5', 2], [12, 'A4', 4]],
-  [[0, 'D5', 2], [2, 'F5', 2], [4, 'A5', 3], [7, 'G#5', 1], [8, 'A5', 2], [10, 'F5', 2], [12, 'D5', 4]],
-  [[0, 'C5', 2], [2, 'F5', 2], [4, 'E5', 2], [6, 'D5', 2], [8, 'C5', 4], [12, 'A4', 4]],
-  [[0, 'B4', 2], [2, 'G#4', 2], [4, 'E4', 2], [6, 'G#4', 2], [8, 'B4', 4], [12, 'E5', 4]],
+/**
+ * 이유식 마녀 전투곡 (다크 · 픽셀 마녀 느낌): D 화성 단조 — 파이프오르간 화음 · 하프시코드 아르페지오 ·
+ * 반음씩 내려가는 베이스 · 마녀 종소리 선율 (단2도·삼전음). 8마디 반복 (3페이즈판은 같은 빠르기·길이에 층만 더함)
+ */
+const WITCH_DARK_BASS = ['D2', 'C#2', 'C2', 'B1', 'Bb1', 'A1', 'Bb1', 'A1'];
+const WITCH_DARK_CHORD: string[][] = [
+  ['D3', 'F3', 'A3'], ['C#3', 'E3', 'A3'], ['C3', 'F3', 'A3'], ['B2', 'D3', 'G#3'],
+  ['Bb2', 'D3', 'G3'], ['A2', 'C#3', 'E3'], ['Bb2', 'D3', 'F3'], ['A2', 'C#3', 'G3'],
 ];
+const WITCH_DARK_LEAD: Notes = [
+  [[0, 'D5', 3], [3, 'C#5', 1], [4, 'D5', 2], [6, 'F5', 2], [8, 'E5', 3], [11, 'D5', 1], [12, 'C#5', 4]],
+  [[0, 'A4', 2], [2, 'Bb4', 2], [4, 'A4', 2], [6, 'G#4', 2], [8, 'A4', 8]],
+  [[0, 'F5', 3], [3, 'E5', 1], [4, 'F5', 2], [6, 'A5', 2], [8, 'G#5', 4], [12, 'F5', 4]],
+  [[0, 'E5', 2], [2, 'F5', 2], [4, 'D5', 2], [6, 'B4', 2], [8, 'G#4', 6], [14, 'B4', 2]],
+  [[0, 'D5', 2], [2, 'G5', 3], [5, 'F#5', 1], [6, 'G5', 2], [8, 'Bb5', 4], [12, 'A5', 4]],
+  [[0, 'G5', 2], [2, 'F5', 2], [4, 'E5', 2], [6, 'C#5', 2], [8, 'E5', 6], [14, 'Bb4', 2]],
+  [[0, 'D5', 3], [3, 'Eb5', 1], [4, 'D5', 2], [6, 'Bb4', 2], [8, 'F5', 4], [12, 'D5', 4]],
+  [[0, 'C#5', 4], [4, 'E5', 2], [6, 'G5', 2], [8, 'Bb5', 3], [11, 'A5', 1], [12, 'C#5', 4]],
+];
+
 /** 성으로 가는 길 (드문드문 울리는 으스스한 종소리) */
 const CASTLE_BELL: Notes = [
   [[0, 'E5', 8], [12, 'C5', 4]],
@@ -155,9 +164,16 @@ const CASTLE_BELL: Notes = [
 /** 엔딩 곡 마디 수 (반복 없음) */
 export const ENDING_BARS = 16;
 
-const TEMPO: Record<MusicMode, number> = { title: 68, game: 96, kiss: 150, kiss2: 150, sniff: 124, sniff2: 124, ending: 84, castle: 84, witch: 138, witch2: 138 };
+const TEMPO: Record<MusicMode, number> = { title: 68, game: 96, kiss: 150, kiss2: 150, sniff: 124, sniff2: 124, ending: 84, castle: 84, witch: 112, witch2: 112 };
 
 const AUDIO_DIR = 'assets/audio/';
+
+/**
+ * 끊김 없이 반복할 곡 (Web Audio 버퍼 반복): mp3 는 앞뒤에 인코더 무음이 붙어 <audio loop> 로는 반복 때 잠깐 끊김
+ * → 받아서 해독한 뒤 실제 소리가 시작되는 자리부터 정확히 8마디(128칸)만 반복. 값 = 반복 칸 수
+ */
+const GAPLESS: Partial<Record<MusicMode, number>> = { castle: 128, witch: 128, witch2: 128 };
+const loopSec = (mode: MusicMode): number => ((GAPLESS[mode] ?? 128) * 60) / TEMPO[mode] / 4;
 /** 미리 만든 소리 파일 (tools/render_audio.cjs) */
 export const MUSIC_FILES: Record<MusicMode, string> = {
   title: 'bgm-title.mp3',
@@ -560,6 +576,12 @@ class Sound {
     }
     const gen = this.bgmGen;
     clearInterval(this.fadeTimer);
+    // 끊김 없는 반복 곡: 버퍼가 준비돼 있으면 버퍼로 (아니면 아래 <audio> 로 — 그동안 받아 둠)
+    if (this.loopMode && this.loopMode !== mode) this.stopLoop();
+    if (GAPLESS[mode]) {
+      if (this.playLoop(mode)) return true;
+      this.prepareLoops([mode]);
+    }
     this.loadBgm(mode);
     const el = this.bgmEl;
     if (this.volumeWorks) el.volume = 1;
@@ -606,6 +628,12 @@ class Sound {
   private enforceSingleBgm(why: string): void {
     const want = this.endingSrc ? null : this.wantedMusicEl();
     const a = this.bgmEl;
+    // 버퍼 반복 곡: 원하는 곡이 아니거나 엔딩 중이면 멈춤 · 나오는 중이면 같은 곡 <audio> 는 멈춤 (겹침 방지)
+    if (this.loopSrc && (this.endingSrc || this.wantMusic !== this.loopMode)) {
+      this.stopLoop();
+      this.logBgm(`${why}: 원하지 않는 반복 버퍼 정지`);
+    }
+    if (this.loopSrc && !a.paused) a.pause();
     if (!a.paused && !a.muted && a !== want) {
       a.pause();
       this.logBgm(`${why}: 원하지 않는 ${this.bgmMode} 정지`);
@@ -615,7 +643,7 @@ class Sound {
       this.killSrc(src);
       this.logBgm(`${why}: 겹친 엔딩 버퍼 정지`);
     }
-    const fileAudible = !!want && !want.paused && !want.muted;
+    const fileAudible = (!!want && !want.paused && !want.muted) || !!this.loopSrc;
     if (this.musicTimer !== null && (this.endingSrc || fileAudible || !this.wantMusic)) {
       this.stopSynth();
       this.logBgm(`${why}: 겹친 합성 음악 정지`);
@@ -626,8 +654,9 @@ class Sound {
   bgmDebug(): { want: string; gen: number; active: number; html: string[]; webAudio: number; synth: boolean; ending: string; log: string[] } {
     const a = this.bgmEl;
     const html = a.paused ? [] : [`${this.bgmMode}${a.muted ? '(음소거)' : ''} ${a.currentTime.toFixed(1)}s`];
+    if (this.loopSrc) html.push(`${this.loopMode}(버퍼 반복) ${this.loopPos().toFixed(1)}s`);
     // 음소거라도 재생 중이면 센다 (아이폰은 음소거를 무시할 수 있음)
-    const audible = a.paused ? 0 : 1;
+    const audible = (a.paused ? 0 : 1) + (this.loopSrc ? 1 : 0);
     const synth = this.musicTimer !== null;
     return {
       want: this.endingSrc ? 'ending(버퍼)' : (this.wantMusic ?? '없음'),
@@ -643,6 +672,7 @@ class Sound {
 
   private pauseFileMusic(): void {
     this.bgmEl.pause();
+    this.stopLoop();
   }
 
   /** 효과음 파일로 대신 재생 (Web Audio 가 동작하지 않을 때). 재생했으면 true */
@@ -900,6 +930,38 @@ class Sound {
     this.noise(0.5, v * 0.5, 0, 'bandpass', 1200);
   }
   /** 우르르 쾅 (작은 번개) */
+  /** 퉤! (이유식 받아치기) — 짧은 바람 소리 + 톡 */
+  spit(strong = true): void {
+    this.noise(0.09, strong ? 0.22 : 0.14, 0, 'bandpass', 2400);
+    this.tone(strong ? 520 : 420, 0.08, 'square', 0.1, 0, strong ? 220 : 260);
+  }
+
+  /** 방패 반사 성공 (일반 방어와 확실히 다르게): 반짝 종소리 두 번 + 휙 */
+  reflect(): void {
+    this.bell(hz('E6'), 0.5, 0.16, 0);
+    this.bell(hz('B6'), 0.6, 0.14, 0.07);
+    this.noise(0.18, 0.12, 0.02, 'highpass', 3200);
+    this.tone(660, 0.16, 'triangle', 0.12, 0, 1320);
+  }
+
+  /** 으앙! (울음 음파 한 번) — 커질수록 높고 크게 (level 0~1) */
+  cry(level = 0.5): void {
+    const f = 380 + level * 260;
+    this.tone(f, 0.26, 'square', 0.07 + level * 0.06, 0, f * 0.72);
+    this.tone(f * 1.5, 0.22, 'triangle', 0.05, 0.02, f * 1.1);
+  }
+
+  /** 리듬 박자 신호 (마녀가 숟가락을 휘두르는 박) */
+  rhythmTick(accent = false): void {
+    this.tone(accent ? 1180 : 880, 0.05, 'square', 0.06, 0);
+  }
+
+  /** 철퍼덕 (이유식이 얼굴·바닥에 붙음) */
+  splat(): void {
+    this.noise(0.16, 0.2, 0, 'lowpass', 700);
+    this.tone(180, 0.12, 'sine', 0.18, 0, 90);
+  }
+
   thunder(): void {
     this.noise(0.08, 0.5, 0, 'highpass', 3000);
     this.noise(1.1, 0.32, 0.05, 'lowpass', 260);
@@ -1014,7 +1076,7 @@ class Sound {
   startMusic(mode: MusicMode = 'game'): void {
     // 같은 곡이 이미 나오고 있으면 아무것도 안 함 (반복 요청으로 다시 시작·중복 없음)
     const cur = this.bgmMode === mode ? this.bgmEl : null;
-    if (this.wantMusic === mode && !this.endingSrc && ((cur && !cur.paused && !cur.muted) || (this.musicSource === 'synth' && this.musicTimer !== null))) return;
+    if (this.wantMusic === mode && !this.endingSrc && ((cur && !cur.paused && !cur.muted) || (this.loopMode === mode && this.loopSrc) || (this.musicSource === 'synth' && this.musicTimer !== null))) return;
     this.bgmGen++;
     this.logBgm(`시작 ${mode} (세대 ${this.bgmGen})`);
     if (this.endingSrc) this.stopEnding(); // 엔딩 곡이 남아 있으면 정리 (다시 시작·타이틀로)
@@ -1038,6 +1100,12 @@ class Sound {
     this.wantMusic = null;
     this.stopSynth();
     clearInterval(this.fadeTimer);
+    if (this.loopSrc) {
+      // 버퍼 반복 곡은 Web Audio 로 부드럽게 (아이폰도 됨)
+      this.stopLoop(ms);
+      this.emit();
+      return;
+    }
     if (!el || el.paused || !this.volumeWorks) {
       this.pauseFileMusic();
       this.emit();
@@ -1061,6 +1129,14 @@ class Sound {
    */
   switchMusicSync(mode: MusicMode): void {
     if (this.wantMusic === mode) return;
+    // 버퍼 반복 곡끼리: 같은 박자 자리에서 바로 이어 바꿈 (끊김 없음)
+    if (this.loopSrc && GAPLESS[mode] && this.loopBufs.has(mode) && !this.muted) {
+      const pos = this.loopPos();
+      this.bgmGen++;
+      this.wantMusic = mode;
+      this.stopLoop();
+      if (this.playLoop(mode, pos)) return;
+    }
     const from = this.wantedMusicEl();
     if (!from || from.paused || this.musicBroken[mode] || this.muted) {
       this.startMusic(mode);
@@ -1088,6 +1164,110 @@ class Sound {
     this.stopSynth();
     this.stopEnding();
     this.emit();
+  }
+
+  // ───────────────────────── 끊김 없는 반복 곡 (Web Audio 버퍼 · 성으로 가는 길 · 마녀 전투곡) ─────────────────────────
+
+  private loopBufs = new Map<MusicMode, { buf: AudioBuffer; lead: number }>();
+  private loopLoads = new Map<MusicMode, Promise<boolean>>();
+  private loopSrc: AudioBufferSourceNode | null = null;
+  private loopGain: GainNode | null = null;
+  /** 지금 버퍼로 반복 중인 곡 */
+  loopMode: MusicMode | null = null;
+  private loopT0 = 0;
+
+  /** 미리 받아 해독 (마지막 모험·최종 보스 전에) — 실패하면 그 곡은 기존 <audio> 로 */
+  prepareLoops(modes: MusicMode[]): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    for (const mode of modes) {
+      if (!GAPLESS[mode] || this.loopBufs.has(mode) || this.loopLoads.has(mode)) continue;
+      const p = fetch(AUDIO_DIR + MUSIC_FILES[mode])
+        .then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })
+        .then((ab) => new Promise<AudioBuffer>((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+        .then((buf) => {
+          // 인코더가 앞에 붙인 무음 건너뛰기: 처음으로 소리가 나는 자리 (곡은 반복의 두 번째 바퀴를 잘라 낸 것이라 0초부터 소리가 있음)
+          const d = buf.getChannelData(0);
+          let i = 0;
+          const lim = Math.min(d.length, Math.floor(buf.sampleRate * 0.5));
+          while (i < lim && Math.abs(d[i]) < 0.002) i++;
+          const lead = i >= lim ? 0 : i / buf.sampleRate;
+          if (lead + loopSec(mode) > buf.duration + 0.01) throw new Error('반복 길이보다 짧음');
+          this.loopBufs.set(mode, { buf, lead });
+          this.logBgm(`반복 버퍼 준비 ${mode} (앞 무음 ${(lead * 1000).toFixed(0)}ms)`);
+          return true;
+        })
+        .catch((e) => {
+          this.log(`반복 음악 준비 (${mode})`, e);
+          this.loopLoads.delete(mode);
+          return false;
+        });
+      this.loopLoads.set(mode, p);
+    }
+  }
+
+  /** 버퍼 반복 재생 (offset = 반복 안에서 시작할 자리 초). 못 하면 false */
+  private playLoop(mode: MusicMode, offset = 0): boolean {
+    const ctx = this.ctx;
+    const L = this.loopBufs.get(mode);
+    if (!ctx || ctx.state !== 'running' || !L || !this.master || this.endingSrc) return false;
+    if (this.loopMode === mode && this.loopSrc) return true;
+    this.stopLoop();
+    const len = loopSec(mode);
+    const off = ((offset % len) + len) % len;
+    const g = ctx.createGain();
+    g.gain.value = 0.92;
+    g.connect(this.master);
+    const src = ctx.createBufferSource();
+    src.buffer = L.buf;
+    src.loop = true;
+    src.loopStart = L.lead;
+    src.loopEnd = L.lead + len;
+    src.connect(g);
+    src.start(0, L.lead + off);
+    this.loopSrc = src;
+    this.loopGain = g;
+    this.loopMode = mode;
+    this.loopT0 = ctx.currentTime - off;
+    this.bgmEl.pause();
+    this.musicSource = 'file';
+    this.logBgm(`반복 버퍼 시작 ${mode} @${off.toFixed(2)}s`);
+    this.emit();
+    return true;
+  }
+
+  /** 반복 안에서 지금 자리 (초) */
+  private loopPos(): number {
+    if (!this.ctx || !this.loopMode) return 0;
+    return (this.ctx.currentTime - this.loopT0) % loopSec(this.loopMode);
+  }
+
+  private stopLoop(fadeMs = 0): void {
+    const src = this.loopSrc;
+    const g = this.loopGain;
+    this.loopSrc = null;
+    this.loopGain = null;
+    this.loopMode = null;
+    if (!src || !g) return;
+    const end = (): void => {
+      try {
+        src.stop();
+      } catch {
+        /* 이미 멈춤 */
+      }
+      src.disconnect();
+      g.disconnect();
+    };
+    if (fadeMs > 0 && this.ctx) {
+      const now = this.ctx.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      g.gain.linearRampToValueAtTime(0, now + fadeMs / 1000);
+      window.setTimeout(end, fadeMs + 30);
+    } else end();
   }
 
   // ───────────────────────── 엔딩 곡 (Web Audio 버퍼: 자막 나올 때 음량 낮추기·페이드가 아이폰에서도 됨) ─────────────────────────
@@ -1370,31 +1550,64 @@ class Sound {
     }
   }
 
-  /** 이유식 마녀 전투곡 (intense = 3페이즈: 베이스 16분 · 하이햇 16분 · 아르페지오 · 리드 옥타브) */
+  /** 오르간 화음 한 음 (서서히 커져 마디 끝까지 유지 → 짧게 사라짐 — 끊김 없는 패드) */
+  private organ(freq: number, dur: number, vol: number, when: number, bus: AudioNode): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + Math.max(0, when);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.09);
+    g.gain.setValueAtTime(vol, t + Math.max(0.1, dur - 0.08));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.02);
+    g.connect(bus);
+    // 살짝 어긋난 사각파 두 개 + 한 옥타브 위 = 파이프오르간 느낌
+    for (const [mul, type, k] of [[1, 'square', 1], [1.004, 'square', 0.8], [2, 'triangle', 0.6]] as [number, OscillatorType, number][]) {
+      const o = this.ctx.createOscillator();
+      const og = this.ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq * mul, t);
+      og.gain.value = k;
+      o.connect(og).connect(g);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+  }
+
+  /**
+   * 이유식 마녀 전투곡 (다크 · 8마디 반복): 파이프오르간 화음 + 반음씩 내려가는 베이스 + 하프시코드 아르페지오 + 마녀 종소리 선율
+   * intense = 3페이즈판 (같은 빠르기·길이): 베이스 16분 · 아르페지오 16분 · 북 · 하이햇 16분 · 선율 옥타브
+   */
   private playWitch(step: number, when: number, bus: AudioNode, intense: boolean): void {
     const s16 = 60 / TEMPO.witch / 4;
     const bar = Math.floor(step / 16) % 8;
     const pos = step % 16;
-    const root = hz(WITCH_ROOT[bar]);
-    // 통통 튀는 베이스 (8분 · 옥타브 왔다 갔다)
-    if (pos % 2 === 0) this.tone(root * (pos % 4 === 2 ? 2 : 1), s16 * 1.6, 'square', 0.09, when, undefined, bus, 0.004);
-    if (intense && pos % 2 === 1) this.tone(root * 2, s16 * 0.7, 'square', 0.045, when, undefined, bus, 0.003);
-    // 패드 (마디 첫 칸)
-    if (pos === 0) for (const n of WITCH_TRIAD[bar]) this.tone(hz(n), s16 * 16, 'triangle', 0.03, when, undefined, bus, s16 * 3);
-    // 타악기: 북 · 스네어 · 하이햇
-    if (pos === 0 || pos === 7 || pos === 10 || (intense && (pos === 3 || pos === 14))) this.tone(pos === 0 ? 92 : 132, 0.2, 'sine', 0.3, when, 45, bus, 0.003);
-    if (pos === 4 || pos === 12) this.noise(0.11, 0.09, when, 'bandpass', 1700, bus);
-    if (intense ? true : pos % 2 === 1) this.noise(0.03, 0.022, when, 'highpass', 7000, bus);
-    // 리드: 하프시코드 느낌 (사각파 + 종)
-    for (const [p, n, l] of WITCH_LEAD[bar]) {
-      if (p !== pos) continue;
-      this.tone(hz(n), s16 * l * 0.85, 'square', 0.045, when, undefined, bus, 0.004);
-      this.bell(hz(n), Math.min(1.6, s16 * l * 1.2 + 0.25), 0.07, when, bus, false);
-      if (intense) this.tone(hz(n) * 2, s16 * l * 0.6, 'square', 0.018, when, undefined, bus, 0.004);
+    const bass = hz(WITCH_DARK_BASS[bar]);
+    const chord = WITCH_DARK_CHORD[bar];
+    // 오르간 화음 (마디 내내)
+    if (pos === 0) for (const n of chord) this.organ(hz(n), s16 * 16, 0.012, when, bus);
+    // 베이스: 8분 (으스스하게 근음-옥타브-근음-5도) · 3페이즈는 16분
+    if (pos % 2 === 0 || intense) {
+      const pat = [1, 1, 2, 1, 1.5, 1, 2, 1.5];
+      const f = bass * pat[Math.floor(pos / 2) % 8];
+      this.tone(f, s16 * (intense ? 0.9 : 1.7), 'sawtooth', intense ? 0.05 : 0.06, when, undefined, bus, 0.004);
     }
-    if (intense) {
-      const tri = WITCH_TRIAD[bar];
-      this.tone(hz(tri[pos % 3]) * 2, s16 * 0.6, 'triangle', 0.024, when, undefined, bus, 0.003);
+    // 하프시코드 아르페지오 (화음 올라갔다 내려옴) — 평소 8분 · 3페이즈 16분
+    if (intense || pos % 2 === 0) {
+      const arp = [chord[0], chord[1], chord[2], chord[1]];
+      const n = hz(arp[(intense ? pos : pos / 2) % 4]) * 2;
+      this.tone(n, s16 * 0.7, 'square', 0.022, when, undefined, bus, 0.002);
+    }
+    // 북: 1·(2의 뒤)·3 (낮고 둔탁하게) · 손뼉 같은 림 · 3페이즈는 하이햇·스네어 몰아치기
+    if (pos === 0 || pos === 6 || pos === 8 || (intense && (pos === 11 || pos === 14))) this.tone(pos === 0 ? 74 : 92, 0.24, 'sine', 0.3, when, 40, bus, 0.003);
+    if (pos === 4 || pos === 12) this.noise(0.08, 0.06, when, 'bandpass', 1300, bus);
+    if (intense) this.noise(0.025, pos % 4 === 2 ? 0.03 : 0.016, when, 'highpass', 7600, bus);
+    if (intense && bar === 7 && pos >= 12) this.noise(0.06, 0.05, when, 'bandpass', 1900, bus);
+    // 마녀 종소리 선율 (사각파 + 종 메아리)
+    for (const [p, nn, l] of WITCH_DARK_LEAD[bar]) {
+      if (p !== pos) continue;
+      this.tone(hz(nn), s16 * l * 0.8, 'square', 0.03, when, undefined, bus, 0.006);
+      this.bell(hz(nn), Math.min(1.8, s16 * l * 1.3 + 0.3), 0.06, when, bus, true);
+      if (intense) this.tone(hz(nn) / 2, s16 * l * 0.8, 'triangle', 0.035, when, undefined, bus, 0.006);
     }
   }
 

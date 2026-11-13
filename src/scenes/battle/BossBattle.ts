@@ -10,7 +10,7 @@
  * 시간은 모두 update(dt) 로 진행 — 일시정지(update 멈춤) 때 같이 멈춥니다.
  */
 import Phaser from 'phaser';
-import { bus, EV, type BannerInfo, type BossId } from '../../events';
+import { type QteHud, bus, EV, type BannerInfo, type BossId } from '../../events';
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
@@ -461,10 +461,18 @@ export abstract class BossBattle {
 
   resistTap(): void {}
 
-  /** 화면 버튼 표시용: 조준 / 버티기 게이지 */
-  qteHud(): { kind: 'aim' | 'aimIntro' } | { kind: 'resist'; gauge: number; left: number } | null {
+  /** 화면 버튼 표시용: 조준 / 버티기 게이지 / (최종 보스) 퉤! · 리듬 */
+  qteHud(): QteHud | null {
     return null;
   }
+
+  /** 화면 터치로 점프 못 하는 동안 (버티기 · 최종 보스 미니게임) */
+  get jumpLocked(): boolean {
+    return this.resistActive;
+  }
+
+  /** 고나가 방패를 막 켬 (최종 보스 폭탄 반사 판정용) */
+  onShieldRaised(): void {}
 
   protected weakMul(_x?: number, _y?: number): number {
     return this.stunT > 0 ? this.stunMul : 1;

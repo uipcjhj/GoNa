@@ -70,7 +70,7 @@ const URL = process.env.GAME_URL || 'http://localhost:4173/';
     { name: 'bgm-title', music: 'title', tempo: 68, secs: 256 * (60 / 68 / 4) + 3, kbps: 112 },
     { name: 'bgm-game', music: 'game', tempo: 96, secs: 256 * (60 / 96 / 4) + 3, kbps: 112 },
     // 보스전 (8마디 반복) · 분노판 · 가족 엔딩 (16마디 1회)
-    ...[['kiss', 150], ['kiss2', 150], ['sniff', 124], ['sniff2', 124], ['castle', 84], ['witch', 138], ['witch2', 138]].map(([m, t]) => ({ name: `bgm-${m}`, music: m, tempo: t, secs: 256 * (60 / t / 4) + 3, kbps: 112 })),
+    ...[['kiss', 150], ['kiss2', 150], ['sniff', 124], ['sniff2', 124], ['castle', 84], ['witch', 112], ['witch2', 112]].map(([m, t]) => ({ name: `bgm-${m}`, music: m, tempo: t, secs: 256 * (60 / t / 4) + 3, kbps: 112 })),
     { name: 'bgm-ending', music: 'ending', tempo: 84, steps: 256, once: true, secs: 256 * (60 / 84 / 4) + 6, kbps: 112 },
     ...['start', 'eggWobble', 'crack', 'boing', 'hatch', 'jump', 'nestJump', 'doubleJump', 'hit', 'gameOver', 'evolve', 'evolveDone', 'newRecord', 'throw', 'catch', 'bossHit', 'smooch', 'inhale', 'special', 'bossDown', 'warn', 'puff', 'shield', 'rage', 'fart']
       .map((n) => ({ name: `sfx-${n}`, sfx: n, secs: 3, kbps: 96 })),

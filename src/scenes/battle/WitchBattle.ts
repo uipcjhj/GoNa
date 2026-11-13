@@ -13,7 +13,7 @@
  *   수치: src/game/boss.ts 의 WITCH
  */
 import Phaser from 'phaser';
-import { bus, EV, type BannerInfo } from '../../events';
+import { bus, EV, type BannerInfo, type QteHud } from '../../events';
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
@@ -21,7 +21,9 @@ import { WITCH } from '../../game/boss';
 import { BossBattle, type Hostile } from './BossBattle';
 import type { BattleHost } from './types';
 
-type Attack = 'spoon' | 'bomb' | 'swirl' | 'combo' | 'pot' | 'triple' | 'bounce' | 'rain' | 'boomer' | 'mash' | 'last';
+type Attack = 'spoon' | 'bomb' | 'swirl' | 'combo' | 'pot' | 'triple' | 'bounce' | 'rain' | 'boomer' | 'high' | 'slam' | 'last' | 'parry' | 'reflect' | 'rhythm';
+/** 대응 방법 (예고 아이콘): 점프 · 가만히 · 방패 · (연타 — 의자, 에셋 대기) */
+export type Counter = 'jump' | 'stay' | 'shield';
 
 export const WITCH_INTRO_LINES = [
   '여기까지 잘도 왔구나…!',
@@ -38,12 +40,24 @@ export const WITCH_DEFEAT_LINES = ['내… 내 특별 이유식이…!', '한 �
 export const WITCH_LAST_LINE = '안 돼!! 내 이유식을 거부하다니!!';
 
 /** 새 공격이 처음 나올 때 짧은 안내 (기존 팝업 배너) */
+/** 처음 나오는 미니게임: 짧은 안내 팝업 + 잠깐 멈춤 */
+const MINIGAME_INFO: Partial<Record<Attack, { name: string; hint: string }>> = {
+  parry: { name: '이유식 받아치기', hint: '이유식이 입 앞에 왔을 때 「퉤!」 — 딱 맞추면 마녀에게 철퍼덕!' },
+  reflect: { name: '이유식 폭탄 돌려주기', hint: '폭탄이 닿기 직전에 방패! — 딱 맞추면 마녀에게 반사' },
+  rhythm: { name: '으아앙! 울음 리듬', hint: '음표가 노란 줄에 오면 「으앙!」 · 긴 음표는 꾸욱 누르기' },
+};
+export const WITCH_RHYTHM_LINE = '이것도 안 먹을 거야?!';
+
 const NEW_ATTACK_INFO: Partial<Record<Attack, { name: string; hint: string }>> = {
-  bounce: { name: '이유식 통통 폭탄', hint: '통통 튀며 다가와요 — 가까이 오면 점프!' },
-  triple: { name: '숟가락 삼연타', hint: '세 번 내리쳐요 — 마지막은 조금 늦게! 고리를 보고 점프' },
-  mash: { name: '이유식 으깨기!', hint: '바닥을 내리치면 이유식이 퍼져요 — 점프! 손을 거둘 때 반격' },
-  boomer: { name: '마법 숟가락 부메랑', hint: '빨간 줄(낮게)은 점프 · 파란 줄(높게)은 가만히!' },
-  rain: { name: '이유식 소나기', hint: '고리 자리에 떨어져요 — 고나 자리에 고리가 있으면 점프!' },
+  spoon: { name: '낮은 숟가락', hint: '빨간 ▲점프! 가 뜨면 점프' },
+  high: { name: '높은 숟가락', hint: '파란 ●가만히! — 점프하면 맞아요' },
+  bounce: { name: '이유식 통통 폭탄', hint: '▲점프! 가 뜨면 점프' },
+  slam: { name: '숟가락 내려치기', hint: '🛡방패! 가 뜨면 방패 버튼 — 막으면 마녀가 휘청' },
+  triple: { name: '숟가락 삼연타', hint: '▲점프! 세 번 — 마지막은 조금 늦게' },
+  swirl: { name: '이유식 회오리', hint: '▲점프! / ●가만히! 를 보고 따라 하기' },
+  boomer: { name: '숟가락 왕복', hint: '갈 때 ▲점프! · 올 때 ●가만히!' },
+  rain: { name: '이유식 소나기', hint: '▲점프! 가 뜰 때만 점프' },
+  pot: { name: '초대형 냄비 폭발', hint: '▲점프! 를 보고 차례로 점프' },
 };
 
 interface GroundMark {
@@ -69,9 +83,9 @@ export class WitchBattle extends BossBattle {
   /** (검증용) 폭탄 기록 */
   readonly bombLog: { mark: number; land?: number; puddle?: boolean }[] = [];
   /** (검증용) 지금 공격 예고 정보 — 판정 자리와 같음 (high = 머리 위 줄: 점프하지 말 것) */
-  telegraph: { kind: Attack; x: number; y: number; r: number; impactAt?: number; high?: boolean } | null = null;
+  telegraph: { kind: Attack; x: number; y: number; r: number; impactAt?: number; high?: boolean; shield?: boolean } | null = null;
   /** (검증용) 앞으로 고나 자리를 지나갈 위협들 (자동 회피 테스트용) — at = 전투 시각, high = 머리 위 줄 */
-  readonly threatsAhead: { kind: Attack; at: number; high: boolean }[] = [];
+  readonly threatsAhead: { kind: Attack; at: number; high: boolean; shield?: boolean; qte?: 'spit' }[] = [];
   /** 처음 나온 공격 (안내 팝업은 한 번만) */
   private seen = new Set<Attack>();
   /** 통통 튀는 덩어리 */
@@ -81,6 +95,17 @@ export class WitchBattle extends BossBattle {
   /** 마지막 발악: none → swing(휘두르는 중) → open(무방비 · 한 방) → done */
   lastPhase: 'none' | 'swing' | 'open' | 'done' = 'none';
   private lastTries = 0;
+  /** ① 받아치기 상태 (날아오는 이유식 · 도착 시각 · 누른 결과) */
+  private parryS: { s: Phaser.GameObjects.Image; x0: number; y0: number; x1: number; y1: number; t0: number; arrive: number; result: 'perfect' | 'good' | 'whiff' | null; done: boolean } | null = null;
+  /** ③ 반사 상태 */
+  private reflectS: { s: Phaser.GameObjects.Image; x0: number; y0: number; x1: number; y1: number; t0: number; arrive: number; done: boolean } | null = null;
+  /** 고나가 방패를 켠 전투 시각 (반사 판정) */
+  private shieldAt = -99;
+  /** ② 울음 리듬 상태 */
+  rhythmS: { notes: { t: number; hold: number; state: 'wait' | 'ok' | 'miss' | 'hold'; downAt: number }[]; lead: number; holding: boolean; ok: number; waves: number; end: number; ticked: number } | null = null;
+  /** (검증용) 미니게임 결과 기록 */
+  readonly qteLog: string[] = [];
+  private onQte = (e: { btn: 'spit' | 'cry'; down: boolean }): void => this.qteInput(e.btn, e.down);
   private lastTalked = false;
   /** 공격 중에만 쓰는 예고·효과 (고나 필살기 등으로 공격이 끊기면 바로 정리 — 깜빡이는 고리·점선이 남아 쌓이지 않게) */
   private temps: Phaser.GameObjects.GameObject[] = [];
@@ -89,17 +114,47 @@ export class WitchBattle extends BossBattle {
   /** (검증용) 자동 공격 멈춤 (공격 패턴별 테스트) */
   debugHold = false;
 
-  /** 기본 배율 = 4단계(자이언트 곤룡) 고나와 같은 1.6배 (스프라이트 도트 1칸 = 고나 도트 1칸 → 픽셀 크기·외곽선 두께 동일) */
-  static readonly SCALE = 1.6;
+  /**
+   * 기본 배율 1.2 (예전 1.6 에서 25% 작게 — 화면이 덜 답답하고 공격 예고 공간 확보).
+   * 화면 픽셀 배율(VIEW.renderScale 5) × 1.2 = 6 → 원본 도트 1칸이 정확히 6×6 캔버스 픽셀 (흐려지지 않음).
+   * 페이즈가 올라도 크기는 그대로 (1.26 같은 배율은 도트가 뭉개짐)
+   */
+  static readonly SCALE = 1.2;
   /** 프레임 안의 기준점 (스프라이트 칸 66x53 기준: 몸통·머리 범위, 손잡이 끝) */
   private static readonly BODY = { x0: 10, x1: 40, y0: 6, y1: 45 };
   private static readonly HAND = { x: 15, y: 28 };
 
   constructor(host: BattleHost, tex: string) {
     super(host, 'witch', tex);
-    this.homeX = Math.min(host.W - 38, host.basePlayerX + 150); // 날개 끝까지 화면 안에
+    this.homeX = Math.min(host.W - 30, host.basePlayerX + 150); // 날개 끝까지 화면 안에
     this.boss.setScale(WitchBattle.SCALE);
     this.restScale = WitchBattle.SCALE;
+    bus.on(EV.qteInput, this.onQte);
+    // 받아치기 판정 고리 (작은 UI 효과): 노란 고리 + 가운데 점
+    const tm = host.scene.textures;
+    if (!tm.exists('fx-ring-target')) {
+      const c = document.createElement('canvas');
+      c.width = 19;
+      c.height = 19;
+      const g = c.getContext('2d')!;
+      for (let y = 0; y < 19; y++) {
+        for (let x = 0; x < 19; x++) {
+          const d = Math.hypot(x - 9, y - 9);
+          if (d > 7.2 && d <= 9) {
+            g.fillStyle = d > 8.2 ? '#7a4a00' : '#ffe14a';
+            g.fillRect(x, y, 1, 1);
+          }
+        }
+      }
+      g.fillStyle = '#ffffff';
+      g.fillRect(8, 8, 3, 3);
+      tm.addCanvas('fx-ring-target', c);
+    }
+  }
+
+  destroy(): void {
+    bus.off(EV.qteInput, this.onQte);
+    super.destroy();
   }
 
   /** 지금 배율 (페이즈가 오를수록 조금 커짐) */
@@ -225,12 +280,13 @@ export class WitchBattle extends BossBattle {
     const cam = scene.cameras.main;
     this.busy = true;
     const lines = level === 1 ? WITCH_PHASE2_LINES : WITCH_PHASE3_LINES;
+    this.count = 0; // 새 페이즈는 그 페이즈 순서의 처음부터
+    this.phaseSeen.clear();
     this.talk(lines, () => {
       // 보라 번개 · 눈빛 · 날개가 커짐
       sound.thunder();
       cam.flash(200, 190, 110, 255);
       cam.shake(300, 0.01);
-      this.boss.setScale(WitchBattle.SCALE * (level === 1 ? 1.05 : 1.1));
       for (let i = 0; i < 3; i++) {
         const b = this.tmp(scene.add.image(20 + Math.random() * (this.host.W - 40), 16, 'castle-bolt').setDepth(7.6).setScale(1.4));
         scene.tweens.add({ targets: b, alpha: 0, duration: 420, delay: i * 140, onComplete: () => b.destroy() });
@@ -260,15 +316,19 @@ export class WitchBattle extends BossBattle {
       this.lastStand();
       return;
     }
+    // 무작위로 섞지 않고 정해진 순서 (회피·방어 가능한 조합만 · 새 조작은 하나씩 익히기)
+    //   1페이즈 식사 시간: 숟가락 → 받아치기 → 숟가락 → 폭탄 반사 …  2페이즈 억지로 먹어!: 삼연타 · 리듬 · 받아치기 · 반사
+    //   3페이즈 대폭주: 부메랑 · 강화 리듬 · 소나기 · 반사 · 냄비 · 받아치기
     let pick: Attack;
     if (this.rage === 0) {
-      const order: Attack[] = ['spoon', 'bounce', 'bomb', 'spoon', 'bomb', 'bounce'];
-      pick = order[this.count % order.length];
+      const intro: Attack[] = ['spoon', 'parry', 'reflect'];
+      const loop: Attack[] = ['spoon', 'parry', 'reflect'];
+      pick = this.count < intro.length ? intro[this.count] : loop[(this.count - intro.length) % loop.length];
     } else if (this.rage === 1) {
-      const order: Attack[] = ['mash', 'triple', 'swirl', 'spoon', 'combo', 'mash', 'bomb', 'triple'];
+      const order: Attack[] = ['triple', 'rhythm', 'reflect', 'parry', 'triple', 'rhythm'];
       pick = order[this.count % order.length];
     } else {
-      const order: Attack[] = ['pot', 'boomer', 'rain', 'mash', 'triple', 'boomer', 'swirl', 'rain', 'combo', 'mash'];
+      const order: Attack[] = ['rhythm', 'boomer', 'reflect', 'pot', 'rain', 'parry', 'rhythm', 'boomer', 'reflect'];
       pick = order[this.count % order.length];
     }
     this.count++;
@@ -279,8 +339,22 @@ export class WitchBattle extends BossBattle {
     this.after(0.4 + this.introduce(pick), () => this.runAttack(pick));
   }
 
+  /** 미니게임 첫 등장: 짧은 안내 팝업 + 전투를 잠깐(1.2초) 멈춤 → 기다릴 시간 */
+  private introduceMinigame(a: Attack): number {
+    const info = MINIGAME_INFO[a];
+    if (!info || this.seen.has(a)) return 0;
+    this.seen.add(a);
+    this.banner({ top: '✋ 새 조작!', name: info.name, desc: info.hint, ms: 1500, tone: 'good' });
+    this.frozen = true;
+    this.after(1.2, () => {
+      if (this.mode === 'fight') this.frozen = false;
+    }, true);
+    return 0.2;
+  }
+
   /** 새 공격 첫 등장: 안내 팝업 (기존 배너) → 기다릴 시간(초) */
   private introduce(a: Attack): number {
+    if (MINIGAME_INFO[a]) return this.introduceMinigame(a);
     const info = NEW_ATTACK_INFO[a];
     if (!info || this.seen.has(a)) return 0;
     this.seen.add(a);
@@ -288,7 +362,16 @@ export class WitchBattle extends BossBattle {
     return 1.0;
   }
 
+  /** 이번 페이즈에 이미 나온 공격 (mustShow 확인용) */
+  private phaseSeen = new Set<string>();
+
+  /** 이번 페이즈에 꼭 나와야 하는 상호작용이 다 나왔는지 */
+  get phaseDone(): boolean {
+    return (WITCH.mustShow[this.phaseIdx] ?? []).every((a) => this.phaseSeen.has(a));
+  }
+
   private runAttack(a: Attack): void {
+    this.phaseSeen.add(a);
     if (a === 'spoon') this.spoonAttack(1);
     else if (a === 'combo') this.spoonAttack(2);
     else if (a === 'triple') this.spoonAttack(3);
@@ -297,7 +380,11 @@ export class WitchBattle extends BossBattle {
     else if (a === 'bounce') this.bounceBombs();
     else if (a === 'rain') this.rain();
     else if (a === 'boomer') this.spoonBoomerang();
-    else if (a === 'mash') this.mash();
+    else if (a === 'high') this.highSpoon();
+    else if (a === 'parry') this.parryAttack();
+    else if (a === 'reflect') this.reflectBomb();
+    else if (a === 'rhythm') this.cryRhythm();
+    else if (a === 'slam') this.slam();
     else if (a === 'last') this.lastStand();
     else this.potBlast();
   }
@@ -336,6 +423,29 @@ export class WitchBattle extends BossBattle {
     const top = this.hudBottom;
     const hatTop = (this.fh - 4) * this.k; // 발밑 → 모자 끝
     return Math.max(4, Math.min(want, this.host.groundY - hatTop - top));
+  }
+
+  /** 기절(어질어질·휘청·지침) 때마다 마녀 머리 위에 ★지금 공격! */
+  protected stun(sec: number, mul: number, text: string): void {
+    super.stun(sec, mul, text);
+    this.cue('counter', Math.min(sec, 30));
+  }
+
+  /** 기절한 마녀에게 고나 필살기를 쓰면 추가 피해 (WITCH.stunSpecialMul) */
+  private stunBonus = false;
+
+  useSpecial(): boolean {
+    const stunned = this.stunT > 0;
+    const ok = super.useSpecial();
+    if (ok && stunned) {
+      this.stunBonus = true;
+      this.floatText('기절 보너스!', this.bx - 10, this.host.groundY - this.balt - this.fh * this.k, '#ffe14a');
+    }
+    return ok;
+  }
+
+  protected damage(n: number): void {
+    super.damage(this.stunBonus && this.mode === 'cutscene' ? Math.round(n * WITCH.stunSpecialMul) : n);
   }
 
   /** 공격용 임시 효과 등록 */
@@ -388,11 +498,10 @@ export class WitchBattle extends BossBattle {
       g.fillStyle(d % 14 < 7 ? 0xff5a6a : 0xfff0f0, 0.9);
       g.fillRect(Math.round(h.x + (dx * d) / len), Math.round(h.y + (dy * d) / len), 2, 2);
     }
-    const ring = this.tmp(scene.add.image(T.x, T.y + 4, 'witch-target').setDepth(12.4).setScale(1.3));
-    scene.tweens.add({ targets: [g, ring], alpha: 0.35, duration: 140, yoyo: true, repeat: -1 });
+    scene.tweens.add({ targets: g, alpha: 0.35, duration: 140, yoyo: true, repeat: -1 });
+    this.cue('jump', tel + WITCH.spoon.strike);
     this.after(tel, () => {
       g.destroy();
-      ring.destroy();
       this.strike(h, T, n, k);
     });
   }
@@ -600,20 +709,19 @@ export class WitchBattle extends BossBattle {
     this.setPose(7, S.arrow + S.count * S.gap + 0.4);
     // 빙글빙글: 발밑 기준으로 통째로 돌면 땅까지 내려와 보이므로 좌우로 흔들흔들 (몸은 제자리)
     scene.tweens.add({ targets: this.boss, angle: { from: -14, to: 14 }, duration: 260, yoyo: true, repeat: Math.ceil((S.count * S.gap + S.arrow) / 0.52), onComplete: () => this.boss.setAngle(0) });
-    const gap = S.gap * (this.rage >= 2 ? 0.85 : 1);
+    const gap = S.gap * (this.rage >= 2 ? 0.9 : 1);
     const lanes = [0, 1, 0, 0, 1, 0, 1, 0];
     for (let i = 0; i < S.count; i++) {
       const high = lanes[i % lanes.length] === 1;
-      const y = high ? this.host.groundY - 34 : this.host.groundY - 6;
+      const y = high ? this.host.groundY - WITCH.high.lane : this.host.groundY - 6;
       this.after(i * gap, () => {
-        // 줄 예고 (점선 · 아래 = 빨강 '점프!' / 위 = 하늘색 '가만히')
-        const g = this.tmp(scene.add.graphics().setDepth(12.3));
-        g.fillStyle(high ? 0x8fe3ff : 0xff6a7a, 0.85);
-        for (let x = 4; x < this.bx - 18; x += 8) g.fillRect(x, Math.round(y), 4, 1);
-        scene.tweens.add({ targets: g, alpha: 0.3, duration: 120, yoyo: true, repeat: -1 });
-        this.telegraph = { kind: 'swirl', x: this.host.basePlayerX, y, r: 5 };
+        // 방울이 고나에 닿기 0.85초 전부터 대응 안내 (아래 줄 = ▲점프! / 위 줄 = ●가만히!) — 방울 간격(≥0.9초)보다 짧아 안내가 겹치지 않음
+        const travel = (this.hand().x - this.host.basePlayerX - 8) / S.speed;
+        const cross = this.time + S.arrow + travel;
+        this.threatsAhead.push({ kind: 'swirl', at: cross, high });
+        this.after(Math.max(0, S.arrow + travel - 0.85), () => this.cue(high ? 'stay' : 'jump', 0.85));
+        this.telegraph = { kind: 'swirl', x: this.host.basePlayerX, y, r: 5, high };
         this.after(S.arrow, () => {
-          g.destroy();
           const h = this.hand();
           sound.puff();
           const b = this.spawn('witch-goo', h.x, y, { vx: -S.speed, r: 5, breakable: true, dmg: S.dmg, spin: -300 });
@@ -653,9 +761,12 @@ export class WitchBattle extends BossBattle {
       const at = 1.0 + i * gap;
       // 예고 고리 (모두 미리 보이고 차례로 터짐)
       this.after(at - P.telegraph, () => {
-        if (Math.abs(x - px) < 12) this.telegraph = { kind: 'pot', x, y: this.host.groundY - 6, r: 11, impactAt: this.time + P.telegraph };
-        const ring = this.tmp(scene.add.image(x, this.host.groundY + 1, 'witch-target').setOrigin(0.5, 1).setDepth(10.4).setScale(1.4));
-        scene.tweens.add({ targets: ring, alpha: 0.55, duration: 110, yoyo: true, repeat: -1 });
+        // 고나 자리에 떨어지는 것만 ▲점프! 안내 (나머지 자리는 고나와 상관없음 — 덩어리만 보임)
+        if (Math.abs(x - px) < 12) {
+          this.telegraph = { kind: 'pot', x, y: this.host.groundY - 6, r: 11, impactAt: this.time + P.telegraph };
+          this.threatsAhead.push({ kind: 'pot', at: this.time + P.telegraph, high: false });
+          this.cue('jump', P.telegraph);
+        }
         // 냄비에서 솟아오르는 덩어리 (보이기만) → 떨어짐
         const blob = this.tmp(scene.add.image(this.pot?.x ?? this.host.W - 22, this.host.groundY - 28, 'witch-goo').setDepth(11).setScale(1.4));
         scene.tweens.add({ targets: blob, y: -10, duration: (P.telegraph - 0.4) * 1000, ease: 'Quad.Out' });
@@ -664,8 +775,6 @@ export class WitchBattle extends BossBattle {
           scene.tweens.add({ targets: blob, y: this.host.groundY - 6, duration: 330, ease: 'Quad.In' });
         });
         this.after(P.telegraph, () => {
-          scene.tweens.killTweensOf(ring);
-          ring.destroy();
           blob.destroy();
           this.splat(x);
           this.shockwave(x, this.host.groundY - 6, false);
@@ -684,15 +793,191 @@ export class WitchBattle extends BossBattle {
   }
 
 
+
+  // ───────────────────────── 대응 안내 (예고 아이콘) ─────────────────────────
+  //   낮은 공격 = 빨강 아래쪽 띠 + ▲점프! · 높은 공격 = 파랑 위쪽 띠 + ●가만히! · 방패 = 파랑 방패 아이콘 + 방패!
+  //   반격 = 노랑 ★지금 공격! (마녀 머리 위) — 색 + 아이콘 + 위치(아래/위/앞)로 구분. 아이콘·띠는 코드로 그린 UI (CLAUDE.md 허용)
+
+  private static readonly CUE_LABEL: Record<Counter | 'counter', [string, string, string]> = {
+    jump: ['▲ 점프!', '#ff4d5e', '#ffffff'],
+    stay: ['● 가만히!', '#3d8bff', '#ffffff'],
+    shield: ['방패!', '#3d8bff', '#ffffff'],
+    counter: ['★ 지금 공격!', '#ffd23f', '#3a2400'],
+  };
+
+  /** 안내 칩 그림 (한 번만 만듦 · 5배로 그려 0.2배로 표시 → 화면 픽셀과 1:1 선명) */
+  private cueTex(kind: Counter | 'counter'): string {
+    const key = `witch-cue-${kind}`;
+    const tm = this.host.scene.textures;
+    if (tm.exists(key)) return key;
+    const [label, bg, fg] = WitchBattle.CUE_LABEL[kind];
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d')!;
+    // 5배로 그려 0.2배로 표시 (게임 1px = 화면 캔버스 5px → 1:1 선명) · 높이 56 → 게임 안 약 11px (아이폰 세로 약 26pt)
+    const font = 'bold 40px Galmuri11, monospace';
+    g.font = font;
+    const icon = kind === 'shield' ? 44 : 0;
+    const w = Math.ceil(g.measureText(label).width) + 30 + icon;
+    c.width = w;
+    c.height = 56;
+    g.fillStyle = 'rgba(20, 8, 30, 0.88)';
+    g.fillRect(0, 0, w, 56);
+    g.fillStyle = bg;
+    g.fillRect(4, 4, w - 8, 48);
+    if (kind === 'shield') {
+      // 방패 아이콘 (작은 UI 그림)
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.moveTo(13, 11);
+      g.lineTo(47, 11);
+      g.lineTo(47, 28);
+      g.quadraticCurveTo(47, 42, 30, 48);
+      g.quadraticCurveTo(13, 42, 13, 28);
+      g.closePath();
+      g.fill();
+      g.fillStyle = bg;
+      g.fillRect(27, 16, 6, 24);
+      g.fillRect(19, 24, 22, 6);
+    }
+    g.font = font;
+    g.textBaseline = 'middle';
+    g.fillStyle = fg;
+    g.fillText(label, 15 + icon, 29);
+    tm.addCanvas(key, c);
+    return key;
+  }
+
+  /**
+   * 대응 안내를 sec 초 동안 (공격 판정 순간까지). 고나 자리 기준:
+   *   jump: 고나 발밑 빨강 띠(낮은 공격이 지나갈 높이) + 고나 앞 아래쪽 칩 / stay: 머리 위 파랑 띠(높은 공격 높이) + 머리 위 칩
+   *   shield: 고나 앞 방패 칩 + 내려칠 기둥 테두리 / counter: 마녀 머리 위 노랑 칩
+   */
+  private cue(kind: Counter | 'counter', sec: number): void {
+    const scene = this.host.scene;
+    const px = this.host.basePlayerX;
+    const gy = this.host.groundY;
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    if (kind === 'jump') {
+      objs.push(this.tmp(scene.add.rectangle(px - 16, gy - 12, 64, 12, 0xff3b4e, 0.32).setOrigin(0, 0).setDepth(10.3)));
+      objs.push(this.tmp(scene.add.image(px + 34, gy - 7, this.cueTex('jump')).setScale(0.2).setDepth(12.6)));
+    } else if (kind === 'stay') {
+      objs.push(this.tmp(scene.add.rectangle(px - 16, gy - WITCH.high.lane - 7, 64, 14, 0x3d8bff, 0.32).setOrigin(0, 0).setDepth(10.3)));
+      objs.push(this.tmp(scene.add.image(px + 4, gy - WITCH.high.lane - 17, this.cueTex('stay')).setScale(0.2).setDepth(12.6)));
+    } else if (kind === 'shield') {
+      const S = WITCH.slam;
+      const col = this.tmp(scene.add.rectangle(px, gy, S.width, S.height, 0x3d8bff, 0.16).setOrigin(0.5, 1).setStrokeStyle(1, 0x9cc4ff, 0.9).setDepth(10.3));
+      objs.push(col);
+      objs.push(this.tmp(scene.add.image(px + 36, gy - 26, this.cueTex('shield')).setScale(0.2).setDepth(12.6)));
+    } else {
+      const r = this.bossRect();
+      // 마녀 발밑 (머리 위는 '지금이 기회!' 배너와 겹침)
+      objs.push(this.tmp(scene.add.image((r.x0 + r.x1) / 2, Math.min(gy - 8, r.y1 + 9), this.cueTex('counter')).setScale(0.2).setDepth(12.6)));
+    }
+    // 깜빡임 (끝에 가까울수록 빠르게) → 판정 순간에 사라짐
+    scene.tweens.add({ targets: objs, alpha: 0.45, duration: 180, yoyo: true, repeat: -1 });
+    this.after(Math.max(0.2, sec - 0.35), () => {
+      scene.tweens.killTweensOf(objs);
+      scene.tweens.add({ targets: objs, alpha: 0.3, duration: 70, yoyo: true, repeat: -1 });
+    });
+    this.after(sec, () => {
+      scene.tweens.killTweensOf(objs);
+      for (const o of objs) o.destroy();
+    });
+  }
+
+  // ───────────────────────── 높은 숟가락 (가만히) ─────────────────────────
+
+  /**
+   * 손잡이가 늘어나 숟가락이 고나 머리 위 높이(땅에서 lane)로 쓸고 지나감.
+   * 서 있는 고나(머리 꼭대기 = 땅 위 19)는 안 닿고, 점프하면 맞음 → '●가만히!'
+   */
+  private highSpoon(): void {
+    const H = WITCH.high;
+    const y = this.host.groundY - H.lane;
+    const px = this.host.basePlayerX;
+    const h = this.hand();
+    this.setPose(2, H.telegraph);
+    this.warn(H.telegraph);
+    const cross = this.time + H.telegraph + (h.x - px) / H.speed;
+    this.threatsAhead.push({ kind: 'high', at: cross, high: true });
+    this.telegraph = { kind: 'high', x: px, y, r: 6, high: true, impactAt: cross };
+    this.cue('stay', H.telegraph + (h.x - px) / H.speed);
+    this.after(H.telegraph, () => this.sweep(h.x, y, H.speed, H.dmg, () => this.finish(1.3)));
+  }
+
+  /** 늘어나는 손잡이 + 숟가락 머리가 y 높이로 화면 왼쪽까지 쓸고 지나감 (높은 숟가락 · 마지막 발악 공용) */
+  private sweep(hx: number, y: number, speed: number, dmg: number, done: () => void): void {
+    const scene = this.host.scene;
+    sound.throw();
+    this.setPose(6, 99);
+    const kk = this.k;
+    const arm = this.tmp(scene.add.tileSprite(hx, y, 2, 4, 'witch-arm').setOrigin(1, 0.5).setDepth(8.6).setScale(kk));
+    const sp = this.spawn('witch-spoon', hx, y, { vx: -speed, r: 6, pierce: true, breakable: false, dmg, life: 6 });
+    sp.sprite.setScale(kk).setDepth(8.7);
+    this.lastArm = { arm, sp, hx, k: kk };
+    this.after((hx + 20) / speed, () => {
+      this.lastArm = null;
+      if (!sp.dead) this.kill(sp);
+      arm.destroy();
+      this.setPose(0, 0);
+      this.telegraph = null;
+      done();
+    });
+  }
+
+  // ───────────────────────── 숟가락 내려치기 (방패) ─────────────────────────
+
+  /**
+   * 숟가락을 높이 들었다가 고나 자리를 위에서 내려침 — 판정이 점프 높이까지 닿는 기둥이라 점프로는 못 피함.
+   * 방패(누르면 1초 유지)로 막으면 마녀가 휘청 (큰 반격 기회). 예고: 파랑 방패 아이콘 + 내려칠 기둥 테두리
+   */
+  private slam(): void {
+    const S = WITCH.slam;
+    const tel = S.telegraph[this.phaseIdx];
+    const px = this.host.basePlayerX;
+    const gy = this.host.groundY;
+    this.moveTo(this.homeX, this.hov(10), 0.3);
+    this.setPose(2, tel + 0.1);
+    this.warn(tel);
+    const impact = this.time + tel + S.strike;
+    this.threatsAhead.push({ kind: 'slam', at: impact, high: false, shield: true });
+    this.telegraph = { kind: 'slam', x: px, y: gy - S.height / 2, r: S.width / 2, impactAt: impact, shield: true };
+    this.cue('shield', tel + S.strike);
+    let result: 'hit' | 'block' | null = null;
+    this.after(tel, () => this.reach(this.hand(), { x: px + 4, y: gy - 8 }, S.strike));
+    this.after(tel + S.strike, () => {
+      sound.hit();
+      this.host.scene.cameras.main.shake(200, 0.012);
+      this.shockwave(px, gy - 4, true);
+      this.splat(px + 6);
+      // 판정: 고나 자리 기둥 (땅 ~ 점프 높이 위까지) — 방패가 앞에서 먼저 막음
+      const hb = this.spawn('boss-dot', px, gy - S.height / 2, { shape: 'box', w: S.width, h: S.height, pierce: true, breakable: false, threat: false, dmg: S.dmg, life: 0.15 });
+      hb.sprite.setAlpha(0);
+      hb.onHit = (_h: Hostile, blocked: boolean) => (result = blocked ? 'block' : 'hit');
+    });
+    this.after(tel + S.strike + 0.2, () => {
+      this.telegraph = null;
+      this.spoonLog.push(result ?? 'miss');
+      if (result === 'block') {
+        this.floatText('막았다!', px + 8, gy - 30, '#9cc4ff');
+        this.host.scene.tweens.add({ targets: this.boss, angle: { from: -10, to: 10 }, duration: 200, yoyo: true, repeat: 4, onComplete: () => this.boss.setAngle(0) });
+        this.after(Math.max(0.2, S.stun - 0.4), () => this.retract(0.3));
+        this.stun(S.stun, S.stunMul, '방패에 막혀 휘청!');
+      } else {
+        this.retract(0.35);
+        this.after(0.4, () => this.finish(1.3));
+      }
+    });
+  }
+
   // ───────────────────────── 통통 폭탄 (1페이즈~) ─────────────────────────
 
   /**
    * 손에서 이유식 덩어리를 차례로 던짐 → 바닥에서 통통 튀며 고나 쪽으로. 튀는 높이가 34 → 20 → 10 으로 낮아지고
    * 가장 낮은 마지막 통통이 고나 자리 위를 지나감 (서 있으면 맞고, 점프하면 넘음) → 고나 뒤 바닥에서 철퍽 터짐.
-   * 착지 자리는 미리 작은 고리로 예고.
+   * 고나 위를 지나가기 직전 ▲점프! 안내.
    */
   private bounceBombs(): void {
-    const scene = this.host.scene;
     const B = WITCH.bounce;
     const n = B.count;
     const r = 4;
@@ -714,11 +999,9 @@ export class WitchBattle extends BossBattle {
           lands.push(x);
           x -= vx * T[k];
         }
-        const rings = lands.map((lx) => {
-          const ring = this.tmp(scene.add.image(lx, this.host.groundY + 1, 'witch-target').setOrigin(0.5, 1).setDepth(10.4).setScale(0.7).setAlpha(0.9));
-          scene.tweens.add({ targets: ring, alpha: 0.55, duration: 120, yoyo: true, repeat: -1 });
-          return ring;
-        });
+        void lands;
+        // ▲점프! 안내: 마지막 통통으로 고나 위를 지나가기 0.9초 전부터 (덩어리 간격 1.3초 — 안내가 겹치지 않음)
+        this.after(Math.max(0, B.telegraph + span - 0.95), () => this.cue('jump', 0.9));
         const cross = this.time + B.telegraph + span;
         // (자동 테스트 봇용) 마지막 통통 직전 착지 무렵에 닿기 시작 → 꼭대기보다 조금 앞서 점프
         this.threatsAhead.push({ kind: 'bounce', at: cross - 0.15, high: false });
@@ -733,8 +1016,7 @@ export class WitchBattle extends BossBattle {
           const vy = (y0 - h2.y - 0.5 * g * B.throwSec * B.throwSec) / B.throwSec;
           const ball = this.spawn('witch-goo', h2.x, h2.y, { vx: -vx, vy, ay: g, r, breakable: true, dmg: B.dmg, spin: -260, life: 9 });
           this.bouncers.push({ h: ball, hs: [...B.heights, 0], i: 0 });
-          ball.onHit = () => rings.forEach((rg) => rg.destroy());
-          this.after(span + 0.4, () => rings.forEach((rg) => rg.active && rg.destroy()));
+
         });
       });
     }
@@ -792,16 +1074,13 @@ export class WitchBattle extends BossBattle {
         if (!safe) {
           this.threatsAhead.push({ kind: 'rain', at: impact, high: false });
           this.telegraph = { kind: 'rain', x: px, y: this.host.groundY - 6, r: 6, impactAt: impact };
+          this.cue('jump', R.telegraph); // 고나 자리에 떨어지는 물결만 ▲점프! (가운데 물결은 안내 없음 = 가만히 있어도 안전)
         }
         this.warn(R.telegraph);
         for (const x of spots) {
-          const ring = this.tmp(scene.add.image(x, this.host.groundY + 1, 'witch-target').setOrigin(0.5, 1).setDepth(10.4).setScale(0.85));
-          scene.tweens.add({ targets: ring, alpha: 0.55, duration: 110, yoyo: true, repeat: -1 });
           const drop = this.tmp(scene.add.image(x, -8, 'witch-drop').setDepth(11).setScale(1.4));
           this.after(R.telegraph - 0.3, () => scene.tweens.add({ targets: drop, y: this.host.groundY - 6, duration: 300, ease: 'Quad.In' }));
           this.after(R.telegraph, () => {
-            scene.tweens.killTweensOf(ring);
-            ring.destroy();
             drop.destroy();
             // 떨어지는 순간 판정(고리와 같은 자리·크기) + 아주 짧은 바닥 장판
             const hb = this.spawn('boss-dot', x, this.host.groundY - 6, { r: 6, pierce: true, breakable: false, threat: false, dmg: R.dmg, life: 0.12 });
@@ -830,7 +1109,6 @@ export class WitchBattle extends BossBattle {
    * 높은 줄(파랑 점선 — 가만히)로 마녀에게 돌아옴. 두 줄을 미리 보여 줌 (예고 높이 = 판정 높이)
    */
   private spoonBoomerang(): void {
-    const scene = this.host.scene;
     const Bm = WITCH.boomer;
     const lowY = this.host.groundY - Bm.low;
     const highY = this.host.groundY - Bm.high;
@@ -838,16 +1116,13 @@ export class WitchBattle extends BossBattle {
     const h = this.hand();
     this.setPose(2, Bm.telegraph);
     this.warn(Bm.telegraph);
-    const g = this.tmp(scene.add.graphics().setDepth(12.3));
-    g.fillStyle(0xff6a7a, 0.85);
-    for (let x = 4; x < h.x - 6; x += 8) g.fillRect(x, Math.round(lowY), 4, 1);
-    g.fillStyle(0x8fe3ff, 0.85);
-    for (let x = 4; x < h.x - 6; x += 8) g.fillRect(x + 4, Math.round(highY), 4, 1);
-    scene.tweens.add({ targets: g, alpha: 0.3, duration: 120, yoyo: true, repeat: -1 });
     const tOut = (h.x - px) / Bm.out;
     const tBack = Bm.pause + (px + 12) / Bm.out + (px + 12) / Bm.back;
     this.threatsAhead.push({ kind: 'boomer', at: this.time + Bm.telegraph + tOut, high: false }, { kind: 'boomer', at: this.time + Bm.telegraph + tOut + tBack, high: true });
     this.telegraph = { kind: 'boomer', x: px, y: lowY, r: 6, impactAt: this.time + Bm.telegraph + tOut };
+    // 갈 때(낮게) ▲점프! → 올 때(높게) ●가만히! — 두 안내는 겹치지 않음 (돌아오기까지 약 1.4초)
+    this.after(Math.max(0, Bm.telegraph + tOut - 0.9), () => this.cue('jump', 0.9));
+    this.after(Bm.telegraph + tOut + tBack - 0.9, () => this.cue('stay', 0.9));
     this.after(Bm.telegraph, () => {
       sound.throw();
       this.setPose(this.throwFrame, 0.4);
@@ -898,81 +1173,6 @@ export class WitchBattle extends BossBattle {
     }
   }
 
-  // ───────────────────────── 이유식 으깨기 (2페이즈~) ─────────────────────────
-
-  /**
-   * 간사하게 웃음 → '이유식 으깨기!' → 손에 쥔 숟가락이 휙 늘어나 고나 앞 바닥을 콰직!
-   * → 초록 이유식이 좌우로 퍼짐 (고나 쪽 물결 = 점프 · 3페이즈는 두 번, 더 넓게) → 앞에 잠깐 위험 지대
-   * → 손을 천천히 거두는 동안 반격 기회. 예고: 내리칠 자리 고리 + 물결이 지나갈 바닥 점선
-   * (거대한 손바닥 그림은 승인 에셋을 받으면 숟가락 대신 씀 — 지금은 기존 숟가락 동작 재사용)
-   */
-  private mash(): void {
-    const scene = this.host.scene;
-    const M = WITCH.mash;
-    const ph = this.phaseIdx;
-    const px = this.host.basePlayerX + 4;
-    const X = Math.min(this.host.W - 30, px + M.front);
-    const T = { x: X, y: this.host.groundY - 6 };
-    // ① 간사하게 웃기 + 경고
-    this.setPose(5, 0.6);
-    sound.witchLaugh(true);
-    this.floatText('이유식 으깨기!', this.bx - 10, this.host.groundY - this.balt - this.fh * this.k - 2, '#9cff5a');
-    this.warn(M.telegraph);
-    // ② 예고: 내리칠 자리 고리 + 물결 길(바닥 점선, 고나 쪽은 빨강)
-    const ring = this.tmp(scene.add.image(X, this.host.groundY + 1, 'witch-target').setOrigin(0.5, 1).setDepth(10.4).setScale(1.5));
-    const g = this.tmp(scene.add.graphics().setDepth(12.3));
-    g.fillStyle(0xff6a7a, 0.9);
-    for (let x = 2; x < X - 8; x += 7) g.fillRect(x, this.host.groundY - 3, 4, 1);
-    g.fillStyle(0xffd27a, 0.7);
-    const reachR = 30 * (M.spread[ph] || 1);
-    for (let x = X + 8; x < Math.min(this.host.W, X + reachR); x += 7) g.fillRect(x, this.host.groundY - 3, 4, 1);
-    scene.tweens.add({ targets: [g, ring], alpha: 0.35, duration: 130, yoyo: true, repeat: -1 });
-    const waves = M.waves[ph] || 1;
-    const impact = this.time + M.telegraph + M.strike;
-    for (let w = 0; w < waves; w++) {
-      // 물결 앞이 고나에 닿는 때 (+0.1초: 판정 테스트 봇이 그보다 조금 앞서 점프)
-      this.threatsAhead.push({ kind: 'mash', at: impact + w * M.secondDelay + (X - px - 15) / M.waveSpeed + 0.1, high: false });
-    }
-    this.telegraph = { kind: 'mash', x: px, y: this.host.groundY - 3, r: 4, impactAt: impact + (X - px - 15) / M.waveSpeed + 0.1 };
-    // ③ 손(숟가락)이 커지며 뻗음 → ④ 콰직!
-    this.after(M.telegraph, () => {
-      this.reach(this.hand(), T, M.strike);
-    });
-    this.after(M.telegraph + M.strike, () => {
-      scene.tweens.killTweensOf([g, ring]);
-      ring.destroy();
-      sound.hit();
-      scene.cameras.main.shake(220, 0.014);
-      this.shockwave(X, T.y + 4, true);
-      this.floatText('콰직!', X + 4, T.y - 16, '#ffffff');
-      this.splat(X);
-      // 내리친 자리 판정 (고리와 같은 자리 · 고나 자리 아님)
-      const hb = this.spawn('boss-dot', X, T.y, { r: 10, pierce: true, breakable: false, threat: false, dmg: M.dmg, life: 0.15 });
-      hb.sprite.setAlpha(0);
-      // ⑤ 좌우로 퍼지는 이유식 물결 (고나 쪽 = 점프) · ⑥ 잠깐 위험 지대
-      const spawnWave = (): void => {
-        const left = this.spawn('witch-puddle', X - 8, this.host.groundY - 3, { shape: 'box', w: 14, h: 6, vx: -M.waveSpeed, pierce: true, breakable: false, dmg: M.waveDmg, life: 4 });
-        left.sprite.setScale(1.1, 1);
-        const right = this.spawn('witch-puddle', X + 8, this.host.groundY - 3, { shape: 'box', w: 14, h: 6, vx: M.waveSpeed, pierce: true, breakable: false, threat: false, dmg: M.waveDmg, life: reachR / M.waveSpeed });
-        right.sprite.setScale(1.1, 1);
-      };
-      spawnWave();
-      for (let w = 1; w < waves; w++) this.after(w * M.secondDelay, () => {
-        sound.puff();
-        spawnWave();
-      });
-      const zone = this.spawn('witch-puddle', X, this.host.groundY - 2.5, { shape: 'box', w: 18, h: 5, pierce: true, breakable: false, threat: false, dmg: M.waveDmg, life: 1.0 });
-      zone.sprite.setScale(1.3, 1);
-      this.after(0.5 + (waves - 1) * M.secondDelay, () => {
-        g.destroy();
-        // ⑦ 손을 천천히 거둠 → 그동안 반격 기회
-        this.telegraph = null;
-        this.retract(M.recover * 0.8);
-        this.stun(M.recover, M.recoverMul, '손을 거두는 중! 반격!');
-      });
-    });
-  }
-
   // ───────────────────────── 마지막 발악 ─────────────────────────
 
   /**
@@ -1000,39 +1200,18 @@ export class WitchBattle extends BossBattle {
   }
 
   private lastSwing(): void {
-    const scene = this.host.scene;
     const L = WITCH.last;
     const lowY = this.host.groundY - 8;
-    const px = this.host.basePlayerX + 4;
+    const px = this.host.basePlayerX;
     const h = this.hand();
     this.setPose(2, L.telegraph);
     this.warn(L.telegraph);
-    const g = this.tmp(scene.add.graphics().setDepth(12.3));
-    g.fillStyle(0xff4a5a, 0.95);
-    for (let x = 2; x < h.x - 6; x += 7) g.fillRect(x, Math.round(lowY), 5, 2);
-    scene.tweens.add({ targets: g, alpha: 0.3, duration: 110, yoyo: true, repeat: -1 });
     const cross = this.time + L.telegraph + (h.x - px) / L.speed;
     this.threatsAhead.push({ kind: 'last', at: cross, high: false });
     this.telegraph = { kind: 'last', x: px, y: lowY, r: 7, impactAt: cross };
-    this.after(L.telegraph, () => {
-      g.destroy();
-      sound.throw();
-      this.setPose(6, 99);
-      // 늘어나는 손잡이 + 숟가락 머리가 바닥 높이로 휙 쓸고 지나감 (같은 도트 크기)
-      const kk = this.k;
-      const arm = this.tmp(scene.add.tileSprite(h.x, lowY, 2, 4, 'witch-arm').setOrigin(1, 0.5).setDepth(8.6).setScale(kk));
-      const sp = this.spawn('witch-spoon', h.x, lowY, { vx: -L.speed, r: 7, pierce: true, breakable: false, dmg: L.dmg, life: 6 });
-      sp.sprite.setScale(kk).setDepth(8.7);
-      this.lastArm = { arm, sp, hx: h.x, k: kk };
-      this.after((h.x + 20) / L.speed, () => {
-        this.lastArm = null;
-        if (!sp.dead) this.kill(sp);
-        arm.destroy();
-        this.setPose(0, 0);
-        this.telegraph = null;
-        this.openWindow();
-      });
-    });
+    this.cue('jump', L.telegraph + (h.x - px) / L.speed);
+    // 늘어나는 손잡이 + 숟가락 머리가 바닥 높이로 휙 쓸고 지나감 → 피하면 무방비
+    this.after(L.telegraph, () => this.sweep(h.x, lowY, L.speed, L.dmg, () => this.openWindow()));
   }
 
   /** 휘두르기를 피함 → 무방비 (한 방이면 끝) */
@@ -1057,17 +1236,434 @@ export class WitchBattle extends BossBattle {
 
   /** 마지막 발악 전에는 HP 1 아래로 내려가지 않음 (휘두르기를 피한 뒤 무방비일 때만 쓰러짐) */
   protected hpFloor(): number {
-    const base = super.hpFloor();
+    let base = super.hpFloor();
+    // 이번 페이즈의 상호작용이 다 나오기 전엔 다음 페이즈(3페이즈는 마지막 발악)로 못 넘어감
+    if (!this.phaseDone && this.lastPhase !== 'open' && this.lastPhase !== 'done') {
+      const ats: readonly number[] = WITCH.phaseAt;
+      const at = this.rage < ats.length ? ats[this.rage] : WITCH.last.at;
+      base = Math.max(base, Math.floor(this.def.maxHp * at + 1e-6) + 1); // (180×0.7 = 125.999… 소수 오차 보정)
+    }
     if (this.rage >= 2 && this.lastPhase !== 'open' && this.lastPhase !== 'done') return Math.max(base, 1);
     return base;
+  }
+
+
+  // ═════════════════════════ '이유식 대탈출!' 미니게임 ═════════════════════════
+  //   ① 받아치기(퉤!) · ③ 폭탄 반사(방패) · ② 울음 리듬(으앙!) — 판정은 모두 전투 시각 기준 (일시정지하면 같이 멈춤)
+  //   이유식 덩어리·폭탄·음파·판정 고리는 작은 효과 (코드) · 고나·마녀 그림은 승인 스프라이트 그대로
+
+  /** 미니게임 버튼이 떠 있는 동안: 공격·방패·필살 버튼 잠금 */
+  get qteBusy(): boolean {
+    return this.spitVisible || !!this.rhythmS;
+  }
+
+  /** 미니게임 동안 화면 터치 점프 막기 */
+  get jumpLocked(): boolean {
+    return this.qteBusy;
+  }
+
+  private get spitVisible(): boolean {
+    const p = this.parryS;
+    return !!p && !p.done && this.time >= p.arrive - WITCH.parry.show;
+  }
+
+  qteHud(): QteHud | null {
+    const p = this.parryS;
+    if (p && this.spitVisible) return { kind: 'spit', ready: this.time >= p.arrive - WITCH.parry.early };
+    const r = this.rhythmS;
+    if (r) {
+      return {
+        kind: 'rhythm',
+        notes: r.notes.map((n) => ({ x: 0.18 + ((n.t - this.time) / r.lead) * 0.82, len: (n.hold / r.lead) * 0.82, hold: n.hold > 0, state: n.state })),
+        holding: r.holding,
+        title: '😭 으아앙! 울음 리듬',
+        score: r.ok,
+        total: r.notes.length,
+      };
+    }
+    return null;
+  }
+
+  onShieldRaised(): void {
+    this.shieldAt = this.time;
+  }
+
+  /** 미니게임 버튼 (퉤! · 으앙!) — 일시정지·대사 중엔 무시 */
+  private qteInput(btn: 'spit' | 'cry', down: boolean): void {
+    const state = (this.host.scene as unknown as { state?: string }).state;
+    if (state !== 'playing' || this.frozen || this.mode !== 'fight') return;
+    if (btn === 'spit' && down) this.spitPress();
+    else if (btn === 'cry') this.cryPress(down);
+  }
+
+  /** 마녀 얼굴 자리 (스프라이트 칸 66×53 에서 얼굴 가운데 28,27) */
+  private face(): { x: number; y: number } {
+    return { x: this.bx + (28 - this.fw / 2) * this.k, y: this.host.groundY - this.balt - (this.fh - 27) * this.k };
+  }
+
+  /** 얼굴에 이유식이 철퍼덕 (잠깐 붙어 있다가 흘러내림) */
+  private faceSplat(big: boolean): void {
+    const scene = this.host.scene;
+    const f = this.face();
+    sound.splat();
+    const g = this.tmp(scene.add.image(f.x, f.y, 'witch-goo').setDepth(9.2).setScale(big ? 2.2 : 1.6));
+    this.faceGoo = { s: g, t: 1.6 };
+    for (let i = 0; i < (perf.low ? 3 : 6); i++) {
+      const d = this.tmp(scene.add.image(f.x, f.y, 'witch-drop').setDepth(9.3));
+      scene.tweens.add({ targets: d, x: f.x + (Math.random() - 0.5) * 26, y: f.y + 6 + Math.random() * 18, alpha: 0, duration: 520, ease: 'Quad.Out', onComplete: () => d.destroy() });
+    }
+    this.floatText('철퍼덕!', f.x - 8, f.y - 16, '#b8ff7a');
+  }
+  private faceGoo: { s: Phaser.GameObjects.Image; t: number } | null = null;
+
+  /** 고나 입 앞 (판정 구역) */
+  private mouth(): { x: number; y: number } {
+    const h = this.host.playerHead();
+    return { x: h.x + 12, y: h.y + 4 };
+  }
+
+  // ───────── ① 이유식 받아치기 (퉤!) ─────────
+
+  private parryAttack(): void {
+    const P = WITCH.parry;
+    const fly = P.fly[this.phaseIdx];
+    this.setPose(2, P.raise + 0.2);
+    this.warn(P.raise);
+    this.floatText('이유식이 날아온다!', this.bx - 26, this.host.groundY - this.balt - this.fh * this.k - 4, '#b8ff7a');
+    this.after(P.raise, () => {
+      const scene = this.host.scene;
+      const h = this.hand();
+      const m = this.mouth();
+      sound.throw();
+      this.setPose(this.throwFrame, 0.35);
+      const s = this.tmp(scene.add.image(h.x, h.y, 'witch-goo').setDepth(11).setScale(1.5));
+      const arrive = this.time + fly;
+      this.parryS = { s, x0: h.x, y0: h.y, x1: m.x, y1: m.y, t0: this.time, arrive, result: null, done: false };
+      this.telegraph = { kind: 'parry', x: m.x, y: m.y, r: 6, impactAt: arrive };
+      this.threatsAhead.push({ kind: 'parry', at: arrive, high: false, qte: 'spit' });
+      // 판정 구역 고리 (고나 입 앞 — 도착 직전부터 노랗게)
+      const ring = this.tmp(scene.add.image(m.x, m.y, 'fx-ring-target').setDepth(10.6).setAlpha(0));
+      this.after(Math.max(0, fly - P.show), () => {
+        ring.setAlpha(0.9);
+        scene.tweens.add({ targets: ring, scale: { from: 1.6, to: 1 }, duration: P.show * 1000, ease: 'Quad.In' });
+      });
+      this.after(fly + P.perfect + 0.02, () => ring.destroy());
+    });
+  }
+
+  private spitPress(): void {
+    const p = this.parryS;
+    const P = WITCH.parry;
+    if (!p || p.done || p.result || this.time < p.arrive - P.show) return;
+    const d = this.time - p.arrive;
+    const m = this.mouth();
+    if (Math.abs(d) <= P.perfect) this.parryWin(true);
+    else if (d < -P.perfect && d >= -P.early) this.parryWin(false);
+    else if (d < -P.early) {
+      // 너무 일찍: 헛퉤 (기회는 한 번)
+      p.result = 'whiff';
+      sound.spit(false);
+      this.floatText('헛퉤!', m.x - 4, m.y - 14, '#ffd0d0');
+    }
+  }
+
+  private parryWin(perfect: boolean): void {
+    const p = this.parryS!;
+    const P = WITCH.parry;
+    const scene = this.host.scene;
+    p.result = perfect ? 'perfect' : 'good';
+    p.done = true;
+    this.qteLog.push(`parry:${p.result}`);
+    sound.spit(perfect);
+    haptics.play('monsterHit');
+    const m = this.mouth();
+    this.floatText(perfect ? '퉤!! PERFECT' : '퉤!', m.x - 6, m.y - 16, perfect ? '#ffe14a' : '#b8ff7a');
+    this.host.sparkle(perfect ? 8 : 4, m.x, m.y);
+    // 이유식이 마녀 얼굴로 되돌아감
+    const f = this.face();
+    this.telegraph = null;
+    scene.tweens.add({
+      targets: p.s,
+      x: f.x,
+      y: f.y,
+      angle: 540,
+      duration: 340,
+      ease: 'Quad.In',
+      onComplete: () => {
+        p.s.destroy();
+        this.parryS = null;
+        if (this.mode !== 'fight') return;
+        this.faceSplat(perfect);
+        this.setPose(4, 0.8);
+        this.damage(perfect ? P.dmgPerfect : P.dmgGood);
+        if (perfect) this.stun(1.4, 1.4, '이유식을 뒤집어썼어요!');
+        else this.finish(1.3);
+      },
+    });
+  }
+
+  private parryLose(): void {
+    const p = this.parryS!;
+    p.done = true;
+    this.qteLog.push(`parry:${p.result === 'whiff' ? 'whiff' : 'miss'}`);
+    this.telegraph = null;
+    const m = this.mouth();
+    p.s.destroy();
+    this.parryS = null;
+    sound.splat();
+    this.splat(m.x);
+    this.host.hurtPlayer(this.dmg(WITCH.parry.hurt), 'witch-goo');
+    this.floatText('으엑!', m.x - 6, m.y - 14, '#ff9f9f');
+    this.finish(1.3);
+  }
+
+  private updateParry(): void {
+    const p = this.parryS;
+    if (!p || p.done) return;
+    const k = Math.min(1, (this.time - p.t0) / (p.arrive - p.t0));
+    p.s.setPosition(p.x0 + (p.x1 - p.x0) * k, p.y0 + (p.y1 - p.y0) * k - Math.sin(Math.PI * k) * 10);
+    p.s.angle -= 9;
+    if (this.time > p.arrive + WITCH.parry.perfect) this.parryLose();
+  }
+
+  // ───────── ③ 이유식 폭탄 돌려주기 (방패 반사) ─────────
+
+  private reflectBomb(): void {
+    const R = WITCH.reflect;
+    const fly = R.fly[this.phaseIdx];
+    this.setPose(2, R.raise + 0.2);
+    this.warn(R.raise);
+    this.after(R.raise, () => {
+      const scene = this.host.scene;
+      const h = this.hand();
+      const x1 = this.host.basePlayerX + 14;
+      const y1 = this.host.groundY - 14;
+      sound.puff();
+      this.setPose(this.throwFrame, 0.35);
+      const s = this.tmp(scene.add.image(h.x, h.y, 'witch-goo').setDepth(11).setScale(2));
+      const arrive = this.time + fly;
+      this.reflectS = { s, x0: h.x, y0: h.y, x1, y1, t0: this.time, arrive, done: false };
+      this.telegraph = { kind: 'reflect', x: x1, y: y1, r: 8, impactAt: arrive, shield: true };
+      this.threatsAhead.push({ kind: 'reflect', at: arrive, high: false, shield: true });
+      this.cue('shield', fly);
+    });
+  }
+
+  private updateReflect(): void {
+    const r = this.reflectS;
+    if (!r || r.done) return;
+    const k = Math.min(1, (this.time - r.t0) / (r.arrive - r.t0));
+    r.s.setPosition(r.x0 + (r.x1 - r.x0) * k, r.y0 + (r.y1 - r.y0) * k - Math.sin(Math.PI * k) * 26);
+    r.s.angle += 7;
+    if (this.time < r.arrive) return;
+    r.done = true;
+    this.telegraph = null;
+    const scene = this.host.scene;
+    const R = WITCH.reflect;
+    const active = !!this.host.shieldRect();
+    if (active && r.arrive - this.shieldAt <= R.perfect) {
+      // 반사: 금빛 번쩍 + 종소리 (일반 방어와 다르게) → 마녀에게 되돌아감
+      this.qteLog.push('reflect:perfect');
+      sound.reflect();
+      haptics.play('bossHit');
+      this.shockwave(r.x1, r.y1, true);
+      this.host.sparkle(10, r.x1, r.y1);
+      this.floatText('반사!', r.x1 - 4, r.y1 - 18, '#ffe14a');
+      r.s.setTint(0xfff3a0);
+      const f = this.face();
+      const trail = this.tmp(scene.add.particles(0, 0, 'boss-star', { follow: r.s, lifespan: 240, scale: { start: 1.2, end: 0 }, alpha: { start: 0.9, end: 0 }, frequency: perf.low ? 50 : 25, tint: [0xffe14a, 0xffffff] }).setDepth(10.9));
+      scene.tweens.add({
+        targets: r.s,
+        x: f.x,
+        y: f.y,
+        duration: 300,
+        ease: 'Quad.In',
+        onComplete: () => {
+          trail.destroy();
+          r.s.destroy();
+          this.reflectS = null;
+          if (this.mode !== 'fight') return;
+          this.faceSplat(true);
+          this.setPose(4, 0.8);
+          this.damage(R.dmg);
+          this.stun(1.3, 1.4, '폭탄이 되돌아왔어요!');
+        },
+      });
+    } else if (active) {
+      this.qteLog.push('reflect:block');
+      this.host.onShieldBlock(r.x1, r.y1);
+      this.floatText('막았다! (조금 일찍)', r.x1 - 16, r.y1 - 18, '#9cc4ff');
+      r.s.destroy();
+      this.reflectS = null;
+      this.finish(1.3);
+    } else {
+      this.qteLog.push('reflect:miss');
+      r.s.destroy();
+      this.reflectS = null;
+      this.splat(r.x1);
+      sound.splat();
+      this.host.hurtPlayer(this.dmg(R.hurt), 'witch-goo');
+      this.finish(1.3);
+    }
+  }
+
+  // ───────── ② 으아앙! 울음 리듬 배틀 ─────────
+
+  private cryRhythm(): void {
+    const Rh = WITCH.rhythm;
+    const sp = Rh.speed[this.phaseIdx];
+    this.setPose(5, 0.9);
+    sound.witchLaugh(true);
+    this.floatText(WITCH_RHYTHM_LINE, this.bx - 30, this.host.groundY - this.balt - this.fh * this.k - 4, '#ff9ad0');
+    const lead = Rh.lead * Math.max(0.85, sp);
+    const start = this.time + 0.9 + lead;
+    this.rhythmS = {
+      notes: Rh.pattern.map(([t, hold]) => ({ t: start + t * sp, hold: hold * Math.max(0.9, sp), state: 'wait' as const, downAt: -1 })),
+      lead,
+      holding: false,
+      ok: 0,
+      waves: 0,
+      end: 0,
+      ticked: 0,
+    };
+    this.telegraph = { kind: 'rhythm', x: this.host.basePlayerX, y: this.host.groundY - 20, r: 0 };
+  }
+
+  private cryPress(down: boolean): void {
+    const r = this.rhythmS;
+    if (!r) return;
+    const Rh = WITCH.rhythm;
+    if (down) {
+      const n = r.notes.find((x) => x.state === 'wait' && Math.abs(this.time - x.t) <= Rh.good);
+      if (!n) return; // 아무 음표도 없을 때 누른 것은 벌 없음 (넉넉하게)
+      if (n.hold > 0) {
+        n.state = 'hold';
+        n.downAt = this.time;
+        r.holding = true;
+        sound.cry(Math.min(1, r.ok / 5));
+      } else this.rhythmHit(n);
+    } else {
+      const n = r.notes.find((x) => x.state === 'hold');
+      r.holding = false;
+      if (!n) return;
+      if (this.time - n.downAt >= n.hold - 0.22) this.rhythmHit(n);
+      else this.rhythmMiss(n, '너무 짧아!');
+    }
+  }
+
+  private rhythmHit(n: { state: string }): void {
+    const r = this.rhythmS!;
+    n.state = 'ok';
+    r.ok++;
+    const lv = Math.min(1, r.ok / r.notes.length);
+    sound.cry(lv);
+    haptics.play('monsterHit');
+    this.soundWave(lv, false);
+    // 마녀가 음파에 밀림
+    this.host.scene.tweens.add({ targets: this.boss, x: this.boss.x + 3, duration: 80, yoyo: true });
+    this.setPose(4, 0.18);
+  }
+
+  private rhythmMiss(n: { state: string }, text = '삐끗!'): void {
+    n.state = 'miss';
+    const m = this.mouth();
+    this.floatText(text, m.x - 4, m.y - 16, '#ffb0b0');
+  }
+
+  /** 고나의 울음 음파 (코드 효과: 겹친 반원 고리) — big = 마지막 강타 */
+  private soundWave(level: number, big: boolean): void {
+    const scene = this.host.scene;
+    const m = this.mouth();
+    const f = this.face();
+    const g = this.tmp(scene.add.graphics().setDepth(11.5));
+    const r0 = 4 + level * 6 + (big ? 6 : 0);
+    for (let i = 0; i < 3; i++) {
+      g.lineStyle(big ? 2 : 1, i === 1 ? 0xffffff : 0x8fd0ff, 0.95 - i * 0.2);
+      g.beginPath();
+      g.arc(0, 0, r0 + i * 4, -1.0, 1.0);
+      g.strokePath();
+    }
+    g.setPosition(m.x, m.y);
+    scene.tweens.add({ targets: g, x: big ? f.x : m.x + 30 + level * 30, y: big ? f.y : m.y - 4, scale: big ? 2.6 : 1.6 + level, alpha: big ? 1 : 0, duration: big ? 380 : 420, ease: 'Quad.Out', onComplete: () => g.destroy() });
+  }
+
+  private updateRhythm(): void {
+    const r = this.rhythmS;
+    if (!r) return;
+    const Rh = WITCH.rhythm;
+    // 박마다 마녀가 숟가락 휘두르기 + 짧은 박자 소리 (BGM 과 따로)
+    while (r.ticked < r.notes.length && this.time >= r.notes[r.ticked].t) {
+      const n = r.notes[r.ticked];
+      this.setPose(r.ticked % 2 ? 2 : 6, 0.22);
+      sound.rhythmTick(n.hold > 0);
+      r.ticked++;
+    }
+    for (const n of r.notes) {
+      if (n.state === 'wait' && this.time > n.t + Rh.good) this.rhythmMiss(n);
+      // 꾸욱: 충분히 눌렀으면 떼기 전에도 성공
+      if (n.state === 'hold' && this.time - n.downAt >= n.hold) {
+        r.holding = false;
+        this.rhythmHit(n);
+      }
+    }
+    const last = r.notes[r.notes.length - 1];
+    if (r.notes.every((n) => n.state === 'ok' || n.state === 'miss') && this.time > last.t + last.hold + 0.35) this.endRhythm();
+  }
+
+  private endRhythm(): void {
+    const r = this.rhythmS!;
+    const Rh = WITCH.rhythm;
+    this.rhythmS = null;
+    this.telegraph = null;
+    const total = r.notes.length;
+    const misses = total - r.ok;
+    this.qteLog.push(`rhythm:${r.ok}/${total}`);
+    // 마지막 큰 음파 → 마녀 강타
+    this.soundWave(1, true);
+    sound.cry(1);
+    this.after(0.38, () => {
+      if (this.mode !== 'fight') return;
+      const great = r.ok >= Rh.stunAt;
+      this.banner({ top: '😭 으아아앙!!', name: great ? '울음 음파 대성공!' : `울음 음파 ${r.ok}/${total}`, desc: great ? '마녀가 어질어질 — 지금 공격!' : '음표가 노란 줄에 올 때 누르기', ms: 1300, tone: great ? 'good' : 'aim' });
+      this.host.scene.cameras.main.shake(180, 0.01);
+      this.damage(Rh.base + Rh.perHit * r.ok);
+      this.setPose(4, 0.6);
+      if (misses > 0) this.host.hurtPlayer(this.dmg(Rh.missHurt * misses), 'witch-rhythm');
+      if (great) this.stun(1.6, 1.5, '울음 음파에 어질어질!');
+      else this.finish(1.3);
+    });
+  }
+
+  private clearMinigames(): void {
+    this.parryS?.s.destroy();
+    this.parryS = null;
+    this.reflectS?.s.destroy();
+    this.reflectS = null;
+    this.rhythmS = null;
+    this.faceGoo?.s.destroy();
+    this.faceGoo = null;
   }
 
   // ───────────────────────── 매 프레임 ─────────────────────────
 
   protected onUpdate(dt: number): void {
     if (this.weakT > 0) this.weakT -= dt;
+    if (this.stunBonus && this.mode !== 'cutscene') this.stunBonus = false;
     this.updateBouncers();
     this.updateBoomer(dt);
+    this.updateParry();
+    this.updateReflect();
+    this.updateRhythm();
+    if (this.faceGoo) {
+      // 얼굴에 붙은 이유식: 마녀를 따라다니다 흘러내림
+      const f = this.face();
+      this.faceGoo.t -= dt;
+      this.faceGoo.s.setPosition(f.x, f.y + Math.max(0, 0.6 - this.faceGoo.t) * 8).setAlpha(Math.min(1, this.faceGoo.t * 2));
+      if (this.faceGoo.t <= 0) {
+        this.faceGoo.s.destroy();
+        this.faceGoo = null;
+      }
+    }
     const la = this.lastArm;
     if (la && la.arm.active && !la.sp.dead) la.arm.width = Math.max(2, (la.hx - la.sp.x) / la.k);
     // 지나간 위협 기록 정리
@@ -1090,6 +1686,7 @@ export class WitchBattle extends BossBattle {
   }
 
   protected onInterrupt(): void {
+    this.clearMinigames();
     // 마지막 발악 도중 끊김(= 고나 필살기): 휘두르던 중이든 무방비든 그대로 무방비로 — 필살기 한 방(또는 다음 부메랑)이면 끝
     //   (휘두르기를 다시 시작하게 하면 필살기를 쓸 때마다 처음으로 돌아가 HP 1 로 끝없이 남음)
     if (this.lastPhase === 'swing') {
@@ -1109,6 +1706,7 @@ export class WitchBattle extends BossBattle {
   }
 
   protected onCleanup(): void {
+    this.clearMinigames();
     this.clearTemps();
     this.clearArm();
     this.lastArm?.arm.destroy();
@@ -1138,14 +1736,19 @@ export class WitchBattle extends BossBattle {
   }
 
   /** (테스트) 페이즈로 바로 (2 · 3 — 전환 대사 포함) */
+  /** (테스트) 이번 페이즈 필수 상호작용을 이미 본 것으로 (페이즈 건너뛰기 테스트용) */
+  debugMustDone(): void {
+    for (const a of WITCH.mustShow[this.phaseIdx] ?? []) this.phaseSeen.add(a);
+  }
+
   debugPhase(p: 2 | 3): void {
     this.debugSkipIntro();
     if (p === 3) {
       // 2페이즈는 이미 지난 것으로 (대사 없이 모습만)
       this.rage = 1;
       this.applyTint();
-      this.boss.setScale(WitchBattle.SCALE * 1.05);
     }
+    this.debugMustDone();
     this.hp = Math.floor(this.def.maxHp * (p === 2 ? WITCH.phaseAt[0] : WITCH.phaseAt[1])) + 2;
     this.damage(3);
   }
@@ -1176,7 +1779,7 @@ export class WitchBattle extends BossBattle {
     this.debugSkipIntro();
     this.rage = 2;
     this.applyTint();
-    this.boss.setScale(WitchBattle.SCALE * 1.1);
+    this.debugMustDone();
     this.hp = Math.max(1, Math.floor(this.def.maxHp * WITCH.last.at) - 1);
     this.debugHold = false;
     this.busy = false;
@@ -1193,9 +1796,9 @@ export class WitchBattle extends BossBattle {
   protected onDefeat(): void {
     const scene = this.host.scene;
     // 작아지며 비틀 → 고개 숙이고 기울어진 채 주저앉음 (날개·모자 처짐은 기울기와 눌림으로)
-    this.boss.setScale(WitchBattle.SCALE * 0.92);
+    this.boss.setScale(WitchBattle.SCALE);
     scene.tweens.add({ targets: this.boss, angle: { from: -14, to: 10 }, duration: 160, yoyo: true, repeat: 2, onComplete: () => this.boss.setAngle(-9) });
-    scene.tweens.add({ targets: this.boss, scaleY: WitchBattle.SCALE * 0.84, duration: 420, delay: 500, ease: 'Bounce.Out' });
+    scene.tweens.add({ targets: this.boss, scaleY: 1, duration: 420, delay: 500, ease: 'Bounce.Out' }); // 1.0 = 도트 1칸 5픽셀 (선명)
     this.boss.setTint(0xd8cce6);
     const sp = this.tmp(scene.add.image(this.bx - 18, this.host.groundY - 26, 'witch-spoon').setDepth(9).setRotation(-1.2).setScale(WitchBattle.SCALE));
     scene.tweens.add({ targets: sp, y: this.host.groundY - 3, rotation: -2.6, duration: 380, ease: 'Bounce.Out' });

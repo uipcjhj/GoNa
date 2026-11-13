@@ -101,12 +101,12 @@ export const BOSSES: Record<BossId, BossDef> = {
     name: '이유식 드래곤 셰프 마녀',
     intro: '뽀뽀괴물과 킁카괴물을 키운 진짜 흑막!',
     // 최종 보스 3페이즈 (HP 100~70% · 70~35% · 35~0%) — 수치는 아래 WITCH 에서 조절
-    // 공격 종류가 늘어 반격 기회(약점·어질어질·회수 중)도 늘었으므로 210 → 200 (전투가 너무 길어지지 않게)
-    maxHp: 200,
+    // 초보자 기준 약 90~120초: 210 → 180 (반격 기회·필살기 추가 피해가 있어 너무 길어지지 않게)
+    maxHp: 180,
     phase2At: 0.7,
     specialDamage: 8,
     scoreBonus: 1000,
-    minRecover: 1.4,
+    minRecover: 1.0,
     bodyDamage: 25,
     specialGainMul: 0.55,
     atStage: 'bigbaby',
@@ -134,7 +134,7 @@ export const WITCH = {
   /** B 이유식 폭탄: 낙하 자리 예고 → 떨어져 장판(땅을 따라 고나 쪽으로 — 점프로 넘음) */
   bomb: { telegraph: 1.1, count: [3, 3, 4], fall: 0.55, dmg: 20, spacing: 46 },
   /** C 이유식 회오리: 방울이 위·아래 줄로 날아옴 (오른쪽 화살표: 아래=점프 · 위=가만히) */
-  swirl: { count: 6, gap: 0.8, arrow: 0.9, speed: 120, dmg: 20 },
+  swirl: { count: 6, gap: 1.0, arrow: 0.9, speed: 120, dmg: 20 },
   /** E 초대형 이유식 폭발: 냄비에서 솟아 차례로 떨어짐 (고나 자리 = 점프·방패) → 끝나면 지쳐서 멈춤 */
   pot: { drops: 6, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 3.2, tiredMul: 1.8 },
   /** 공격이 끝난 직후 약점 노출 (초 · 피해 배율) */
@@ -148,12 +148,42 @@ export const WITCH = {
   /** 이유식 소나기: 착탄 자리 예고 → 동시에 떨어짐 → 아주 짧은 바닥 장판. 가운데 물결은 고나 자리가 비어 있음(안전) */
   rain: { waves: 3, gap: 1.6, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
   /** 숟가락 부메랑: 낮은 줄(점프)로 날아가 화면 끝에서 잠깐 멈췄다가 높은 줄(가만히)로 돌아옴 */
-  boomer: { telegraph: 1.0, out: 150, back: 120, pause: 0.6, dmg: 20, low: 8, high: 34 },
-  /** 이유식 으깨기 (2페이즈~): 고나 앞 바닥을 내리쳐 이유식이 좌우로 퍼짐 (고나 쪽 물결 = 점프) · 3페이즈는 두 번 퍼짐
-   *  끝나면 손(숟가락)을 천천히 거두는 동안 반격 기회 */
-  mash: { telegraph: 1.25, front: 34, strike: 0.25, dmg: 25, waveSpeed: 70, waveDmg: 18, waves: [1, 1, 2], secondDelay: 1.05, spread: [0, 1, 1.6], recover: 1.8, recoverMul: 1.5 },
+  boomer: { telegraph: 1.0, out: 150, back: 120, pause: 0.6, dmg: 20, low: 8, high: 30 },
+  /** 높은 숟가락 (가만히): 손잡이가 늘어나 숟가락이 고나 머리 위 높이로 쓸고 지나감 — 서 있으면 안전 · 점프하면 맞음 */
+  high: { telegraph: 1.2, lane: 30, speed: 210, dmg: 20 },
+  /** 숟가락 내려치기 (방패): 위에서 고나 자리를 내려침 — 판정이 점프 높이까지 닿아 점프로는 못 피함 · 방패로 막으면 마녀가 휘청 (반격 기회)
+   *  예고 telegraph 초 · 방패는 누른 뒤 1초 동안 유지(SHIELD.activeMs) → 예고 마지막 1초 안에 누르면 막힘 */
+  slam: { telegraph: [1.5, 1.35, 1.25], strike: 0.22, dmg: 25, height: 82, width: 22, stun: 2.4, stunMul: 1.7 },
   /** 마지막 발악: HP 가 at 비율 아래로 → 대사 → 거대한 숟가락 휘두르기(낮은 줄 = 점프) → 무방비(window 초, 한 방이면 끝)
    *  못 맞히면 다시 휘두름 · retries 번 넘게 놓치면 맞을 때까지 어질어질 (무한정 늘어지지 않게) */
+  // ── '이유식 대탈출!' 미니게임 ──
+  /** ① 이유식 받아치기: 숟가락 들기(raise) → 덩어리가 fly 초 동안 날아와 고나 입 앞(판정 구역)에 도착하는 순간 '퉤!'
+   *   |차이| ≤ perfect → 강하게 되돌림 · 그보다 이르게(early 초까지) → 약하게 되돌림 · 그 밖 → 고나 피해 (hurt)
+   *   '퉤!' 버튼은 도착 show 초 전부터만 보임 */
+  parry: { raise: 0.8, fly: [1.3, 1.2, 1.05], show: 0.9, perfect: 0.14, early: 0.45, dmgPerfect: 16, dmgGood: 7, hurt: 12 },
+  /** ③ 이유식 폭탄 반사: 폭탄이 fly 초 뒤 방패 자리에 도착 — 도착 perfect 초 안에 켠 방패 = 반사(마녀 피해) · 더 일찍 켠 방패 = 막기만 · 없으면 피해 */
+  reflect: { raise: 0.7, fly: [1.45, 1.3, 1.15], perfect: 0.36, dmg: 16, hurt: 16 },
+  /** ② 울음 리듬 배틀: 음표가 lead 초 동안 판정선으로 다가옴 · 톡 = 짧게 · 꾸욱 = hold 초 누르기
+   *   판정(모바일 기준 넉넉하게) ±good · 마지막 음파 피해 = base + perHit × 성공 수 · stunAt 개 이상 성공하면 마녀 어질어질 · 놓친 개수 × missHurt 피해 */
+  rhythm: {
+    lead: 1.7,
+    good: 0.22,
+    perfect: 0.1,
+    // 톡 → 톡 → 꾸욱 → 톡톡! ([박자 초, 꾸욱 길이])
+    pattern: [[0, 0], [0.8, 0], [1.6, 0.7], [3.0, 0], [3.35, 0]] as [number, number][],
+    speed: [1, 1, 0.82],
+    base: 4,
+    perHit: 5,
+    stunAt: 4,
+    missHurt: 4,
+  },
+  /**
+   * 페이즈마다 꼭 한 번씩 겪는 상호작용 — 다 나오기 전엔 HP 가 다음 문턱 아래로 안 내려감
+   * (공격력이 세도 페이즈가 순식간에 지나가지 않게 · 전체 약 100~120초)
+   */
+  mustShow: [['parry', 'reflect'], ['triple', 'rhythm', 'reflect'], ['rhythm', 'reflect', 'pot']] as string[][],
+  /** 기절한 마녀에게 고나 필살기를 쓰면 피해 배율 */
+  stunSpecialMul: 1.5,
   last: { at: 0.07, telegraph: 1.2, speed: 190, dmg: 22, window: [4, 5], retries: 2, mul: 2 },
 };
 

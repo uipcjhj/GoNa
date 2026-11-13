@@ -578,7 +578,7 @@ export class GameScene extends Phaser.Scene {
     if (this.state === 'ready') this.startGame();
     else if (this.state === 'playing') {
       // 흡입에 버티는 중엔 화면 터치로 점프하지 않음 (버티기 버튼 연타가 점프로 새지 않게)
-      if (!this.battle?.resistActive) this.pressJump();
+      if (!this.battle?.jumpLocked) this.pressJump();
     } else if (this.state === 'paused') this.resumeGame();
   }
 
@@ -1550,6 +1550,7 @@ export class GameScene extends Phaser.Scene {
     if (this.time.now < this.shieldReadyAt) return;
     this.shieldUntil = this.time.now + SHIELD.activeMs;
     this.shieldReadyAt = this.time.now + SHIELD.cooldownMs;
+    this.battle.onShieldRaised();
     sound.shield();
     this.updateShield();
     this.sparkleEmitter.explode(perf.low ? 3 : 6, this.shieldSprite.x, this.shieldSprite.y - 12);
@@ -2218,6 +2219,8 @@ export class GameScene extends Phaser.Scene {
 
   /** 승인된 성 배경 그림 4장 불러오기 (처음 로딩을 무겁게 하지 않으려고 킁카괴물전·마지막 모험 때 미리) → 다 있으면 done */
   loadCastleArt(done?: () => void): void {
+    // 성으로 가는 길·마녀 전투곡도 미리 받아 해독 (끊김 없는 반복 재생용)
+    sound.prepareLoops(['castle', 'witch', 'witch2']);
     const all = [CASTLE_ART.far, CASTLE_ART.near, CASTLE_ART.gate, CASTLE_ART.interior];
     const missing = all.filter((a) => !this.textures.exists(a.key));
     if (!missing.length) {
@@ -2636,10 +2639,19 @@ export class GameScene extends Phaser.Scene {
       this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
       this.gaugeGfx.setVisible(wantPhaser);
     }
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${hud.qte ? (hud.qte.kind === 'resist' ? `r${Math.round(hud.qte.gauge * 50)}` : hud.qte.kind) : '-'}|${hud.dubai}`;
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${this.qteKey(hud.qte)}|${hud.dubai}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);
+  }
+
+  /** 미니게임 화면이 바뀌었는지 (리듬 음표는 움직이므로 위치까지 — 그때만 매 프레임) */
+  private qteKey(q: CombatHud['qte']): string {
+    if (!q) return '-';
+    if (q.kind === 'resist') return `r${Math.round(q.gauge * 50)}`;
+    if (q.kind === 'spit') return `s${q.ready ? 1 : 0}`;
+    if (q.kind === 'rhythm') return `m${q.holding ? 1 : 0}${q.score}:${q.notes.map((n) => `${Math.round(n.x * 300)}${n.state[0]}`).join(',')}`;
+    return q.kind;
   }
 
   /** 보스전 '피하기' 버튼 */

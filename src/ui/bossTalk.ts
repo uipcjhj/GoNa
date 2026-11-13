@@ -104,6 +104,11 @@ export class BossTalk {
         return;
       }
       clearTimeout(this.wait);
+      // 마지막 문장까지 다 보였으면 바로 닫음 (빨리 연타해도 닫히는 시간이 계속 미뤄지지 않게)
+      if (li >= t.lines.length) {
+        this.finish();
+        return;
+      }
       next();
     };
     next();

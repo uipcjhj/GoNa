@@ -1223,7 +1223,7 @@ async function witchTests(label, device) {
   check(`${label}: spoon stretch has a telegraph at GONA and hits a standing GONA`, tg?.kind && (hit.hp < 100 || hit.hearts < 3), JSON.stringify({ tg, hit }));
   // 3) 2페이즈 전환 대사 · 'PHASE 2' 표시
   await G(() => window.__gona.scene.getScene('Game').debugGod());
-  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.debugHold = false; b.busy = false; b.cooldown = 0.5; b.hp = Math.floor(b.def.maxHp * 0.7) + 2; b.damage(3); });
+  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.debugHold = false; b.busy = false; b.cooldown = 0.5; b.debugMustDone(); b.hp = Math.floor(b.def.maxHp * 0.7) + 2; b.damage(3); });
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(900);
   const p2 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
