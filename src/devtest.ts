@@ -17,8 +17,8 @@ export const TEST_ITEMS: [string, string][] = [
   ['stage2', '3. 고나 2단계 지면 정렬'],
   ['stage3', '4. 고나 3단계 지면 정렬'],
   ['stage4', '5. 고나 4단계 지면 정렬'],
-  ['kiss-boss', '6. 뽀뽀괴물 보스전'],
-  ['sniff-boss', '7. 킁카괴물 보스전'],
+  ['kiss-boss', '6. 뽀뽀괴물 보스전 (난이도 하향판)'],
+  ['sniff-boss', '7. 킁카괴물 보스전 (난이도 하향판)'],
   ['kiss-talk', '8. 뽀뽀괴물 대사 UI 테스트'],
   ['sniff-talk', '9. 킁카괴물 대사 UI 테스트'],
   ['sniff-nose', '10. 킁카괴물 돼지코 필살기 (①②③)'],
@@ -42,6 +42,15 @@ export const TEST_ITEMS: [string, string][] = [
   ['resist-success', '28. 버티기 QTE 성공 테스트 (자동 연타)'],
   ['resist-fail', '29. 버티기 QTE 실패 테스트 (안 누름)'],
   ['sniff-dubai', '30. 킁카괴물 두바이 똥냄새 공격 (필살기 게이지 가득)'],
+  ['witch-art', '31. 이유식 드래곤 셰프 마녀 — 그림 보기 (레퍼런스 스프라이트 10장 · 숟가락 · 성)'],
+  ['finale', '32. 마지막 모험 구간 바로 시작 (킁카괴물 뒤 · 약 75초)'],
+  ['finale-castle', '33. 이유식 성 바로 진입 (성 앞 → 도착 → 등장 컷신)'],
+  ['witch-intro', '34. 최종 보스 등장 컷신 + 대사'],
+  ['witch-p1', '35. 최종 보스 1페이즈 (이유식의 유혹)'],
+  ['witch-p2', '36. 최종 보스 2페이즈 (마녀의 분노)'],
+  ['witch-p3', '37. 최종 보스 3페이즈 (최후의 한 숟가락)'],
+  ['witch-attacks', '38. 최종 보스 공격 패턴별 테스트 (A~E 버튼)'],
+  ['witch-ending', '39. 최종 보스 처치 → 패배 컷신 → 가족 엔딩 연결'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -284,6 +293,125 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
       };
       hit();
       window.setInterval(hit, 2000);
+      break;
+    }
+    case 'finale':
+    case 'finale-castle': {
+      sc.debugSetStage(3);
+      sc.boomerangAwake = true;
+      sc.startFinale(id === 'finale' ? 0 : 64);
+      say(id === 'finale' ? '마지막 모험: 평화 → 수상한 흔적(22초~) → 암흑의 성(48초~) → 도착(72초)' : '성 앞 → 도착 → 성 안 → 최종 보스 등장 컷신');
+      break;
+    }
+    case 'witch-intro':
+    case 'witch-p1':
+    case 'witch-p2':
+    case 'witch-p3':
+    case 'witch-attacks':
+    case 'witch-ending': {
+      sc.debugSetStage(3);
+      sc.boomerangAwake = true;
+      if (id !== 'witch-intro' && id !== 'witch-p1') sc.debugGod();
+      sc.debugStartBoss('witch');
+      const wb = (): Any => g().battle;
+      const ready = (fn: () => void): void => {
+        const t = window.setInterval(() => {
+          if (wb()) {
+            clearInterval(t);
+            fn();
+          }
+        }, 100);
+      };
+      if (id === 'witch-intro') say('등장 컷신 → 대사(다음 ▶) → 전투 시작');
+      else if (id === 'witch-p1') ready(() => wb().debugSkipIntro());
+      else if (id === 'witch-p2') ready(() => wb().debugPhase(2));
+      else if (id === 'witch-p3') ready(() => wb().debugPhase(3));
+      else if (id === 'witch-ending') {
+        ready(() => {
+          wb().debugSkipIntro();
+          window.setTimeout(() => {
+            const b = wb();
+            b.rage = 2;
+            b.hp = 2;
+            b.damage(5);
+          }, 600);
+        });
+        say('마녀 처치 → 패배 대사 → 퇴장 → 가족 엔딩');
+      } else {
+        ready(() => wb().debugSkipIntro());
+        const panel = el('div', 'tm-vib');
+        panel.style.top = 'auto';
+        panel.style.bottom = 'calc(env(safe-area-inset-bottom) + 150px)';
+        panel.style.flexDirection = 'row';
+        panel.style.flexWrap = 'wrap';
+        panel.style.padding = '6px';
+        for (const [k, label] of [['spoon', 'A 숟가락'], ['bomb', 'B 폭탄'], ['swirl', 'C 회오리'], ['combo', 'D 연속'], ['pot', 'E 냄비']] as const) {
+          const b = el('button', 'ap-open', label) as HTMLButtonElement;
+          b.type = 'button';
+          b.style.minHeight = '36px';
+          b.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            const bt = wb();
+            if (!bt || bt.mode !== 'fight') return;
+            if (k === 'pot' && bt.rage < 2) {
+              bt.rage = 2;
+              bt.applyTint();
+            }
+            bt.debugAttack(k);
+          });
+          panel.append(b);
+        }
+        parent.append(panel);
+        say('버튼으로 공격 하나씩 (고나 무적) · 예고 자리 = 판정 자리');
+      }
+      break;
+    }
+    case 'witch-art': {
+      // 최종 보스 그림 확인 (프레임 9장 + 공격 그림, 6배 확대)
+      void import('./art/witchArt').then((W) => {
+        const box = el('div', 'tm-art');
+        box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;padding:8px;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start';
+        const show = (c: HTMLCanvasElement, k = 4): void => {
+          c.style.cssText = `width:${c.width * k}px;height:${c.height * k}px;image-rendering:pixelated;background:#4a3a68`;
+          box.append(c);
+        };
+        // 게임이 실제로 쓰는 시트 (확정 레퍼런스에서 추출한 PNG) — 4단계 고나와 나란히, 같은 배율
+        const tm = (g() as Any).textures as Phaser.Textures.TextureManager;
+        const img = tm.get('boss-src-witch').getSourceImage() as HTMLImageElement;
+        const fw = Math.floor(img.width / W.WITCH_SHEET_FRAMES);
+        const names = ['대기', '이동', '숟가락 들기', '분노', '아픔', '웃음', '팔 뻗기', '회오리', '패배', '뿌리기'];
+        for (let i = 0; i < W.WITCH_SHEET_FRAMES; i++) {
+          const c = document.createElement('canvas');
+          c.width = fw;
+          c.height = img.height;
+          c.getContext('2d')!.drawImage(img, -i * fw, 0);
+          c.title = names[i];
+          show(c, 4);
+        }
+        const go = tm.get('dino-stage-bigbaby');
+        if (go && go.key !== '__MISSING') {
+          const f = go.get(0);
+          const c = document.createElement('canvas');
+          c.width = f.cutWidth;
+          c.height = f.cutHeight;
+          c.getContext('2d')!.drawImage(f.source.image as HTMLImageElement, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
+          c.title = '비교: 자이언트 곤룡 고나';
+          show(c, 4);
+        }
+        const spoonSrc = tm.get('witch-spoon').getSourceImage() as HTMLImageElement;
+        const sc2 = document.createElement('canvas');
+        sc2.width = spoonSrc.width;
+        sc2.height = spoonSrc.height;
+        sc2.getContext('2d')!.drawImage(spoonSrc, 0, 0);
+        show(sc2, 4);
+        for (const f of [W.witchGoo, W.witchPuddle, W.witchDrop, W.witchPot, W.witchSmoke, W.witchTarget, W.witchArm]) show(f(), 4);
+        void import('./art/castleArt').then((Cs) => {
+          show(Cs.castleInterior(), 1);
+          show(Cs.castleGround(), 4);
+          for (const f of [Cs.castleSilhouette, Cs.castleMoon, Cs.castleBolt, Cs.clueSpoon, Cs.clueBush, Cs.cluePrint]) show(f(), 3);
+        });
+        parent.append(box);
+      });
       break;
     }
     case 'vibrate': {

@@ -83,7 +83,9 @@ const MAX_MIN = Number(process.argv[4] || 30);
         gauge: g.growth.gauge, need: g.growth.stage.gaugeToNext, score: g.score, kills: g.kills, shieldReady: g.time.now >= g.shieldReadyAt,
         over: ov && !ov.classList.contains('hidden'), cleared: !!ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
         threats, snacks, monsters,
-        b: bt && { id: bt.id, mode: bt.mode, hp: bt.hp, rage: bt.rage, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(), stun: bt.stunT },
+        b: bt && { id: bt.id, mode: bt.mode, hp: bt.hp, rage: bt.rage, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(), stun: bt.stunT, tg: bt.telegraph?.impactAt ? bt.telegraph.impactAt - bt.time : null },
+        talk: (() => { const n = document.querySelector('.boss-talk:not(.hidden) .btk-next'); return !!n && getComputedStyle(n).visibility !== 'hidden' && n.offsetParent !== null; })(),
+        finale: g.finale ? g.finale.phase : null,
       };
     });
     // 기록
@@ -96,7 +98,8 @@ const MAX_MIN = Number(process.argv[4] || 30);
       st.heartsLost += last.hearts - s.hearts;
       st.hpLost += last.hp;
     } else if (s.hp < last.hp && s.hearts === last.hearts) st.hpLost += last.hp - s.hp;
-    last = { stage: s.stage, battle: s.b?.id ?? null, hearts: s.hearts, hp: s.hp, rage: s.b?.rage, kills: s.kills };
+    if (s.finale && s.finale !== last.finale) ev(`🌙 마지막 모험: ${s.finale}`);
+    last = { stage: s.stage, battle: s.b?.id ?? null, hearts: s.hearts, hp: s.hp, rage: s.b?.rage, kills: s.kills, finale: s.finale };
     if (s.cleared) {
       result = 'ENDING';
       ev(`🎉 엔딩! 점수 ${s.score}`);
@@ -122,6 +125,13 @@ const MAX_MIN = Number(process.argv[4] || 30);
       await page.waitForTimeout(800);
       last.hearts = 3;
       last.hp = 100;
+      continue;
+    }
+    // 보스 대사 (등장 · 페이즈 전환): 다음 ▶
+    if (s.talk) {
+      await page.waitForTimeout(600);
+      await tap('.boss-talk .btk-next').catch(() => {});
+      await page.waitForTimeout(REACT);
       continue;
     }
     if (s.state !== 'playing' || (s.b && (s.b.frozen || s.b.mode !== 'fight'))) {
@@ -150,6 +160,8 @@ const MAX_MIN = Number(process.argv[4] || 30);
         if (t > -0.1 && t < 0.42 && (!threat || t < threat.t)) threat = { t };
       }
     }
+    // 최종 보스: 숟가락·냄비 폭발 — 예고된 순간 직전에 점프 (예고 = 판정)
+    if (s.b?.tg != null && s.b.tg > 0 && s.b.tg < 0.3 && (!threat || threat.t > s.b.tg)) threat = { t: 0 };
     let acted = false;
     if (threat) {
       if (s.grounded && threat.t < 0.3 && Date.now() - lastJump > 150) {

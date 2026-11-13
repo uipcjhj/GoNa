@@ -51,6 +51,8 @@ export const EV = {
   banner: 'banner',
   /** 보스전 시작 / 끝({ id, win }) */
   bossStart: 'bossStart',
+  /** 마지막 모험 시작 (킁카괴물 뒤) */
+  finaleStart: 'finaleStart',
   bossEnd: 'bossEnd',
   /** 엔딩 (마지막 보스 격파) — GameOverInfo 와 같은 모양 + cleared */
   ending: 'ending',
@@ -82,7 +84,7 @@ export const EV = {
   endingReplay: 'endingReplay',
 } as const;
 
-export type BossId = 'kiss' | 'sniff';
+export type BossId = 'kiss' | 'sniff' | 'witch';
 
 /** 공격 버튼 상태: 숨김 / 잠김(각성 전) / 던질 수 있음 / 날아가는 중(돌아오기 전) */
 export type AttackState = 'hidden' | 'locked' | 'ready' | 'out';
@@ -103,7 +105,7 @@ export interface CombatHud {
   specialReady: boolean;
   /** 킁카괴물 전용 필살기 버튼을 보일지 (같은 필살 게이지) */
   dubai: boolean;
-  boss: { name: string; hp: number; maxHp: number; phase: number } | null;
+  boss: { name: string; hp: number; maxHp: number; phase: number; label?: string } | null;
   /** 고나 체력: 하트 + 지금 하트의 HP (일반 스테이지·보스전 공통) */
   player: { hearts: number; maxHearts: number; hp: number; maxHp: number } | null;
   /** 점수 (화면 위 왼쪽) */

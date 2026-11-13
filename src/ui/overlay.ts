@@ -204,16 +204,16 @@ export class Overlay {
     this.overHearts.classList.toggle('hidden', cleared);
     this.overStory.classList.toggle('hidden', !cleared);
     this.overStory.textContent = cleared
-      ? '뽀뽀괴물과 킁카괴물을 모두 물리친 고나는 맛있는 간식을 잔뜩 안고 집으로 돌아갔어요. 다음 이야기를 기대해 주세요!'
+      ? '뽀뽀괴물과 킁카괴물, 그리고 이유식 드래곤 셰프 마녀까지 물리친 고나는 맛있는 간식을 잔뜩 안고 집으로 돌아갔어요. 다음 이야기를 기대해 주세요!'
       : '';
     this.bossRetry = info.bossRetry ?? null;
     // 체크포인트(뽀뽀괴물 이후 3단계 · 최종 보스)가 있으면 거기서 이어하기
     const cp = cleared ? null : loadCheckpoint();
     this.cpBtn.classList.toggle('hidden', !cp);
     if (cp) this.cpBtn.textContent = `💾 이어하기 · ${CHECKPOINT_LABEL[cp.id]}`;
-    if (cp?.id === 'sniff' && this.bossRetry === 'sniff') this.bossRetry = null; // 같은 곳이라 하나만
+    if (cp && cp.id === this.bossRetry) this.bossRetry = null; // 같은 곳이라 하나만
     this.bossRetryBtn.classList.toggle('hidden', !this.bossRetry);
-    if (this.bossRetry) this.bossRetryBtn.textContent = `${this.bossRetry === 'kiss' ? '뽀뽀괴물' : '킁카괴물'}전 다시`;
+    if (this.bossRetry) this.bossRetryBtn.textContent = `${this.bossRetry === 'kiss' ? '뽀뽀괴물' : this.bossRetry === 'witch' ? '마녀' : '킁카괴물'}전 다시`;
     this.retryBtn.textContent = cleared ? '처음부터 다시' : cp ? '처음부터 새 게임' : this.bossRetry ? '처음부터 다시하기' : '다시하기';
     this.overScore.textContent = `${info.score}점`;
     this.overSnacks.textContent = `먹은 간식 ${info.snacks}개`;

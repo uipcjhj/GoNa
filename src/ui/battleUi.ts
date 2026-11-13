@@ -208,6 +208,9 @@ export class BattleUi {
     bus.on(EV.endingStart, () => this.reset());
     // 보스 패배 확정 → 마지막 대사·퇴장 동안 점수·하트·보스 체력바·버튼 숨김 (대화창과 겹치지 않게)
     bus.on(EV.bossDefeat, () => document.body.classList.add('boss-defeat'));
+    // 보스 대사(등장·분노 대사) 중엔 버튼을 숨김 — 대화창과 겹치지 않게
+    bus.on(EV.bossTalk, () => document.body.classList.add('boss-talking'));
+    for (const ev of [EV.bossTalkDone, EV.bossTalkCancel, EV.start, EV.gameOver, EV.endingStart]) bus.on(ev, () => document.body.classList.remove('boss-talking'));
     for (const ev of [EV.bossEnd, EV.start, EV.gameOver, EV.endingStart, EV.bossTalkCancel]) bus.on(ev, () => document.body.classList.remove('boss-defeat'));
   }
 
@@ -334,7 +337,7 @@ export class BattleUi {
     if (h.boss) {
       this.setText(this.bossName, h.boss.name);
       this.bossPhase.classList.toggle('hidden', h.boss.phase < 2);
-      this.setText(this.bossPhase, h.boss.phase >= 4 ? '🔥 최종 분노' : h.boss.phase >= 3 ? '💥 2차 분노' : '💢 1차 분노');
+      this.setText(this.bossPhase, h.boss.label ?? (h.boss.phase >= 4 ? '🔥 최종 분노' : h.boss.phase >= 3 ? '💥 2차 분노' : '💢 1차 분노'));
       this.bossBar.classList.toggle('phase2', h.boss.phase >= 2);
       this.setStyle(this.bossHp, 'width', `${Math.max(0, (h.boss.hp / h.boss.maxHp) * 100)}%`);
       if (this.lastHp >= 0 && h.boss.hp < this.lastHp) this.shake(this.bossBar);

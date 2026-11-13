@@ -1,13 +1,15 @@
 /**
  * 진행 저장 (체크포인트) — 스토리 게임이라 보스를 깬 뒤 게임 오버가 나도 처음부터 하지 않게.
  *   'walker' : 뽀뽀괴물을 이기고 3단계가 된 지점 (머리카락 부메랑 있음)
- *   'sniff'  : 최종 보스 킁카괴물전에 들어가는 지점
+ *   'sniff'  : 킁카괴물전에 들어가는 지점
+ *   'finale' : 킁카괴물을 이긴 직후 — 마지막 모험 처음
+ *   'witch'  : 최종 보스 이유식 드래곤 셰프 마녀전 (암흑의 이유식 성)
  * 엔딩을 보면 지움. 최고 점수 기록은 따로(STORAGE_KEYS.best) 그대로 유지.
  * 저장소가 막힌 환경(미리보기 창 등)에서도 이번 실행 동안은 메모리에 남아 이어하기 가능.
  */
 import { storage } from '../storage';
 
-export type CheckpointId = 'walker' | 'sniff';
+export type CheckpointId = 'walker' | 'sniff' | 'finale' | 'witch';
 
 export interface Checkpoint {
   id: CheckpointId;
@@ -21,7 +23,9 @@ let memory: Checkpoint | null = null;
 
 export const CHECKPOINT_LABEL: Record<CheckpointId, string> = {
   walker: '3단계부터',
-  sniff: '최종 보스부터',
+  sniff: '킁카괴물부터',
+  finale: '마지막 모험부터',
+  witch: '최종 보스부터',
 };
 
 export function loadCheckpoint(): Checkpoint | null {

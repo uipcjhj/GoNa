@@ -47,6 +47,8 @@ export interface BattleHost {
   seriousTexture(): string;
   /** 필살기 연출 중 고나 그림 ('serious' · 'bald' · null=원래대로) */
   setSpecialLook(look: 'serious' | 'bald' | null): void;
+  /** 이 보스의 전투 음악 시작 (등장 연출이 끝나고 싸움이 시작될 때 — 최종 보스) */
+  startBattleMusic?(): void;
   /** 보스전 끝 (승리 연출까지 끝난 뒤) */
   onBattleEnd(win: boolean): void;
 }

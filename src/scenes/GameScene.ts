@@ -19,10 +19,14 @@ import { hurtFace } from '../art/hurtFace';
 import { petalSheet, sunRays, sunsetSky, tinyHeart as endHeart } from '../art/familyArt';
 import { queueEndingArt, type EndingScene } from './EndingScene';
 import { auraRing, leaf, moodFlower, PIG_NOSE_FRAME, pigNoseSheet, royalHeart, safeMark, targetSheet, TORNADO_FRAME, tornadoSheet } from '../art/specialArt';
+import { witchArm, witchDrop, witchGoo, witchPot, witchPuddle, witchSheet, witchSmoke, witchSpoon, witchTarget, WITCH_SHEET_FRAMES } from '../art/witchArt';
+import { castleBolt, castleGround, castleInterior, castleMoon, castleSilhouette, clueBush, cluePrint, clueSpoon } from '../art/castleArt';
 import { battleShield, bigCloud, bossSheet, hairTuft, heartShot, removeHair, smellCloud, stinkDot, stinkPuddle, tinyHeart, waveHeart, warnMark } from '../art/bossArt';
 import { PixelCanvas } from '../art/PixelCanvas';
 import type { BossBattle } from './battle/BossBattle';
 import { KissBattle } from './battle/KissBattle';
+import { WitchBattle } from './battle/WitchBattle';
+import { FinaleRun } from './FinaleRun';
 import { SniffBattle } from './battle/SniffBattle';
 import { HairBoomerang } from './battle/HairBoomerang';
 import type { BattleHost } from './battle/types';
@@ -115,6 +119,14 @@ export class GameScene extends Phaser.Scene {
   private basePlayerX = VIEW.playerX;
   /** 다시 도전: 시작하자마자 이 보스전 */
   private pendingBoss: BossId | null = null;
+  /** 마지막 모험 (킁카괴물 뒤 → 암흑의 이유식 성) */
+  private finale: FinaleRun | null = null;
+  /** 이어하기·테스트: 시작하면 바로 마지막 모험 (값 = 시작 시각 초) */
+  private pendingFinale: number | null = null;
+  /** 성 안 (최종 보스 무대) */
+  inCastle = false;
+  /** 달리기 멈춤 (성 입구 도착 · 등장 컷신) */
+  private halt = false;
   /** 보스전 시작 때의 점수 (보스전 다시 도전용) */
   private retryCarry = { score: 0, snacks: 0 };
   private hudKey = '';
@@ -257,6 +269,11 @@ export class GameScene extends Phaser.Scene {
     this.pull = 0;
     this.hudKey = '';
     this.pendingBoss = null;
+    this.finale?.destroy();
+    this.finale = null;
+    this.pendingFinale = null;
+    this.inCastle = false;
+    this.halt = false;
     // 체크포인트에서 이어하기 (개발용 몬스터 테스트는 3단계 체크포인트와 같은 상태, 저장은 안 함)
     const cp = data?.checkpoint ? loadCheckpoint() : data?.devMonsters ? { id: 'walker' as const, score: 0, snacks: 0, at: 0 } : null;
     if (cp?.id === 'walker') {
@@ -270,11 +287,23 @@ export class GameScene extends Phaser.Scene {
       this.snacksEaten = cp.snacks;
     }
     // 보스전 다시 도전 · 최종 보스 체크포인트 (또는 테스트용 주소 ?boss=kiss / ?boss=sniff — 처음 한 번만)
-    let boss = data?.boss ?? (cp?.id === 'sniff' ? 'sniff' : null);
-    if (cp?.id === 'sniff') data = { ...data, score: cp.score, snacks: cp.snacks };
+    let boss = data?.boss ?? (cp?.id === 'sniff' ? 'sniff' : cp?.id === 'witch' ? 'witch' : null);
+    if (cp?.id === 'sniff' || cp?.id === 'witch') data = { ...data, score: cp.score, snacks: cp.snacks };
+    if (cp?.id === 'finale') {
+      // 킁카괴물을 이긴 직후: 4단계 · 마지막 모험 처음부터
+      this.growth.stageIndex = GROWTH_STAGES.findIndex((g) => g.id === 'bigbaby');
+      this.growth.gauge = 0;
+      this.growth.maxStageIndex = this.growth.stageIndex;
+      this.nestLeft = true;
+      this.clearedBosses.add('kiss');
+      this.clearedBosses.add('sniff');
+      this.score = cp.score;
+      this.snacksEaten = cp.snacks;
+      this.pendingFinale = 0;
+    }
     if (__DEV_TOOLS__ && !boss && !this.registry.get('debugBossUsed')) {
       const q = new URLSearchParams(window.location.search).get('boss');
-      if (q === 'kiss' || q === 'sniff') boss = q;
+      if (q === 'kiss' || q === 'sniff' || q === 'witch') boss = q;
       this.registry.set('debugBossUsed', true);
     }
     if (boss) {
@@ -283,7 +312,8 @@ export class GameScene extends Phaser.Scene {
       this.growth.gauge = this.growth.stage.gaugeToNext ?? 0;
       this.growth.maxStageIndex = this.growth.stageIndex;
       this.nestLeft = true;
-      if (boss === 'sniff') this.clearedBosses.add('kiss');
+      if (boss === 'sniff' || boss === 'witch') this.clearedBosses.add('kiss');
+      if (boss === 'witch') this.clearedBosses.add('sniff');
       this.pendingBoss = boss;
       this.score = data?.score ?? 0;
       this.snacksEaten = data?.snacks ?? 0;
@@ -548,7 +578,16 @@ export class GameScene extends Phaser.Scene {
       const b = this.pendingBoss;
       this.pendingBoss = null;
       this.time.delayedCall(900, () => {
-        if (this.state === 'playing' && !this.battle) this.startBoss(b);
+        if (this.state !== 'playing' || this.battle) return;
+        // 최종 보스는 성 안에서 (이어하기 · 보스전 다시 — 마지막 모험은 건너뜀)
+        if (b === 'witch') this.enterCastle(true);
+        else this.startBoss(b);
+      });
+    } else if (this.pendingFinale !== null) {
+      const t0 = this.pendingFinale;
+      this.pendingFinale = null;
+      this.time.delayedCall(600, () => {
+        if (this.state === 'playing' && !this.battle) this.startFinale(t0);
       });
     }
   }
@@ -694,6 +733,11 @@ export class GameScene extends Phaser.Scene {
       this.speed = SPEED.start * 0.8;
     }
 
+    // 성 입구 도착 · 등장 컷신: 천천히 멈춰 섬 (전투가 시작되면 다시 달림)
+    if (this.halt) {
+      if (this.battle?.mode === 'fight') this.halt = false;
+      else this.speed = Math.max(0, this.speed - 140 * dt);
+    }
     const move = this.speed * dt;
     this.distance += move;
     this.scrollBackground(dt);
@@ -701,7 +745,8 @@ export class GameScene extends Phaser.Scene {
     this.playerX = this.basePlayerX + this.pull;
     if (this.state !== 'dead') this.updatePlayer(dt, time);
 
-    if (this.state === 'playing' && !this.battle) {
+    if (this.finale && this.state === 'playing' && !this.battle) this.finale.update(dt);
+    if (this.state === 'playing' && !this.battle && !this.finale && !this.inCastle && !this.halt) {
       this.eventT -= dt;
       this.sinceMonster += dt;
       this.distToNext -= move;
@@ -776,6 +821,10 @@ export class GameScene extends Phaser.Scene {
         this.exprFrame = -1;
         this.player.play(wantAnim);
       }
+    } else if (this.halt && this.grounded && this.speed < 8) {
+      // 성 입구에서 멈춰 섬 (대기 포즈)
+      if (this.player.anims.isPlaying) this.player.anims.stop();
+      this.player.setFrame(this.vis.idleFrame);
     } else if (this.player.anims.currentAnim?.key !== wantAnim) {
       this.player.play(wantAnim);
     }
@@ -1720,6 +1769,37 @@ export class GameScene extends Phaser.Scene {
         addSheet(this, key, sh.canvas, sh.fw, sh.fh);
       }
     }
+    // 최종 보스 '이유식 드래곤 셰프 마녀' (코드 도트 · 프레임 9장) + 공격 그림 + 마지막 모험·성 그림
+    // 확정 레퍼런스 스프라이트(PNG, 프레임 10장 가로)를 씀 — 파일을 못 읽었을 때만 비상용 코드 도트
+    if (!tm.exists('boss-witch')) {
+      if (tm.exists('boss-src-witch')) {
+        const img = tm.get('boss-src-witch').getSourceImage() as HTMLImageElement;
+        addSheet(this, 'boss-witch', img, Math.floor(img.width / WITCH_SHEET_FRAMES), img.height);
+      } else {
+        const sh = witchSheet();
+        addSheet(this, 'boss-witch', sh.canvas, sh.fw, sh.fh);
+      }
+    }
+    if (!tm.exists('witch-spoon') && tm.exists('witch-spoon-src')) tm.addImage('witch-spoon', tm.get('witch-spoon-src').getSourceImage() as HTMLImageElement);
+    const witchSmall: [string, () => HTMLCanvasElement][] = [
+      ['witch-arm', witchArm],
+      ['witch-spoon', witchSpoon],
+      ['witch-goo', witchGoo],
+      ['witch-puddle', witchPuddle],
+      ['witch-drop', witchDrop],
+      ['witch-pot', witchPot],
+      ['witch-smoke', witchSmoke],
+      ['witch-target', witchTarget],
+      ['castle-bg', castleInterior],
+      ['castle-ground', castleGround],
+      ['castle-sil', castleSilhouette],
+      ['castle-moon', castleMoon],
+      ['castle-bolt', castleBolt],
+      ['clue-spoon', clueSpoon],
+      ['clue-bush', clueBush],
+      ['clue-print', cluePrint],
+    ];
+    for (const [k, fn] of witchSmall) if (!tm.exists(k)) addCanvas(this, k, fn());
     const small: [string, () => HTMLCanvasElement][] = [
       ['boss-heart', heartShot],
       ['boss-wave', waveHeart],
@@ -1912,6 +1992,9 @@ export class GameScene extends Phaser.Scene {
       seriousTexture: () => `serious-${this.vis.id}`,
       setSpecialLook: (look) => this.setSpecialLook(look),
       onBattleEnd: (win) => this.endBattle(win),
+      startBattleMusic: () => {
+        if (this.state === 'playing') sound.startMusic(this.musicNow());
+      },
     };
   }
 
@@ -2071,7 +2154,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 성장 게이지 가득: 이 단계의 보스가 남아 있으면 보스전, 아니면 진화 */
   private onGaugeFull(): void {
-    const boss = Object.values(BOSSES).find((b) => b.atStage === this.growth.stage.id);
+    const boss = Object.values(BOSSES).find((b) => b.atStage === this.growth.stage.id && b.trigger !== 'story' && !this.clearedBosses.has(b.id));
     if (boss && !this.clearedBosses.has(boss.id)) {
       this.startBoss(boss.id);
       return;
@@ -2084,6 +2167,103 @@ export class GameScene extends Phaser.Scene {
     if (queueEndingArt(this)) this.load.start();
   }
 
+  /** 마지막 모험 시작 (킁카괴물 뒤 · 이어하기 · 테스트: from = 시작 시각 초) */
+  startFinale(from = 0): void {
+    this.finale?.destroy();
+    this.clearedBosses.add('kiss');
+    this.clearedBosses.add('sniff');
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    this.finale = new FinaleRun(
+      {
+        scene: this,
+        get W() {
+          return self.W;
+        },
+        get H() {
+          return self.H;
+        },
+        get groundY() {
+          return self.groundY;
+        },
+        addSnack: (k, x, alt) => this.addSnack(k, x, alt),
+        addRock: (x) => this.addRock(x),
+        addProp: (tex, x, alt, depth, scale = 1) => {
+          const sprite = this.add.image(x, 0, tex).setOrigin(0.5, 1).setDepth(depth).setScale(scale);
+          this.entities.push({ sprite, type: 'fx', x, alt, w: 1, h: 1, phase: 0, done: false, vx: 0, life: 9, hit: true });
+        },
+        tint: (color, alpha, ms) => {
+          this.tweens.killTweensOf(this.moodTint);
+          this.moodTint.setFillStyle(color, this.moodTint.fillAlpha);
+          this.tweens.add({ targets: this.moodTint, fillAlpha: alpha, duration: ms, ease: 'Sine.InOut' });
+        },
+        arrive: () => this.enterCastle(false),
+      },
+      from,
+    );
+    bus.emit(EV.finaleStart, { from });
+  }
+
+  /** (검증용) 마지막 모험 상태 */
+  debugFinale(): { t: number; phase: string; inCastle: boolean; halt: boolean; speed: number } | null {
+    return this.finale ? { t: +this.finale.t.toFixed(2), phase: this.finale.phase, inCastle: this.inCastle, halt: this.halt, speed: Math.round(this.speed) } : { t: -1, phase: 'none', inCastle: this.inCastle, halt: this.halt, speed: Math.round(this.speed) };
+  }
+
+  /**
+   * 암흑의 이유식 성 도착: 달리기를 멈추고 → 화면이 잠깐 어두워졌다가 → 성 안 (배경·바닥을 성으로) → 최종 보스 등장 컷신
+   * instant = 이어하기·보스전 다시 (바로 성 안)
+   */
+  enterCastle(instant: boolean): void {
+    if (this.inCastle || this.battle) return;
+    this.halt = true;
+    for (const e of this.entities) {
+      if (e.done || e.type === 'snack') continue;
+      e.done = true;
+      this.tweens.add({ targets: e.sprite, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
+    }
+    const go = (): void => {
+      this.finale?.destroy();
+      this.finale = null;
+      this.setCastleLook();
+      this.startBoss('witch');
+    };
+    if (instant) {
+      this.speed = 0;
+      go();
+      return;
+    }
+    const cam = this.cameras.main;
+    this.time.delayedCall(1300, () => {
+      if (this.state !== 'playing' && this.state !== 'paused') return;
+      cam.fadeOut(500, 12, 6, 22);
+      this.time.delayedCall(560, () => {
+        go();
+        cam.fadeIn(600, 12, 6, 22);
+      });
+    });
+  }
+
+  /** 성 안 모습: 배경·바닥을 성으로 바꿈 (배치·스크롤은 숲 배경과 같은 방식) */
+  private setCastleLook(): void {
+    this.inCastle = true;
+    if (this.bgImage && this.textures.exists('castle-bg')) this.bgImage.setTexture('castle-bg');
+    if (this.textures.exists('castle-ground')) this.ground.setTexture('castle-ground');
+    this.bgHaze?.clear();
+    this.deepDirt.clear();
+    const dirtTop = this.groundY + GROUND_TILE_H;
+    if (dirtTop < this.H) {
+      const bands = ['#3e2c58', '#36264d', '#2f2143', '#281c3a', '#22172f'];
+      const bandH = Math.ceil((this.H - dirtTop) / bands.length);
+      bands.forEach((c, i) => {
+        this.deepDirt.fillStyle(Phaser.Display.Color.HexStringToColor(c).color, 1);
+        this.deepDirt.fillRect(0, dirtTop + i * bandH, this.W, bandH + 1);
+      });
+    }
+    this.tweens.killTweensOf(this.moodTint);
+    this.moodTint.setFillStyle(0x1d1640, 0.12);
+    this.layout();
+  }
+
   private startBoss(id: BossId): void {
     if (this.battle) return;
     // 화면의 바위는 치움 (간식은 그대로)
@@ -2094,15 +2274,16 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.retryCarry = { score: this.score, snacks: this.snacksEaten };
-    // 최종 보스 진입 → 체크포인트
+    // 보스 진입 → 체크포인트 (킁카괴물 · 최종 보스 마녀)
     if (id === 'sniff') saveCheckpoint('sniff', this.score, this.snacksEaten);
+    if (id === 'witch') saveCheckpoint('witch', this.score, this.snacksEaten);
     this.hp = BATTLE_HP.perHeart;
     this.shieldUntil = 0;
     this.shieldReadyAt = 0;
     const tex = `boss-${id}`;
-    this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : new SniffBattle(this.host, tex);
-    // 최종 보스전 동안 엔딩 곡·엔딩 그림을 미리 받아 둠 (엔딩이 시작될 때 내려받기·해독으로 멈칫하지 않게)
-    if (id === 'sniff') {
+    this.battle = id === 'kiss' ? new KissBattle(this.host, tex, this.canThrow) : id === 'witch' ? new WitchBattle(this.host, tex) : new SniffBattle(this.host, tex);
+    // 마지막 보스들 동안 엔딩 곡·엔딩 그림을 미리 받아 둠 (엔딩이 시작될 때 내려받기·해독으로 멈칫하지 않게)
+    if (id === 'sniff' || id === 'witch') {
       void sound.prepareEnding();
       this.preloadEndingArt();
     }
@@ -2118,12 +2299,15 @@ export class GameScene extends Phaser.Scene {
     }
     // 분위기 전환: 평화로운 음악이 작아지고 → 바람·나뭇잎 · 보랏빛 그림자 · 짧은 흔들림·경고음(보스 등장) → 보스 전용 음악
     sound.fadeOutMusic(700);
-    this.setBossMood(true);
+    this.setBossMood(true, id === 'witch');
     this.cameras.main.shake(260, 0.007);
     const battle = this.battle;
-    this.time.delayedCall(1600, () => {
-      if (this.battle === battle && this.state === 'playing') sound.startMusic(this.musicNow());
-    });
+    // 최종 보스는 등장 컷신이 끝나고 싸움이 시작될 때 음악 (host.startBattleMusic)
+    if (id !== 'witch') {
+      this.time.delayedCall(1600, () => {
+        if (this.battle === battle && this.state === 'playing') sound.startMusic(this.musicNow());
+      });
+    }
     this.battle.start();
   }
 
@@ -2132,14 +2316,16 @@ export class GameScene extends Phaser.Scene {
     const b = this.battle;
     if (!b) return 'game';
     if (b.id === 'kiss') return b.rage >= 1 ? 'kiss2' : 'kiss';
+    if (b.id === 'witch') return b.rage >= 2 ? 'witch2' : 'witch';
     return b.rage >= 2 ? 'sniff2' : 'sniff';
   }
 
   /** 보스전 분위기 켜기/끄기 (끌 때는 햇살이 돌아오며 꽃·반짝이) — 배경 색을 영구적으로 바꾸지 않음 */
-  private setBossMood(on: boolean): void {
+  private setBossMood(on: boolean, castle = false): void {
     this.tweens.killTweensOf(this.moodTint);
-    this.tweens.add({ targets: this.moodTint, fillAlpha: on ? 0.34 : 0, duration: on ? 1200 : 1400, ease: 'Sine.InOut' });
-    if (on) {
+    if (castle) this.moodTint.setFillStyle(0x1d1640, this.moodTint.fillAlpha);
+    this.tweens.add({ targets: this.moodTint, fillAlpha: on ? (castle ? 0.18 : 0.34) : 0, duration: on ? 1200 : 1400, ease: 'Sine.InOut' });
+    if (on && !castle) {
       // 바람: 나뭇잎이 오른쪽에서 왼쪽으로 잠깐 흩날림 (1.4초 · 개수 제한)
       this.moodLeaves?.destroy();
       const leaves = this.add
@@ -2199,13 +2385,28 @@ export class GameScene extends Phaser.Scene {
     bus.emit(EV.bossEnd, { id, win });
     // 어두웠던 숲에 햇살이 돌아옴 + 꽃·반짝이 → 평화로운 버섯숲 음악 (최종 보스는 가족 엔딩 음악이 따로)
     this.setBossMood(false);
-    if (BOSSES[id].afterWin === 'evolve') sound.startMusic('game');
-    if (BOSSES[id].afterWin === 'evolve') {
+    const after = BOSSES[id].afterWin;
+    if (after === 'evolve' || after === 'adventure') sound.startMusic('game');
+    if (after === 'evolve') {
       // 첫 보스 클리어 → 체크포인트 (게임 오버가 나도 3단계부터)
       saveCheckpoint('walker', this.score, this.snacksEaten);
       this.sinceMonster = 8; // 3단계 첫 몬스터는 약 6초 뒤
       this.startEvolution();
-    } else this.finishGame();
+    } else if (after === 'adventure') {
+      // 킁카괴물 → 최종 보스로 가는 마지막 모험 (게임 오버가 나도 여기부터)
+      saveCheckpoint('finale', this.score, this.snacksEaten);
+      this.time.delayedCall(1200, () => {
+        if (this.state === 'playing' && !this.battle) this.startFinale(0);
+      });
+    } else {
+      // 최종 보스 처치: 성 안에 따뜻한 빛이 돌아옴 → 가족 엔딩
+      if (this.inCastle) {
+        this.cameras.main.flash(700, 255, 226, 170);
+        const warm = this.add.rectangle(-100, -100, 3000, 3000, 0xffd9a0, 0).setOrigin(0, 0).setDepth(3.2).setScrollFactor(0);
+        this.tweens.add({ targets: warm, fillAlpha: 0.22, duration: 900, yoyo: true, hold: 300 });
+      }
+      this.finishGame();
+    }
   }
 
   /** 마지막 보스 격파 → 가족 엔딩 */
@@ -2338,7 +2539,12 @@ export class GameScene extends Phaser.Scene {
     const def = BOSSES[id];
     this.debugSetStage(GROWTH_STAGES.findIndex((g) => g.id === def.atStage));
     this.growth.gauge = this.growth.stage.gaugeToNext ?? 0;
-    if (id === 'sniff') this.clearedBosses.add('kiss');
+    if (id === 'sniff' || id === 'witch') this.clearedBosses.add('kiss');
+    if (id === 'witch') {
+      this.clearedBosses.add('sniff');
+      this.enterCastle(true);
+      return;
+    }
     this.startBoss(id);
   }
 

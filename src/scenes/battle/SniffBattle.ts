@@ -161,9 +161,10 @@ export class SniffBattle extends BossBattle {
 
   /** 난이도별 [누를 때 오르는 양, 초당 내려가는 양, 제한 시간] */
   private static readonly RESIST_TIERS: [number, number, number][] = [
-    [0.12, 0.16, 5.2],
-    [0.105, 0.21, 5.0],
-    [0.1, 0.26, 5.0],
+    // 난이도 하향: 누를 때 더 많이 오름 (예전 0.12 · 0.105 · 0.1) — 시간·감소는 보스 빠르기(pace 0.85)로 약 18% 길고 느려짐
+    [0.14, 0.16, 5.2],
+    [0.125, 0.21, 5.0],
+    [0.115, 0.26, 5.0],
   ];
 
   startResist(tier = this.rage >= 2 ? 2 : this.rage >= 1 ? 1 : 0): void {
@@ -251,7 +252,7 @@ export class SniffBattle extends BossBattle {
       ease: 'Quad.In',
       onComplete: () => {
         if (this.mode !== 'fight' && this.mode !== 'cutscene') return;
-        host.hurtPlayer(DAMAGE.sniffInhale, 'sniff-inhale');
+        host.hurtPlayer(this.dmg(DAMAGE.sniffInhale), 'sniff-inhale');
         scene.cameras.main.shake(220, 0.012);
         this.shockwave(host.basePlayerX + host.pull + 6, host.groundY - 18, false);
         this.fastRelease = true;
@@ -525,7 +526,7 @@ export class SniffBattle extends BossBattle {
   private static readonly AIM_A: [number, number] = [27, 7];
   private static readonly AIM_B: [number, number] = [7.4, 35.4];
   /** 판정 반경 (보스 그림 px — 코 중심과의 거리) */
-  static readonly AIM_R = { perfect: 3.6, good: 8.5 };
+  static readonly AIM_R = { perfect: 4.6, good: 10.5 }; // 난이도 하향 (예전 3.6 · 8.5)
   /** 안내 · 결과 안내 동안 멈추는 시간(초) */
   static readonly AIM_INTRO = 1.8;
   static readonly AIM_RESULT = 1.7;
@@ -732,8 +733,8 @@ export class SniffBattle extends BossBattle {
       this.closeAim(false, '기회를 놓쳤어요');
       return;
     }
-    // 일정한 속도로 왕복 (한쪽 끝에서 끝까지 1.4초)
-    a.u += (a.dir * dt) / 1.4;
+    // 일정한 속도로 왕복 (한쪽 끝에서 끝까지 1.45초 × 보스 빠르기 0.85 → 실제 약 1.7초 · 예전 1.4초)
+    a.u += (a.dir * dt) / 1.45;
     if (a.u >= 1) {
       a.u = 2 - a.u;
       a.dir = -1;

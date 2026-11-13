@@ -3,8 +3,9 @@
  *
  * 흐름 (src/scenes/GameScene.ts):
  *   1단계 갓난아기 → 2단계 기어 다니는 고나 ─(게이지 가득)→ ⚔ 뽀뽀괴물 → (승리) 3단계 직립보행
- *   → 4단계 자이언트 곤룡 고나 ─(게이지 가득)→ ⚔ 킁카괴물 → (승리) 엔딩
- * 보스 행동(공격 패턴)은 src/scenes/battle/KissBattle.ts · SniffBattle.ts
+ *   → 4단계 자이언트 곤룡 고나 ─(게이지 가득)→ ⚔ 킁카괴물 → (승리) 마지막 모험 (약 75초, src/scenes/FinaleRun.ts)
+ *   → 암흑의 이유식 성 → ⚔ 이유식 드래곤 셰프 마녀 (3페이즈) → (승리) 가족 엔딩
+ * 보스 행동(공격 패턴)은 src/scenes/battle/KissBattle.ts · SniffBattle.ts · WitchBattle.ts
  */
 import type { BossId } from '../events';
 import type { GrowthStageId } from './growth';
@@ -31,10 +32,22 @@ export interface BossDef {
   specialGainMul: number;
   /** 이 보스가 나오는 성장 단계 (그 단계 게이지가 가득 차면 진화 대신 보스전) */
   atStage: GrowthStageId;
-  /** 이기면: 다음 단계로 진화 / 엔딩 */
-  afterWin: 'evolve' | 'ending';
+  /** 이기면: 다음 단계로 진화 / 마지막 모험(최종 보스로 가는 길) / 엔딩 */
+  afterWin: 'evolve' | 'adventure' | 'ending';
+  /** 등장 조건: 'growth' = 성장 게이지 가득 (기본) · 'story' = 이야기 흐름 (마지막 모험 끝 — 게이지로는 안 나옴) */
+  trigger?: 'growth' | 'story';
   /** 정식 그림 (선택). 프레임 3장 가로 시트 — 없으면 코드 도트 (src/art/bossArt.ts) */
   sheetUrl: string;
+  /**
+   * 난이도 (숫자만 바꿔 조절 — BossBattle 이 모든 공격에 똑같이 적용):
+   *   pace: 보스 공격·이동·투사체의 빠르기 (1 = 원래, 0.8 = 20% 느리게 → 예고·반격 시간도 그만큼 김)
+   *   telegraphExtra: 공격마다 '!' 예고를 이만큼(초) 더 먼저 보여 줌
+   *   recoverMul: 공격 사이 쉬는 시간 배율 · damageMul: 고나가 받는 피해 배율
+   */
+  pace: number;
+  telegraphExtra: number;
+  recoverMul: number;
+  damageMul: number;
 }
 
 export const BOSSES: Record<BossId, BossDef> = {
@@ -45,7 +58,8 @@ export const BOSSES: Record<BossId, BossDef> = {
     // 첫 보스: 일반 → 1차 분노(70%) → 2차 분노(35%) → 왕뽀뽀 → 지침 을 모두 겪도록 (8 → 28, 전투 약 1~2분)
     // 한 번에 분노 단계를 건너뛰지 않고(BossBattle.hpFloor), 왕뽀뽀→지침을 보여 주기 전엔 쓰러지지 않음(KissBattle.hpFloor)
     // 분노 4단계 + 필살기 ①②③ 을 모두 겪는 길이 (playtest-bot 반응 120ms 기준 전투 78~79초 — 사람은 더 김)
-    maxHp: 50,
+    // 난이도 하향 (첫 보스 · 초보자도 클리어): HP 50 → 42 (-16%) · 공격 18% 느리게 · 예고 약 +35% · 쉬는 시간 +30% · 받는 피해 -20%
+    maxHp: 42,
     phase2At: 0.5,
     specialDamage: 3,
     scoreBonus: 300,
@@ -55,13 +69,19 @@ export const BOSSES: Record<BossId, BossDef> = {
     atStage: 'crawler',
     afterWin: 'evolve',
     sheetUrl: 'assets/boss/kiss-sheet.png',
+    pace: 0.82,
+    telegraphExtra: 0.12,
+    recoverMul: 1.3,
+    damageMul: 0.8,
   },
   sniff: {
     id: 'sniff',
     name: '킁카괴물',
     intro: '킁킁! 냄새로 숲을 뒤덮는 마지막 괴물',
     // 최종 보스: 돼지코 필살기 ①②③ + 최종 분노 (playtest-bot 반응 120ms 기준 코 약점 ×2 포함 전투 약 95~105초 — 사람은 더 김)
-    maxHp: 230,
+    // 난이도 하향: HP 230 → 196 (-15%) · 공격 15% 느리게 · 냄새 예고 약 +30% · 쉬는 시간 +25% · 받는 피해 -15%
+    //   버티기·코 조준도 쉽게 (SniffBattle.RESIST_TIERS · AIM_R · 조준점 속도)
+    maxHp: 196,
     phase2At: 0.5,
     specialDamage: 8,
     scoreBonus: 600,
@@ -69,9 +89,55 @@ export const BOSSES: Record<BossId, BossDef> = {
     bodyDamage: 30, // 흡입 후 충돌
     specialGainMul: 0.5,
     atStage: 'bigbaby',
-    afterWin: 'ending',
+    afterWin: 'adventure',
     sheetUrl: 'assets/boss/sniff-sheet.png',
+    pace: 0.85,
+    telegraphExtra: 0.1,
+    recoverMul: 1.25,
+    damageMul: 0.85,
   },
+  witch: {
+    id: 'witch',
+    name: '이유식 드래곤 셰프 마녀',
+    intro: '뽀뽀괴물과 킁카괴물을 키운 진짜 흑막!',
+    // 최종 보스 3페이즈 (HP 100~70% · 70~35% · 35~0%) — 수치는 아래 WITCH 에서 조절
+    maxHp: 210,
+    phase2At: 0.7,
+    specialDamage: 8,
+    scoreBonus: 1000,
+    minRecover: 1.4,
+    bodyDamage: 25,
+    specialGainMul: 0.55,
+    atStage: 'bigbaby',
+    afterWin: 'ending',
+    trigger: 'story',
+    sheetUrl: 'assets/boss/witch-sheet.png', // 확정 레퍼런스의 스프라이트에서 추출 (tools/art/witch_from_reference.py)
+    pace: 1,
+    telegraphExtra: 0.15,
+    recoverMul: 1,
+    damageMul: 1,
+  },
+};
+
+/**
+ * 최종 보스 '이유식 드래곤 셰프 마녀' 조절값 (초 · HP 피해) — 페이즈별 [1, 2, 3]
+ *   모든 공격은 예고(경로·낙하 자리·화살표)와 실제 판정이 같은 자리 · 점프(이단 점프)나 방패로 언제나 피할 수 있음
+ */
+export const WITCH = {
+  /** 페이즈 문턱 (HP 비율) */
+  phaseAt: [0.7, 0.35] as const,
+  /** 공중에 떠 있는 높이 (땅에서 발까지) */
+  hover: 34,
+  /** A·D 늘어나는 숟가락: 경로 예고 시간 → 내리꽂기(이 순간 판정) · 빗나가면 어질어질 */
+  spoon: { telegraph: [1.25, 1.0, 0.9], strike: 0.2, dmg: 25, stun: 2.4, stunMul: 1.7, comboGap: 0.95 },
+  /** B 이유식 폭탄: 낙하 자리 예고 → 떨어져 장판(땅을 따라 고나 쪽으로 — 점프로 넘음) */
+  bomb: { telegraph: 1.1, count: [3, 3, 4], fall: 0.55, dmg: 20, spacing: 46 },
+  /** C 이유식 회오리: 방울이 위·아래 줄로 날아옴 (오른쪽 화살표: 아래=점프 · 위=가만히) */
+  swirl: { count: 6, gap: 0.8, arrow: 0.9, speed: 120, dmg: 20 },
+  /** E 초대형 이유식 폭발: 냄비에서 솟아 차례로 떨어짐 (고나 자리 = 점프·방패) → 끝나면 지쳐서 멈춤 */
+  pot: { drops: 6, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 3.2, tiredMul: 1.8 },
+  /** 공격이 끝난 직후 약점 노출 (초 · 피해 배율) */
+  weak: { sec: 1.1, mul: 1.4 },
 };
 
 /** 필살 게이지 충전량 (0~1 기준) */
@@ -85,8 +151,8 @@ export const SPECIAL_GAIN = {
 /** 보스전 고나 체력: 하트 1개 = HP 100. 0 이 되면 하트 -1, 남은 하트가 있으면 다시 100 */
 export const BATTLE_HP = {
   perHeart: 100,
-  /** 맞은 직후 무적(ms) — 연속 피해 방지 */
-  hitInvulnMs: 700,
+  /** 맞은 직후 무적(ms) — 연속 피해 방지 (난이도 하향: 700 → 900) */
+  hitInvulnMs: 900,
   /** 하트를 잃은 직후 무적(ms) */
   heartLossInvulnMs: 1500,
 };
@@ -107,6 +173,6 @@ export const DAMAGE = {
   sniffCloud: 25,
   sniffBlast: 35,
   sniffPuddle: 20,
-  /** 강력한 흡입 — 버티기 실패 */
-  sniffInhale: 30,
+  /** 강력한 흡입 — 버티기 실패 (난이도 하향: 30 → 22) */
+  sniffInhale: 22,
 };

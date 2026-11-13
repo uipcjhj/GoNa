@@ -65,7 +65,7 @@ async function play(run) {
       return {
         state: g.state, grounded: g.grounded, jumps: g.jumpsUsed, alt: g.alt, px: g.playerX, gy: g.groundY, speed: g.speed,
         hearts: g.hearts, hp: g.hp, out: g.boomerang.isOut, canThrow: g.canThrow, pull: g.pull, stage: g.growth.stageIndex,
-        shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared',
+        shieldReady: g.time.now >= g.shieldReadyAt, over: ov && !ov.classList.contains('hidden'), cleared: ov?.classList.contains('cleared') || g.state === 'ending' || g.state === 'cleared', fin: !!g.finale,
         b: bt && { qte: bt.resistActive ? 'resist' : bt.aimActive ? (bt.aim && bt.aim.pause <= 0 && Math.abs(bt.aim.pos - 0.5) < 0.05 ? 'nose' : 'aim') : null, mode: bt.mode, hp: bt.hp, frozen: bt.frozen, special: bt.special, bx: bt.bx, r: bt.bossRect(),
           hs: bt.hostiles.filter((h) => !h.dead && !h.hitPlayer).map((h) => ({ x: h.x, y: h.y, vx: h.vx, vy: h.vy, ay: h.ay, c: h.shape === 'circle', r: h.r, w: h.w, h: h.h, g: h.onGround, wave: !!h.wave })) },
       };
@@ -79,7 +79,7 @@ async function play(run) {
     if (!s.b) {
       // 보스전 끝: 뽀뽀괴물이면 진화(3단계) 확인, 킁카괴물이면 엔딩 화면
       if (boss === 'kiss' && s.stage >= 2) { result = 'WIN'; break; }
-      if (boss === 'sniff' && s.cleared) { result = 'WIN'; break; }
+      if (boss === 'sniff' && (s.cleared || s.fin)) { result = 'WIN'; break; } // 킁카괴물 다음은 마지막 모험
       await page.waitForTimeout(REACT);
       continue;
     }

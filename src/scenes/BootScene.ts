@@ -87,6 +87,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('end-bgB-port', 'assets/ending/bgB-port.png');
     // 보스 정식 그림 (선택 — 없으면 코드 도트)
     for (const b of Object.values(BOSSES)) if (b.sheetUrl) this.load.image(`boss-src-${b.id}`, b.sheetUrl);
+    this.load.image('witch-spoon-src', 'assets/boss/witch-spoon.png'); // 마녀의 이유식 숟가락 (레퍼런스에서 추출)
     // 일반 몬스터 정식 그림 (선택)
     for (const m of Object.values(MONSTERS)) this.load.image(`mon-src-${m.kind}`, m.sheetUrl);
   }

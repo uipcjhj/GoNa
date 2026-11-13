@@ -23,7 +23,7 @@ import { STORAGE_KEYS } from './config';
 import { storage } from './storage';
 
 type Wave = OscillatorType;
-export type MusicMode = 'title' | 'game' | 'kiss' | 'kiss2' | 'sniff' | 'sniff2' | 'ending';
+export type MusicMode = 'title' | 'game' | 'kiss' | 'kiss2' | 'sniff' | 'sniff2' | 'ending' | 'castle' | 'witch' | 'witch2';
 
 /** 음 이름 → 주파수 (예: 'F4', 'Bb3', 'C#5') */
 function hz(n: string): number {
@@ -123,10 +123,39 @@ const END_MELODY: Notes = [
   [[0, 'A5', 4], [4, 'Bb5', 4], [8, 'G5', 8]],
   [[0, 'F5', 16]],
 ];
+/** 암흑의 성 · 이유식 마녀 (A 단조 · 화성 단조 G# 로 마녀 느낌) */
+const WITCH_ROOT = ['A1', 'A1', 'F1', 'E1', 'A1', 'D2', 'F1', 'E1'];
+const WITCH_TRIAD: string[][] = [
+  ['A3', 'C4', 'E4'], ['A3', 'C4', 'E4'], ['F3', 'A3', 'C4'], ['E3', 'G#3', 'B3'],
+  ['A3', 'C4', 'E4'], ['D3', 'F3', 'A3'], ['F3', 'A3', 'C4'], ['E3', 'G#3', 'B3'],
+];
+/** 전투 리드 (통통 튀는 마녀 춤곡 — 귀엽고 긴장감 있게) */
+const WITCH_LEAD: Notes = [
+  [[0, 'A4', 2], [2, 'C5', 2], [4, 'E5', 3], [7, 'D#5', 1], [8, 'E5', 2], [10, 'C5', 2], [12, 'A4', 4]],
+  [[0, 'B4', 2], [2, 'C5', 2], [4, 'D5', 2], [6, 'C5', 2], [8, 'B4', 4], [12, 'G#4', 4]],
+  [[0, 'A4', 2], [2, 'C5', 2], [4, 'F5', 3], [7, 'E5', 1], [8, 'F5', 2], [10, 'A5', 2], [12, 'F5', 4]],
+  [[0, 'E5', 2], [2, 'D5', 2], [4, 'C5', 2], [6, 'B4', 2], [8, 'G#4', 6], [14, 'B4', 2]],
+  [[0, 'A5', 2], [2, 'G#5', 2], [4, 'A5', 2], [6, 'E5', 2], [8, 'C5', 2], [10, 'E5', 2], [12, 'A4', 4]],
+  [[0, 'D5', 2], [2, 'F5', 2], [4, 'A5', 3], [7, 'G#5', 1], [8, 'A5', 2], [10, 'F5', 2], [12, 'D5', 4]],
+  [[0, 'C5', 2], [2, 'F5', 2], [4, 'E5', 2], [6, 'D5', 2], [8, 'C5', 4], [12, 'A4', 4]],
+  [[0, 'B4', 2], [2, 'G#4', 2], [4, 'E4', 2], [6, 'G#4', 2], [8, 'B4', 4], [12, 'E5', 4]],
+];
+/** 성으로 가는 길 (드문드문 울리는 으스스한 종소리) */
+const CASTLE_BELL: Notes = [
+  [[0, 'E5', 8], [12, 'C5', 4]],
+  [[4, 'B4', 8]],
+  [[0, 'C5', 8], [12, 'A4', 4]],
+  [[0, 'G#4', 12]],
+  [[0, 'E5', 6], [8, 'F5', 8]],
+  [[4, 'D5', 8], [12, 'C5', 4]],
+  [[0, 'A4', 8], [10, 'C5', 6]],
+  [[0, 'B4', 8], [8, 'G#4', 8]],
+];
+
 /** 엔딩 곡 마디 수 (반복 없음) */
 export const ENDING_BARS = 16;
 
-const TEMPO: Record<MusicMode, number> = { title: 68, game: 96, kiss: 150, kiss2: 150, sniff: 124, sniff2: 124, ending: 84 };
+const TEMPO: Record<MusicMode, number> = { title: 68, game: 96, kiss: 150, kiss2: 150, sniff: 124, sniff2: 124, ending: 84, castle: 84, witch: 138, witch2: 138 };
 
 const AUDIO_DIR = 'assets/audio/';
 /** 미리 만든 소리 파일 (tools/render_audio.cjs) */
@@ -138,6 +167,9 @@ export const MUSIC_FILES: Record<MusicMode, string> = {
   sniff: 'bgm-sniff.mp3',
   sniff2: 'bgm-sniff2.mp3',
   ending: 'bgm-ending.mp3',
+  castle: 'bgm-castle.mp3',
+  witch: 'bgm-witch.mp3',
+  witch2: 'bgm-witch2.mp3',
 };
 
 /** 반복하지 않는 곡 (엔딩) */
@@ -857,6 +889,22 @@ class Sound {
     this.noise(0.9, 0.4, 0, 'bandpass', 900);
     this.noise(0.9, 0.25, 0.1, 'bandpass', 1800);
   }
+  /** 마녀의 간사한 웃음 '흐흐흐~' (near = 가까이 · 크게) */
+  witchLaugh(near = true): void {
+    const v = near ? 0.22 : 0.08;
+    for (let i = 0; i < 4; i++) {
+      const f = 520 - i * 40;
+      this.tone(f, 0.16, 'square', v, i * 0.17, f * 0.82);
+      this.tone(f * 1.5, 0.12, 'triangle', v * 0.4, i * 0.17 + 0.01, f * 1.2);
+    }
+    this.noise(0.5, v * 0.5, 0, 'bandpass', 1200);
+  }
+  /** 우르르 쾅 (작은 번개) */
+  thunder(): void {
+    this.noise(0.08, 0.5, 0, 'highpass', 3000);
+    this.noise(1.1, 0.32, 0.05, 'lowpass', 260);
+    this.tone(60, 0.9, 'sine', 0.25, 0.05, 35);
+  }
   /** 냄새 구름 퐁 */
   puff(): void {
     if (this.sfxFile('puff')) return;
@@ -1198,6 +1246,8 @@ class Sound {
     if (this.mode === 'kiss' || this.mode === 'kiss2') return this.playKiss(step, when, bus, this.mode === 'kiss2');
     if (this.mode === 'sniff' || this.mode === 'sniff2') return this.playSniff(step, when, bus, this.mode === 'sniff2');
     if (this.mode === 'ending') return this.playEnding(step, when, bus);
+    if (this.mode === 'castle') return this.playCastle(step, when, bus);
+    if (this.mode === 'witch' || this.mode === 'witch2') return this.playWitch(step, when, bus, this.mode === 'witch2');
     const game = this.mode === 'game';
     const s16 = 60 / TEMPO[this.mode] / 4;
     const bar = Math.floor(step / 16) % 8;
@@ -1297,6 +1347,54 @@ class Sound {
     if (intense) {
       const tri = SNIFF_TRIAD[bar];
       this.tone(hz(tri[(pos + bar) % 3]) * 2, s16 * 0.7, 'square', 0.022, when, undefined, bus, 0.003);
+    }
+  }
+
+  /** 암흑의 성으로 가는 길 (긴장감 · 느린 심장 박동 · 낮은 지속음 · 드문드문 종소리) */
+  private playCastle(step: number, when: number, bus: AudioNode): void {
+    const s16 = 60 / TEMPO.castle / 4;
+    const bar = Math.floor(step / 16) % 8;
+    const pos = step % 16;
+    const root = hz(WITCH_ROOT[bar]);
+    if (pos === 0) {
+      this.tone(root, s16 * 16, 'sawtooth', 0.05, when, undefined, bus, s16 * 3);
+      this.tone(root * 1.5, s16 * 16, 'triangle', 0.035, when, undefined, bus, s16 * 4);
+      for (const n of WITCH_TRIAD[bar]) this.tone(hz(n), s16 * 16, 'sine', 0.03, when, undefined, bus, s16 * 6);
+    }
+    // 두근… 두근 (심장 박동)
+    if (pos === 0 || pos === 3) this.tone(pos === 0 ? 70 : 62, 0.26, 'sine', 0.34, when, 40, bus, 0.004);
+    // 똑딱 (시계 · 긴장)
+    if (pos % 4 === 2) this.noise(0.03, 0.025, when, 'highpass', 5200, bus);
+    for (const [p, n, l] of CASTLE_BELL[bar]) {
+      if (p === pos) this.bell(hz(n), Math.min(2.6, s16 * l * 1.4 + 0.5), 0.08, when, bus, true);
+    }
+  }
+
+  /** 이유식 마녀 전투곡 (intense = 3페이즈: 베이스 16분 · 하이햇 16분 · 아르페지오 · 리드 옥타브) */
+  private playWitch(step: number, when: number, bus: AudioNode, intense: boolean): void {
+    const s16 = 60 / TEMPO.witch / 4;
+    const bar = Math.floor(step / 16) % 8;
+    const pos = step % 16;
+    const root = hz(WITCH_ROOT[bar]);
+    // 통통 튀는 베이스 (8분 · 옥타브 왔다 갔다)
+    if (pos % 2 === 0) this.tone(root * (pos % 4 === 2 ? 2 : 1), s16 * 1.6, 'square', 0.09, when, undefined, bus, 0.004);
+    if (intense && pos % 2 === 1) this.tone(root * 2, s16 * 0.7, 'square', 0.045, when, undefined, bus, 0.003);
+    // 패드 (마디 첫 칸)
+    if (pos === 0) for (const n of WITCH_TRIAD[bar]) this.tone(hz(n), s16 * 16, 'triangle', 0.03, when, undefined, bus, s16 * 3);
+    // 타악기: 북 · 스네어 · 하이햇
+    if (pos === 0 || pos === 7 || pos === 10 || (intense && (pos === 3 || pos === 14))) this.tone(pos === 0 ? 92 : 132, 0.2, 'sine', 0.3, when, 45, bus, 0.003);
+    if (pos === 4 || pos === 12) this.noise(0.11, 0.09, when, 'bandpass', 1700, bus);
+    if (intense ? true : pos % 2 === 1) this.noise(0.03, 0.022, when, 'highpass', 7000, bus);
+    // 리드: 하프시코드 느낌 (사각파 + 종)
+    for (const [p, n, l] of WITCH_LEAD[bar]) {
+      if (p !== pos) continue;
+      this.tone(hz(n), s16 * l * 0.85, 'square', 0.045, when, undefined, bus, 0.004);
+      this.bell(hz(n), Math.min(1.6, s16 * l * 1.2 + 0.25), 0.07, when, bus, false);
+      if (intense) this.tone(hz(n) * 2, s16 * l * 0.6, 'square', 0.018, when, undefined, bus, 0.004);
+    }
+    if (intense) {
+      const tri = WITCH_TRIAD[bar];
+      this.tone(hz(tri[pos % 3]) * 2, s16 * 0.6, 'triangle', 0.024, when, undefined, bus, 0.003);
     }
   }
 

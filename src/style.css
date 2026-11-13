@@ -2755,7 +2755,8 @@ body.has-pad .touch-hint {
 /* 보스 패배 확정: 전투 HUD·버튼을 숨겨 대화창과 겹치지 않게 */
 body.boss-defeat .battle-top,
 body.boss-defeat .hud-score,
-body.boss-defeat .battle-pad {
+body.boss-defeat .battle-pad,
+body.boss-talking .battle-pad {
   visibility: hidden;
 }
 /* 보스 패배 대사 (픽셀 대화창) — 위쪽 안전영역(일시정지·소리 버튼 아래) */

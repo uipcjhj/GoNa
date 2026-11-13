@@ -109,6 +109,8 @@ export abstract class BossBattle {
   protected bx = 0;
   /** 보스 발이 땅에서 떠 있는 높이 */
   protected balt = 0;
+  /** 보스 기본 배율 (최종 보스는 고나와 같은 도트 크기가 되게 1.6) */
+  protected restScale = 1;
   protected homeX = 0;
   protected hostiles: Hostile[] = [];
   protected busy = false;
@@ -200,14 +202,21 @@ export abstract class BossBattle {
     this.time += rawDt;
     this.runTasks(this.cine, rawDt);
     const dt = rawDt * this.timeScale;
+    // 보스 빠르기 (난이도): 공격 예약·이동·투사체·기절 시간이 모두 같은 배율로 — 땅이 흐르는 속도는 그대로
+    const bdt = dt * this.def.pace;
     if (!this.frozen) {
       if (this.mode === 'fight') {
-        this.runTasks(this.ai, dt);
+        this.runTasks(this.ai, bdt);
         if (!this.busy) {
-          this.cooldown -= dt;
+          this.cooldown -= bdt;
           if (this.cooldown <= 0) {
             this.busy = true;
-            this.chooseAttack();
+            // 예고를 조금 더 먼저 ('!' 만 — 소리는 공격이 낼 때) → 그다음 공격
+            const extra = this.def.telegraphExtra;
+            if (extra > 0) {
+              this.warnT = Math.max(this.warnT, extra);
+              this.after(extra, () => this.mode === 'fight' && this.chooseAttack());
+            } else this.chooseAttack();
           }
         }
         this.snackT -= dt;
@@ -216,17 +225,17 @@ export abstract class BossBattle {
           const alt = [4, 26, 54][Math.floor(Math.random() * 3)];
           this.host.spawnSnack(SNACKS[Math.floor(Math.random() * 3)], alt);
         }
-        this.onUpdate(dt);
+        this.onUpdate(bdt);
       }
-      this.updateMotion(dt);
-      this.updateHostiles(dt);
+      this.updateMotion(bdt);
+      this.updateHostiles(bdt, dt);
       this.bodyContact();
     }
     if (this.stars.length) {
-      this.stunT = Math.max(0, this.stunT - (this.frozen ? 0 : dt));
+      this.stunT = Math.max(0, this.stunT - (this.frozen ? 0 : bdt));
       this.stars.forEach((st, i) => {
         const a = this.time * 5 + (i * Math.PI * 2) / this.stars.length;
-        st.setPosition(Math.round(this.bx + Math.cos(a) * this.fw * 0.32), Math.round(this.host.groundY - this.balt - this.fh * 0.92 + Math.sin(a) * 3));
+        st.setPosition(Math.round(this.bx + Math.cos(a) * this.fw * 0.32 * this.boss.scaleX), Math.round(this.host.groundY - this.balt - this.fh * 0.92 * this.boss.scaleY + Math.sin(a) * 3));
       });
     }
     this.render(dt);
@@ -294,7 +303,7 @@ export abstract class BossBattle {
   protected endAttack(cool: number): void {
     this.busy = false;
     // 공격 뒤 최소 쉬는 시간은 2페이즈에서도 지킴 (부메랑을 맞힐 빈틈)
-    this.cooldown = Math.max(this.def.minRecover, this.phase2 ? cool * 0.8 : cool);
+    this.cooldown = Math.max(this.def.minRecover, this.phase2 ? cool * 0.8 : cool) * this.def.recoverMul;
   }
 
   private render(dt: number): void {
@@ -319,7 +328,7 @@ export abstract class BossBattle {
       this.warnT -= dt;
       this.warnMark
         .setVisible(Math.floor(this.warnT * 10) % 2 === 0)
-        .setPosition(Math.round(this.bx), Math.round(this.host.groundY - this.balt - this.fh - 3));
+        .setPosition(Math.round(this.bx), Math.round(this.host.groundY - this.balt - this.fh * this.boss.scaleY - 3));
       if (this.warnT <= 0) this.warnMark.setVisible(false);
     }
   }
@@ -343,6 +352,16 @@ export abstract class BossBattle {
   /** 보스 이동 (dt 기반 — 연출로 멈출 때 같이 멈춤) */
   protected moveTo(x: number, alt: number, dur: number, arc = 0, ease: (t: number) => number = (t) => t, done: (() => void) | null = null): void {
     this.motion = { x0: this.bx, a0: this.balt, x1: x, a1: alt, dur, t: 0, arc, ease, done };
+  }
+
+  /** (검증용) 예약된 연출 타이머를 모두 취소 */
+  protected clearCine(): void {
+    this.cine = [];
+  }
+
+  /** 이동 중인지 (moveTo 진행 중) */
+  protected get moving(): boolean {
+    return !!this.motion;
   }
 
   /** 제자리로 (공격이 끊겼을 때) */
@@ -384,7 +403,7 @@ export abstract class BossBattle {
     b.y0 = b.y1 - (b.y1 - b.y0) * this.contactHeight;
     if (p.x0 < b.x1 && p.x1 > b.x0 && p.y0 < b.y1 && p.y1 > b.y0) {
       if (this.host.shieldRect()) return; // 방패 중엔 몸통도 막음
-      if (this.host.hurtPlayer(this.def.bodyDamage, 'body')) this.onBodyHit();
+      if (this.host.hurtPlayer(this.dmg(this.def.bodyDamage), 'body')) this.onBodyHit();
     }
   }
 
@@ -503,7 +522,7 @@ export abstract class BossBattle {
       const p = this.fx(scene.add.image(this.bx + (Math.random() - 0.5) * this.fw * 0.6, this.host.groundY - this.fh + 4, 'boss-dot').setDepth(12).setTint(0xffffff));
       scene.tweens.add({ targets: p, y: p.y - 18 - Math.random() * 12, x: p.x + (Math.random() - 0.5) * 14, alpha: 0, scale: 2, duration: 900, delay: i * 90, onComplete: () => p.destroy() });
     }
-    this.banner({ top: lv === 1 ? '💢 1차 분노!' : lv === 2 ? '💥 2차 분노!' : '🔥 최종 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : lv === 2 ? '폭발했어요!' : '마지막 힘을 끌어모아요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' });
+    this.banner(this.rageBanner(lv));
     this.cutscene(1.5, () => {
       this.busy = false;
       this.cooldown = 0.9;
@@ -514,6 +533,38 @@ export abstract class BossBattle {
 
   /** 분노 단계 문턱 (HP 비율): 1차 70% · 2차 40% · 최종 15% */
   static readonly RAGE_AT = [0.7, 0.4, 0.15] as const;
+
+  /** 이 보스의 분노 문턱 (하위 클래스가 바꿀 수 있음 — 최종 보스는 3페이즈: 70% · 35%) */
+  protected rageAt(): readonly number[] {
+    return BossBattle.RAGE_AT;
+  }
+
+  /** 분노 안내 배너 */
+  protected rageBanner(lv: 1 | 2 | 3): BannerInfo {
+    return { top: lv === 1 ? '💢 1차 분노!' : lv === 2 ? '💥 2차 분노!' : '🔥 최종 분노!', name: `${this.def.name}이 ${lv === 1 ? '화났어요!' : lv === 2 ? '폭발했어요!' : '마지막 힘을 끌어모아요!'}`, desc: this.rageText(lv), ms: 1500, tone: 'boss' };
+  }
+
+  /**
+   * 대사 (픽셀 대화창 · 타이핑) — 그동안 전투가 멈춤(투사체·공격 예약도). 끝나면 done
+   * (등장 대사 · 페이즈 전환 대사 — 패배 대사는 victory 가 따로)
+   */
+  protected talk(lines: string[], done: () => void): void {
+    const wasFrozen = this.frozen;
+    this.frozen = true;
+    const fin = (): void => {
+      bus.off(EV.bossTalkDone, fin);
+      bus.off(EV.bossTalkCancel, fin);
+      this.talkFin = null;
+      if (this.mode === 'victory' || this.mode === 'done') return;
+      this.frozen = wasFrozen;
+      done();
+    };
+    this.talkFin = fin;
+    bus.once(EV.bossTalkDone, fin);
+    bus.once(EV.bossTalkCancel, fin);
+    bus.emit(EV.bossTalk, { name: this.def.name, lines });
+  }
+  private talkFin: (() => void) | null = null;
 
   /** 이번 분노 단계의 필살기를 아직 안 보여 줬으면 true → 하위 클래스가 다음 공격으로 필살기를 고름 */
   protected get specialDue(): boolean {
@@ -533,9 +584,10 @@ export abstract class BossBattle {
    */
   protected hpFloor(): number {
     const max = this.def.maxHp;
-    const next = this.rage < 3 ? Math.floor(max * (BossBattle.RAGE_AT as readonly number[])[this.rage]) : 0;
+    const at = this.rageAt();
+    const next = this.rage < at.length ? Math.floor(max * at[this.rage]) : 0;
     // 이번 단계 필살기를 보여 주기 전엔 다음 단계(또는 패배)로 못 넘어감 — 필살기는 그 단계 첫 공격이라 오래 걸리지 않음
-    if (this.specialDue) return this.rage < 3 ? next + 1 : 1;
+    if (this.specialDue) return this.rage < at.length ? next + 1 : 1;
     return next;
   }
 
@@ -560,7 +612,9 @@ export abstract class BossBattle {
     }
     // 분노 단계 (HP 비율)
     const ratio = this.hp / this.def.maxHp;
-    const want = ratio <= BossBattle.RAGE_AT[2] ? 3 : ratio <= BossBattle.RAGE_AT[1] ? 2 : ratio <= BossBattle.RAGE_AT[0] ? 1 : 0;
+    const at = this.rageAt();
+    let want = 0;
+    for (let i = 0; i < at.length; i++) if (ratio <= at[i]) want = i + 1;
     // 이번 단계 필살기를 보여 주기 전엔 다음 분노 단계로 넘어가지 않음 (한 번에 한 단계씩)
     if (want > this.rage && !this.specialDue) {
       this.rage = Math.min(this.rage + 1, want) as 1 | 2 | 3;
@@ -616,13 +670,19 @@ export abstract class BossBattle {
     return h;
   }
 
-  private updateHostiles(dt: number): void {
+  /** 고나가 받는 피해 (난이도 배율 적용) */
+  protected dmg(n: number): number {
+    return Math.max(1, Math.round(n * this.def.damageMul));
+  }
+
+  /** dt = 보스 빠르기가 적용된 시간 · groundDt = 땅이 흐르는 실제 시간 (바닥 장판이 땅과 같이 움직이게) */
+  private updateHostiles(dt: number, groundDt = dt): void {
     const p = this.host.playerRect();
     for (const h of this.hostiles) {
       if (h.dead) continue;
       h.life -= dt;
       h.vy += h.ay * dt;
-      h.x += (h.vx - (h.onGround ? this.host.scrollSpeed : 0)) * dt;
+      h.x += h.vx * dt - (h.onGround ? this.host.scrollSpeed * groundDt : 0);
       h.y += h.vy * dt;
       if (h.wave) {
         h.wave.t += dt;
@@ -660,7 +720,7 @@ export abstract class BossBattle {
           h.shape === 'circle'
             ? circleRect(h.x, h.y, h.r, p)
             : h.x - h.w / 2 < p.x1 && h.x + h.w / 2 > p.x0 && h.y - h.h / 2 < p.y1 && h.y + h.h / 2 > p.y0;
-        if (hit && this.host.hurtPlayer(h.dmg, h.sprite.texture.key)) {
+        if (hit && this.host.hurtPlayer(this.dmg(h.dmg), h.sprite.texture.key)) {
           h.hitPlayer = true;
           h.onHit?.(h, false);
           if (!h.pierce) this.pop(h);
@@ -1155,7 +1215,7 @@ export abstract class BossBattle {
     // 보스 체력 0: 모든 공격 즉시 중단 + 날아오던 것·예고·효과 제거 (예약된 공격이 뒤늦게 나오지 않게)
     this.cleanupCombat();
     this.host.scene.tweens.killTweensOf(this.boss);
-    this.boss.setScale(1);
+    this.boss.setScale(this.restScale).setAngle(0);
     this.motion = null;
     this.balt = 0;
     if (this.bx < 20 || this.bx > this.host.W - 10) this.bx = this.homeX;
@@ -1212,8 +1272,13 @@ export abstract class BossBattle {
 
   // ───────────────────────── UI ─────────────────────────
 
-  hud(): { name: string; hp: number; maxHp: number; phase: number } {
-    return { name: this.def.name, hp: this.hp, maxHp: this.def.maxHp, phase: this.rage + 1 };
+  /** HP 바 옆 단계 이름 (없으면 기본 '1차 분노' …) */
+  protected phaseLabel(): string | undefined {
+    return undefined;
+  }
+
+  hud(): { name: string; hp: number; maxHp: number; phase: number; label?: string } {
+    return { name: this.def.name, hp: this.hp, maxHp: this.def.maxHp, phase: this.rage + 1, label: this.phaseLabel() };
   }
 
   protected banner(b: BannerInfo): void {
@@ -1274,6 +1339,12 @@ export abstract class BossBattle {
   }
 
   destroy(): void {
+    if (this.talkFin) {
+      bus.off(EV.bossTalkDone, this.talkFin);
+      bus.off(EV.bossTalkCancel, this.talkFin);
+      this.talkFin = null;
+      bus.emit(EV.bossTalkCancel);
+    }
     if (this.talkDone) {
       bus.off(EV.bossTalkDone, this.talkDone);
       this.talkDone = null;

@@ -423,8 +423,9 @@ async function bossTests(label, device) {
   await G(() => { const sc = window.__gona.scene.getScene('Game'); sc.clearedBosses.add('kiss'); sc.debugSetStage(3); sc.growth.gauge = sc.growth.stage.gaugeToNext - 1; sc.addSnack('strawberry', sc.playerX + 18, 4); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle(), null, { timeout: 4000 }).catch(() => {});
   check(`${label}: bigbaby gauge full → 킁카괴물 battle`, (await battle())?.id === 'sniff');
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').hearts < 3, null, { timeout: 20000 }).catch(() => {});
-  check(`${label}: 킁카괴물 attacks damage GONA`, (await G(() => window.__gona.scene.getScene('Game').hearts)) < 3);
+  // (난이도 하향판: 피해·공격 속도가 줄어 하트 한 칸까지는 오래 걸림 → HP 가 깎이는지로 확인)
+  await page.waitForFunction(() => { const g = window.__gona.scene.getScene('Game'); return g.hearts < 3 || g.hp < 100; }, null, { timeout: 25000 }).catch(() => {});
+  check(`${label}: 킁카괴물 attacks damage GONA`, await G(() => { const g = window.__gona.scene.getScene('Game'); return g.hearts < 3 || g.hp < 100; }));
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hearts = 3; g.updateHud(); g.debugGod(); });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 8000 });
   let pull = 0, puddle = false; const t0 = Date.now();
@@ -456,6 +457,22 @@ async function bossTests(label, device) {
   const talk2 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
   await tapEl('.bt-skip');
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
+  // 킁카괴물 다음: 마지막 모험 → 암흑의 이유식 성 → 최종 보스(마녀) → 가족 엔딩
+  await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').finale, null, { timeout: 15000 }).catch(() => {});
+  const fin0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { fin: !!g.finale, phase: g.finale?.phase, battle: !!g.battle, cp: g.debugCheckpoint?.() ?? null }; });
+  check(`${label}: sniff win → final adventure starts (no ending yet)`, fin0.fin && fin0.phase === 'peace' && !fin0.battle, JSON.stringify(fin0));
+  await G(() => { window.__gona.scene.getScene('Game').finale.t = 71.5; });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 20000 }).catch(() => {});
+  const w0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, mode: g.battle?.mode, castle: g.inCastle }; });
+  check(`${label}: final adventure → castle → witch intro`, w0.id === 'witch' && w0.mode === 'intro' && w0.castle, JSON.stringify(w0));
+  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.debugSkipIntro(); });
+  await page.waitForTimeout(800);
+  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.rage = 2; b.hp = 2; b.damage(5); });
+  await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(700);
+  const talk3 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
+  await tapEl('.bt-skip');
+  check(`${label}: witch defeat lines + skip`, talk3.startsWith('내…'), talk3);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
   const en = await G(() => ({ e: window.__gona.scene.getScene('Game').debugEnding(), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: window.__gona.scene.getScene('EndingCine').children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')) }));
@@ -528,7 +545,7 @@ async function controlTests(label, device) {
   await tap('.cover-dev-btn >> nth=0');
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.id === 'kiss', null, { timeout: 8000 }).catch(() => {});
   const g0 = await game();
-  check(`${label}: title test menu → 뽀뽀괴물 battle directly (HP 100, hearts 3, boss HP 50)`, g0.battle?.id === 'kiss' && g0.hp === 100 && g0.hearts === 3 && g0.battle.hp === 50, JSON.stringify(g0));
+  check(`${label}: title test menu → 뽀뽀괴물 battle directly (HP 100, hearts 3, boss HP 42 — 난이도 하향판)`, g0.battle?.id === 'kiss' && g0.hp === 100 && g0.hearts === 3 && g0.battle.hp === 42, JSON.stringify(g0));
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugBattle()?.mode === 'fight', null, { timeout: 6000 });
   const top = await G(() => ({ me: !!document.querySelector('.bt-me') && getComputedStyle(document.querySelector('.battle-top')).display !== 'none', hp: document.querySelector('.bt-hp-text').textContent, hearts: document.querySelectorAll('.bt-heart').length }));
   check(`${label}: top shows GONA hearts + HP gauge + boss HP`, top.me && top.hp === 'HP 100' && top.hearts === 3 && (await page.locator('.boss-bar').isVisible()), JSON.stringify(top));
@@ -1168,6 +1185,75 @@ async function iosVideoTests(label, device) {
   await b.close();
 }
 
+/** 최종 보스(이유식 드래곤 셰프 마녀) · 마지막 모험 */
+async function witchTests(label, device) {
+  const ctx = await (await chromium.launch()).newContext({ ...device });
+  const page = await ctx.newPage();
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(e.message));
+  const G = (f, a) => page.evaluate(f, a);
+  // 1) 등장 컷신 → 대사 7줄 (다음 ▶) → 전투 · 마녀 음악
+  await page.goto(URL + '?test=witch-intro');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.battle?.def?.id === 'witch', null, { timeout: 40000 });
+  const pad0 = await G(() => document.body.classList.contains('boss-talking'));
+  const lines = [];
+  for (let i = 0; i < 80 && (await G(() => window.__gona.scene.getScene('Game').battle?.mode)) === 'intro'; i++) {
+    const t = await G(() => (document.querySelector('.boss-talk:not(.hidden)') ? document.querySelector('.boss-talk .pr-shown')?.textContent ?? '' : ''));
+    const nx = page.locator('.boss-talk:not(.hidden) .btk-next');
+    if (t && (await nx.isVisible().catch(() => false))) {
+      await page.waitForTimeout(500);
+      const full = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
+      if (lines[lines.length - 1] !== full) lines.push(full);
+      await nx.click().catch(() => {});
+    }
+    await page.waitForTimeout(400);
+  }
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.mode === 'fight', null, { timeout: 10000 }).catch(() => {});
+  // 타이핑 중에 읽은 앞부분 조각은 빼기 (다음 ▶ 첫 번째 누름은 타이핑을 끝까지 보여 줌)
+  for (let i = lines.length - 2; i >= 0; i--) if (lines[i + 1].startsWith(lines[i])) lines.splice(i, 1);
+  const f0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { mode: g.battle?.mode, music: window.__sound?.wantMusic ?? null, castle: g.inCastle, padHidden: document.body.classList.contains('boss-talking') }; });
+  check(`${label}: witch intro — 7 lines in the dialog box, then the fight starts`, lines.length === 7 && lines[0].startsWith('여기까지') && lines[6].startsWith('각오는') && f0.mode === 'fight' && f0.castle && !f0.padHidden, JSON.stringify({ lines, f0, pad0 }));
+  // 2) 숟가락: 예고(점선·고리) = 판정 · 가만히 있으면 맞고, 점프하면 안 맞음 · 바닥에 꽂히면 어질어질(기절)
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.hearts = 3; g.battle.debugAttack('spoon'); });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.telegraph?.impactAt, null, { timeout: 5000 }).catch(() => {});
+  const tg = await G(() => window.__gona.scene.getScene('Game').battle.telegraph);
+  await page.waitForTimeout(3500);
+  const hit = await G(() => ({ hp: window.__gona.scene.getScene('Game').hp, hearts: window.__gona.scene.getScene('Game').hearts, log: window.__gona.scene.getScene('Game').battle.spoonLog?.slice(-1)[0] }));
+  check(`${label}: spoon stretch has a telegraph at GONA and hits a standing GONA`, tg?.kind && (hit.hp < 100 || hit.hearts < 3), JSON.stringify({ tg, hit }));
+  // 3) 2페이즈 전환 대사 · 'PHASE 2' 표시
+  await G(() => window.__gona.scene.getScene('Game').debugGod());
+  await G(() => { const b = window.__gona.scene.getScene('Game').battle; b.debugHold = false; b.busy = false; b.cooldown = 0.5; b.hp = Math.floor(b.def.maxHp * 0.7) + 2; b.damage(3); });
+  await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  const p2 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
+  for (let i = 0; i < 6 && (await page.locator('.boss-talk:not(.hidden) .btk-next').isVisible().catch(() => false)); i++) { await page.locator('.boss-talk .btk-next').click().catch(() => {}); await page.waitForTimeout(900); }
+  await page.waitForTimeout(800);
+  const ph = await G(() => ({ label: document.querySelector('.bb-phase')?.textContent, rage: window.__gona.scene.getScene('Game').battle.rage }));
+  check(`${label}: witch phase 2 lines + 'PHASE 2' label`, p2.startsWith('이 녀석') && ph.rage === 1 && /PHASE 2/.test(ph.label || ''), JSON.stringify({ p2, ph }));
+  await page.screenshot({ path: `${S}/witch-${label}-p2.png` });
+  check(`${label}: no page errors (witch)`, errs.length === 0, errs.join(' | '));
+  // 4) 체크포인트 '최종 보스부터' → 게임 오버 → 이어하기로 마녀전 다시 (HP 가득)
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.debugGod(false); for (let i = 0; i < 4; i++) { g.invulnUntil = 0; g.hp = 1; } });
+  for (let i = 0; i < 30 && (await G(() => window.__gona.scene.getScene('Game').state)) === 'playing'; i++) {
+    await G(() => { const g = window.__gona.scene.getScene('Game'); g.hurtHp?.(100, 'test'); });
+    await page.waitForTimeout(1200);
+  }
+  await page.waitForSelector('.cp-retry:not(.hidden)', { timeout: 10000 }).catch(() => {});
+  const cpText = await G(() => document.querySelector('.cp-retry')?.textContent ?? '');
+  await page.locator('.cp-retry').click().catch(() => {});
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 15000 }).catch(() => {});
+  const rs = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, hp: g.battle?.hp, max: g.battle?.def?.maxHp, rage: g.battle?.rage, state: g.state, castle: g.inCastle }; });
+  check(`${label}: game over at the witch → '최종 보스부터' continue restarts the witch fight fresh`, /최종 보스부터/.test(cpText) && rs.id === 'witch' && rs.hp === rs.max && rs.rage === 0 && rs.state === 'playing' && rs.castle, JSON.stringify({ cpText, rs }));
+  // 5) 마지막 모험: 성 도착 직전부터 → 멈춤 → 성 안 → 등장 컷신
+  await page.goto(URL + '?test=finale-castle');
+  await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.finale, null, { timeout: 40000 });
+  const fc = await G(() => { const g = window.__gona.scene.getScene('Game'); return { phase: g.finale.phase, music: window.__sound?.wantMusic ?? null }; });
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 20000 }).catch(() => {});
+  const fa = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, mode: g.battle?.mode, bg: g.bgImage?.texture?.key ?? null, finale: !!g.finale }; });
+  check(`${label}: final adventure castle part → arrive → castle interior → witch intro`, fc.phase === 'castle' && fa.id === 'witch' && fa.mode === 'intro' && !fa.finale, JSON.stringify({ fc, fa }));
+  await ctx.browser().close();
+}
+
 (async () => {
   // ONLY=ctrl,boss 처럼 앞부분이 맞는 묶음만 실행
   const only = process.env.ONLY ? process.env.ONLY.split(',') : null;
@@ -1182,6 +1268,8 @@ async function iosVideoTests(label, device) {
   if (want('feat-land')) await featureTests('feat-land', devices['iPhone 13 landscape']);
   if (want('ctrl-port')) await controlTests('ctrl-port', devices['iPhone 13']);
   if (want('ctrl-land')) await controlTests('ctrl-land', devices['iPhone 13 landscape']);
+  if (want('witch-port')) await witchTests('witch-port', devices['iPhone 13']);
+  if (want('witch-land')) await witchTests('witch-land', devices['iPhone 13 landscape']);
   if (want('boss-port')) await bossTests('boss-port', devices['iPhone 13']);
   if (want('boss-land')) await bossTests('boss-land', devices['iPhone 13 landscape']);
   if (want('intro-land')) await introTests('intro-land', devices['iPhone 13 landscape']);
