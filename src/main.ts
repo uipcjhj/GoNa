@@ -19,6 +19,7 @@ import { bus, EV } from './events';
 import { sound } from './audio';
 import { perf, setPerfOverlay } from './perf';
 import { storage } from './storage';
+import { initParadise } from './platform/paradise';
 import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
 
 /** 화면 비율에 맞춰 논리 해상도를 계산 (가로: 높이 고정, 세로: 너비 고정) */
@@ -46,6 +47,8 @@ async function boot(): Promise<void> {
 
   const ui = document.getElementById('ui');
   if (!ui) throw new Error('#ui not found');
+  // 고나 게임천국에서 ?gp=<세션> 으로 실행했을 때만 결과를 게임천국에 전달 (그 밖에는 아무 일도 하지 않음)
+  initParadise({ bus, EV, parent: ui });
   // 개발용 기능 테스트 (?test=menu · ?test=<id>) — 저장하지 않음. 정식 빌드에는 테스트 코드가 들어 있지 않음 (__DEV_TOOLS__=false → 불러오지 않음)
   const devtest = __DEV_TOOLS__ ? await import('./devtest') : null;
   const scenario = devtest ? devtest.testParam() : null;
