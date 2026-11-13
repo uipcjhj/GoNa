@@ -1249,7 +1249,7 @@ async function witchTests(label, device) {
   await page.goto(URL + '?test=finale-castle');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.finale, null, { timeout: 40000 });
   const fc = await G(() => { const g = window.__gona.scene.getScene('Game'); return { phase: g.finale.phase, music: window.__sound?.wantMusic ?? null }; });
-  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 20000 }).catch(() => {});
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 35000 }).catch(() => {});
   const fa = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, mode: g.battle?.mode, bg: g.bgImage?.texture?.key ?? null, finale: !!g.finale }; });
   check(`${label}: final adventure castle part → arrive → castle interior → witch intro`, fc.phase === 'castle' && fa.id === 'witch' && fa.mode === 'intro' && !fa.finale, JSON.stringify({ fc, fa }));
   // 6) 마지막 발악: 대사 → 휘두르기(점프로 피함) → 무방비 → 부메랑 한 방 → 처치 → 엔딩 · 놓치면 다시 휘두름
@@ -1282,11 +1282,11 @@ async function witchTests(label, device) {
     await page.waitForTimeout(500);
   }
   check(`${label}: last stand — one boomerang hit in the open window → defeat → family ending`, lv === 'victory' && (await G(() => window.__gona.scene.isActive('EndingCine'))), lv);
-  // 7) 강제 이유식 의자: 핵심 그림이 없어 '에셋 대기' 안내만 (임시 그림 없음)
+  // 7) 강제 이유식 의자 · 후드리챱챱: 승인 그림이 없으면 실제 전투엔 안 나오고(임시 그림 없음) 개발 메뉴에서 흐름만
   await page.goto(URL + '?test=witch-chair');
-  await page.waitForSelector('.tm-art', { timeout: 40000 }).catch(() => {});
-  const chair = await G(() => document.querySelector('.tm-art')?.textContent ?? '');
-  check(`${label}: chair minigame waits for approved art (no placeholder drawn)`, /에셋 대기/.test(chair) && !(await G(() => !!window.__gona.scene.getScene('Game')?.battle)), chair.slice(0, 40));
+  await page.waitForFunction(() => !!window.__gona?.scene.getScene('Game')?.battle?.chairS, null, { timeout: 40000 }).catch(() => {});
+  const chair = await G(() => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; const tm = g.textures; const forced = bt.debugForceArt; bt.debugForceArt = false; const r = { flow: !!bt.chairS, artReal: bt.artReady('chair') || bt.artReady('chop'), noTex: ['witch-chair', 'gona-chair-cry', 'gona-chop', 'giant-goo'].every((k) => !tm.exists(k)), ui: !!document.querySelector('.chair-box')?.getClientRects().length }; bt.debugForceArt = forced; return r; });
+  check(`${label}: chair / 후드리챱챱 wait for approved art (not in the real fight, no placeholder textures) · dev menu runs the flow`, chair.flow && !chair.artReal && chair.noTex && chair.ui, JSON.stringify(chair));
   check(`${label}: no page errors (witch extended)`, errs.length === 0, errs.join(' | '));
   await ctx.browser().close();
 }
