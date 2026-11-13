@@ -7,6 +7,7 @@ import { cropHairTuft } from '../art/nest';
 import { bus, EV } from '../events';
 import { GROWTH_STAGES, STAGE_ASSETS, type GrowthStageDef, type GrowthStageId } from '../game/growth';
 import { BOSSES, WITCH_EXTRA_SHEETS } from '../game/boss';
+import { BANGEUL_SHEETS, COOKIE_TEX, COOKIE_URL, LETTERS } from './Bangeul';
 import { MONSTERS } from '../game/monsters';
 
 const CUSTOM_KEY = 'dino-custom-src';
@@ -90,6 +91,9 @@ export class BootScene extends Phaser.Scene {
     this.load.image('witch-spoon-src', 'assets/boss/witch-spoon.png'); // 마녀의 이유식 숟가락 (레퍼런스에서 추출)
     // 마녀전 신규 연출 (이유식 의자 탈출 · 후드리챱챱) — 사용자 시안에서 잘라 정리한 시트
     for (const [key, a] of Object.entries(WITCH_EXTRA_SHEETS)) this.load.spritesheet(key, a.url, { frameWidth: a.fw, frameHeight: a.fh });
+    // 방글할매 스페셜 (사용자 시트에서 정리 — tools/art/bangeul_from_sheet.py) · GONA 글자 쿠키(게임 안 20×20)
+    for (const [key, a] of Object.entries(BANGEUL_SHEETS)) this.load.spritesheet(key, a.url, { frameWidth: a.fw, frameHeight: a.fh });
+    for (const l of LETTERS) this.load.image(COOKIE_TEX(l), COOKIE_URL(l, true));
     // 일반 몬스터 정식 그림 (선택)
     for (const m of Object.values(MONSTERS)) this.load.image(`mon-src-${m.kind}`, m.sheetUrl);
   }

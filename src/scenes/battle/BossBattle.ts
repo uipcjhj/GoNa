@@ -574,6 +574,24 @@ export abstract class BossBattle {
   }
   private talkFin: (() => void) | null = null;
 
+  /** 방글할매 소환을 받을 수 있는 때 (싸움 중 · 대사·필살기·미니게임 아님) */
+  get canAssist(): boolean {
+    return this.mode === 'fight' && !this.bossSpecialOn && !this.qteBusy && !this.frozen;
+  }
+
+  /**
+   * 방글할매 노래 음파 (외부 광역 공격): 피해는 보통 피해와 같은 규칙(페이즈 문턱 · 필수 이벤트 보호 hpFloor 그대로)
+   * + 잠깐 휘청 (공격 흐름은 건드리지 않음)
+   */
+  assistHit(n: number): boolean {
+    if (this.mode !== 'fight') return false;
+    this.damage(n);
+    if (this.mode !== 'fight') return true;
+    this.host.scene.tweens.add({ targets: this.boss, angle: { from: -10, to: 10 }, duration: 90, yoyo: true, repeat: 1, onComplete: () => this.boss.setAngle(0) });
+    this.floatText('휘청!', this.bx, this.host.groundY - this.balt - this.fh * this.boss.scaleY - 2, '#ffe14a');
+    return true;
+  }
+
   /** 이번 분노 단계의 필살기를 아직 안 보여 줬으면 true → 하위 클래스가 다음 공격으로 필살기를 고름 */
   protected get specialDue(): boolean {
     return this.specialsDone < this.rage;

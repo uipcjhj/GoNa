@@ -66,7 +66,20 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-rhythm', '52. ② 으아앙! 울음 리듬 배틀 (2페이즈 → 3페이즈 빠른 판)'],
   ['witch-reflect', '53. ③ 이유식 폭탄 방패 반사'],
   ['witch-chop-cry', '54. 후드리챱챱 중 마녀 방해 (으아앙! 꾸욱 · 그림 대기)'],
-  ['witch-chop-final', '55. 최종 후드리챱챱!!! 피니시 → 패배 → 가족 엔딩 (그림 대기)'],
+  ['witch-chop-final', '55. 최종 후드리챱챱!!! 피니시 → 패배 → 가족 엔딩'],
+  ['bangeul-art', '56. 방글할매 스페셜 — 그림 미리보기 (방글할매 · 음파 · 보호막 · GONA 쿠키 · HUD · 버튼)'],
+  ['bangeul-spawn', '57. GONA 글자 쿠키 등장·획득 (빨리 나오게 · 아직 없는 글자 우선)'],
+  ['bangeul-hud', '58. GONA 수집 HUD (G·O 모은 상태에서 시작)'],
+  ['bangeul-ready', '59. 네 글자 완성 → 소환 버튼 활성화 (누를 때만 소환)'],
+  ['bangeul-summon', '60. 방글할매 등장 → 웃음 → 노래 → 퇴장 (자동 소환)'],
+  ['bangeul-wave', '61. 웃음·노래 음파 공격 (몬스터 여럿 앞에서 소환)'],
+  ['bangeul-inv', '62. 고나 5초 무적 (소환 뒤 바위·몬스터에 부딪혀도 피해 없음 · 남은 시간)'],
+  ['bangeul-mobs', '63. 일반 몬스터 광역 피해 (몬스터 무리 → 소환 반복)'],
+  ['bangeul-kiss', '64. 뽀뽀괴물 보스 피해 (소환 → 큰 피해 + 휘청)'],
+  ['bangeul-sniff', '65. 킁카괴물 보스 피해'],
+  ['bangeul-witch', '66. 이유식 마녀 보스 피해'],
+  ['bangeul-guard', '67. 마녀전 필수 이벤트 보호 (HP 가 페이즈 문턱 아래로 안 내려감)'],
+  ['bangeul-again', '68. 재소환 · 상태 초기화 (소환 → 글자 0 → 다시 모아 소환 반복)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -541,6 +554,141 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         parent.append(panel);
         say('버튼으로 공격 하나씩 (고나 무적) · 예고 자리 = 판정 자리');
       }
+      break;
+    }
+    case 'bangeul-art': {
+      const box = el('div', 'tm-art');
+      box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;color:#fff8e6;padding:10px;font-size:13px;line-height:1.5';
+      const items: [string, string][] = [
+        ['bangeul-idle', '기본 (64×58 칸 · 몸 48×45) 4'],
+        ['bangeul-laugh', '웃음 4'],
+        ['bangeul-song', '노래 4'],
+        ['bangeul-appear', '등장 4'],
+        ['bangeul-exit', '퇴장 4'],
+        ['bangeul-wave', '음파 효과 4'],
+        ['bangeul-shield', '무적 보호막 4'],
+        ['gona-cookie-g', 'G'],
+        ['gona-cookie-o', 'O'],
+        ['gona-cookie-n', 'N'],
+        ['gona-cookie-a', 'A'],
+        ['gona-hud', 'GONA 수집 HUD'],
+        ['summon-off', '소환 버튼 (꺼짐 — 지금은 완성 전엔 버튼을 숨김)'],
+        ['summon-on', '소환 버튼 (켜짐)'],
+      ];
+      box.innerHTML = '<h3 style="margin:0 0 6px">✨ 방글할매 스페셜 — 게임에 쓰는 그림 (사용자 시트에서 잘라 정리 · 4배)</h3>';
+      for (const [f, label] of items) {
+        const p = el('div');
+        p.style.cssText = 'margin:6px 0';
+        p.innerHTML = `<div>${label}</div><img src="assets/bangeul/${f}.png" style="image-rendering:pixelated;background:#4a3a68;zoom:4">`;
+        box.append(p);
+      }
+      parent.append(box);
+      break;
+    }
+    case 'bangeul-spawn':
+    case 'bangeul-hud':
+    case 'bangeul-ready':
+    case 'bangeul-summon':
+    case 'bangeul-wave':
+    case 'bangeul-inv':
+    case 'bangeul-mobs':
+    case 'bangeul-again': {
+      if (id !== 'bangeul-inv') sc.debugGod();
+      sc.debugSetStage(2);
+      sc.boomerangAwake = true;
+      clearWorld();
+      const give = id === 'bangeul-spawn' ? '' : id === 'bangeul-hud' ? 'go' : 'gona';
+      sc.debugGiveLetters(give, id === 'bangeul-spawn' || id === 'bangeul-hud');
+      const mobs = (): void => {
+        const s2 = g();
+        for (let i = 0; i < 3; i++) s2.addMonster(i % 2 ? 'farter' : 'glasses', s2.W - 30 + i * 28);
+      };
+      const summon = (): void => {
+        bus.emit(EV.summonBangeul);
+      };
+      if (id === 'bangeul-summon') window.setTimeout(summon, 1200);
+      if (id === 'bangeul-wave') {
+        window.setTimeout(mobs, 300);
+        window.setTimeout(summon, 1500);
+      }
+      if (id === 'bangeul-inv') {
+        window.setTimeout(summon, 800);
+        // 무적 동안 바위·몬스터가 계속 와서 부딪힘
+        const t = window.setInterval(() => {
+          const s2 = g();
+          if (!s2.debugBangeul().inv) return clearInterval(t);
+          s2.addRock(s2.W + 4);
+        }, 700);
+      }
+      if (id === 'bangeul-mobs' || id === 'bangeul-again') {
+        const loop = (): void => {
+          const s2 = g();
+          if (s2.state !== 'playing') return;
+          if (!s2.debugBangeul().active) {
+            if (id === 'bangeul-mobs') mobs();
+            s2.debugGiveLetters('gona');
+            window.setTimeout(summon, 1200);
+          }
+          window.setTimeout(loop, 7000);
+        };
+        window.setTimeout(loop, 500);
+      }
+      say(
+        {
+          'bangeul-spawn': 'GONA 글자 쿠키가 자주 나와요 (아직 없는 글자가 더 잘) — 왼쪽 위 HUD 에 밝아짐',
+          'bangeul-hud': 'G·O 를 모은 상태 — 나머지 N·A 를 먹으면 완성 · 소환 버튼',
+          'bangeul-ready': "네 글자 완성 — 왼쪽 아래 '방글할매 소환!' 을 눌러야만 소환",
+          'bangeul-summon': '자동 소환: 등장 → 웃음 → 노래(음파 3번) → 퇴장 · 고나 5초 무적',
+          'bangeul-wave': '몬스터 3마리 앞에서 소환 → 음파에 모두 처치',
+          'bangeul-inv': '소환 뒤 5초 동안 바위에 부딪혀도 피해 없음 (고나 무적 아님 모드)',
+          'bangeul-mobs': '몬스터 무리 → 소환 반복 (7초마다)',
+          'bangeul-again': '소환 → 글자 0 → 다시 채워 소환 반복 (7초마다)',
+        }[id] ?? '',
+      );
+      break;
+    }
+    case 'bangeul-kiss':
+    case 'bangeul-sniff':
+    case 'bangeul-witch':
+    case 'bangeul-guard': {
+      const boss = id === 'bangeul-kiss' ? 'kiss' : id === 'bangeul-sniff' ? 'sniff' : 'witch';
+      sc.debugGod();
+      sc.boomerangAwake = true;
+      sc.debugStartBoss(boss);
+      const go = (): void => {
+        const s2 = g();
+        const b = s2.battle;
+        if (boss === 'witch') {
+          b.debugSkipIntro?.();
+          if (id === 'bangeul-guard') {
+            // 1페이즈 필수 이벤트(숟가락·퉤!·반사)를 안 본 채 문턱 바로 위 HP → 소환해도 문턱 아래로 안 내려감
+            b.hp = Math.floor(b.def.maxHp * 0.7) + 4;
+          }
+        }
+        const hp0 = b.hp;
+        s2.debugGiveLetters('gona');
+        const t = window.setInterval(() => {
+          const b2 = g().battle;
+          if (!b2) return clearInterval(t);
+          if (b2.canAssist && !g().debugBangeul().active && g().debugBangeul().ready) {
+            bus.emit(EV.summonBangeul);
+            clearInterval(t);
+            const done = window.setInterval(() => {
+              if (!g().debugBangeul().log.includes('exit')) return;
+              clearInterval(done);
+              say(`보스 HP ${hp0} → ${g().battle?.hp} (${id === 'bangeul-guard' ? '문턱에서 멈춤 — 필수 이벤트를 다 봐야 다음 페이즈' : '음파 3번 합계'})`);
+            }, 300);
+          }
+        }, 300);
+      };
+      const wait = window.setInterval(() => {
+        const b = g().battle;
+        if (b && (b.mode === 'fight' || (boss === 'witch' && b.mode === 'intro'))) {
+          clearInterval(wait);
+          window.setTimeout(go, boss === 'witch' ? 300 : 800);
+        }
+      }, 200);
+      say(`${boss === 'kiss' ? '뽀뽀괴물' : boss === 'sniff' ? '킁카괴물' : '이유식 마녀'} — 싸움이 시작되면 자동 소환 · 큰 피해 + 휘청`);
       break;
     }
     case 'witch-art': {

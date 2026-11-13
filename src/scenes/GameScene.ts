@@ -28,6 +28,7 @@ import { KissBattle } from './battle/KissBattle';
 import { WitchBattle } from './battle/WitchBattle';
 import { FinaleRun } from './FinaleRun';
 import { SniffBattle } from './battle/SniffBattle';
+import { BangeulSpecial, COOKIE_TEX, type Letter } from './Bangeul';
 import { HairBoomerang } from './battle/HairBoomerang';
 import type { BattleHost } from './battle/types';
 
@@ -48,6 +49,8 @@ interface Entity {
   follow?: Entity;
   fxOff?: number;
   snack?: SnackKind;
+  /** 방글할매 스페셜: GONA 글자 쿠키 (일반 간식과 따로 — 성장 게이지·간식 수는 그대로) */
+  letter?: Letter;
   /** 화면 x (중심) */
   x: number;
   /** 땅으로부터의 높이 (바닥 기준) */
@@ -155,6 +158,7 @@ export class GameScene extends Phaser.Scene {
   /** 떠오르는 점수 글자 재사용 (매번 Text 를 새로 만들면 텍스처 생성으로 멈칫) */
   private popPool: Phaser.GameObjects.Image[] = [];
   private host!: BattleHost;
+  private bangeul!: BangeulSpecial;
 
   // 화면 배치
   private W = 0;
@@ -335,11 +339,37 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self0 = this;
     this.scene.setVisible(true); // (엔딩 컷신에서 돌아올 때)
     this.visuals = this.registry.get('stageVisuals') as Record<GrowthStageId, StageVisual>;
     this.vis = this.visuals[this.growth.stage.id];
     this.buildBattleTextures();
     this.host = this.makeHost();
+    this.bangeul = new BangeulSpecial({
+      scene: this,
+      get W() {
+        return self0.W;
+      },
+      get groundY() {
+        return self0.groundY;
+      },
+      playerFoot: () => ({ x: this.player.x, y: this.groundY - this.alt, h: this.player.displayHeight }),
+      spawnLetter: (l) => this.addLetter(l),
+      waveMonsters: () => this.bangeulWaveMonsters(),
+      waveBoss: (dmg) => !!this.battle && this.battle.assistHit(dmg),
+      bossId: () => (this.battle && this.battle.mode !== 'done' && this.battle.mode !== 'victory' ? this.battle.id : null),
+      banner: (b) => bus.emit(EV.banner, b),
+      floatText: (t, x, y, c) => this.floatText(t, x, y, c),
+      sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
+      gonaCheer: () => {
+        if (this.vis.happyFrame >= 0) this.showExpression(this.vis.happyFrame, 900);
+        this.squash = 0.78;
+      },
+      changed: () => {
+        this.hudKey = '';
+      },
+    });
 
     this.sky = this.add.image(0, -40, '__DEFAULT').setOrigin(0, 0);
     this.sun = this.add.image(0, 0, TEX.sun);
@@ -460,9 +490,13 @@ export class GameScene extends Phaser.Scene {
     bus.on(EV.special, onSpecial);
     bus.on(EV.dodge, onDodge);
     bus.on(EV.shield, onShield);
+    const onSummon = (): void => this.summonBangeul();
+    bus.on(EV.summonBangeul, onSummon);
     const onEndingReplay = (): void => this.startEnding();
     bus.on(EV.endingReplay, onEndingReplay);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      bus.off(EV.summonBangeul, onSummon);
+      this.bangeul.destroy();
       bus.off(EV.endingReplay, onEndingReplay);
       this.scene.stop('EndingCine');
       bus.off(EV.shield, onShield);
@@ -774,6 +808,8 @@ export class GameScene extends Phaser.Scene {
     this.updateEntities(move, time, dt);
     this.syncMonsterTags();
     if (this.battle && this.state === 'playing') this.battle.update(rawDt);
+    // 방글할매 스페셜: 글자 쿠키는 일반 달리기 중에만 · 소환 연출·무적은 게임 시간으로 (일시정지면 멈춤)
+    if (this.state === 'playing') this.bangeul.update(rawDt, !this.battle && !this.halt && !this.inCastle && !this.inNest && this.speed > 0);
     this.updateBoomerang(dt);
     this.updateShield();
     this.emitHud();
@@ -1070,6 +1106,58 @@ export class GameScene extends Phaser.Scene {
   private addRock(x: number): void {
     const sprite = this.add.image(x, 0, TEX.rock).setOrigin(0.5, 1).setDepth(5);
     this.entities.push({ sprite, type: 'rock', x, alt: 0, w: 11, h: 9, phase: 0, done: false });
+  }
+
+  /** GONA 글자 쿠키를 화면 오른쪽 끝에 — 바위·몬스터 바로 근처면 false (피할 수 없는 자리에 두지 않음) */
+  private addLetter(l: Letter): boolean {
+    const x = this.W + 16;
+    if (this.entities.some((e) => !e.done && (e.type === 'rock' || e.type === 'monster') && Math.abs(e.x - x) < 46)) return false;
+    // 바닥(그냥 지나가며) 또는 낮은 점프 높이 — 번갈아
+    const alt = this.letterAlt = this.letterAlt === 4 ? 26 : 4;
+    const sprite = this.add.image(x, 0, COOKIE_TEX(l)).setOrigin(0.5, 1).setDepth(6.1);
+    this.entities.push({ sprite, type: 'snack', letter: l, x, alt, w: 14, h: 14, phase: x * 0.07, done: false });
+    // 반짝 (특별 아이템 표시)
+    this.sparkleEmitter.explode(perf.low ? 2 : 4, x, this.groundY - alt - 10);
+    return true;
+  }
+  private letterAlt = 26;
+
+  /** 방글할매 소환 버튼 */
+  private summonBangeul(): void {
+    if (this.state !== 'playing' || !this.bangeul.ready || this.bangeul.active) return;
+    if (this.battle && !this.battle.canAssist) return;
+    this.bangeul.summon();
+  }
+
+  /** 방글할매 노래 음파 한 번: 화면 안 일반 몬스터 처치 · 몬스터 투사체·구름 정리 → 처치 수 */
+  private bangeulWaveMonsters(): number {
+    let n = 0;
+    for (const e of this.entities) {
+      if (e.done || e.x > this.W + 8 || e.x < -8) continue;
+      if (e.type === 'monster' && e.mon) {
+        e.mon.hp = 1;
+        this.hitMonster(e);
+        n++;
+      } else if (e.type === 'mshot' || e.type === 'cloud' || e.type === 'puddle') {
+        e.done = true;
+        this.tweens.add({ targets: e.sprite, alpha: 0, scale: 1.4, duration: 200, onComplete: () => e.sprite.destroy() });
+      }
+    }
+    return n;
+  }
+
+  /** (검증용) 방글할매 상태 */
+  debugBangeul(): { letters: string; ready: boolean; active: boolean; inv: number; log: string[] } {
+    const b = this.bangeul;
+    if (!b) return { letters: '', ready: false, active: false, inv: 0, log: [] };
+    return { letters: b.lettersKey, ready: b.ready, active: b.active, inv: +b.invT.toFixed(2), log: b.log.slice(-12) };
+  }
+
+  /** (개발 메뉴) 글자 주기 · 빨리 나오게 */
+  debugGiveLetters(ls: string, fast = false): void {
+    for (const l of ls) if ('gona'.includes(l)) this.bangeul.letters.add(l as Letter);
+    this.bangeul.fastSpawn = fast;
+    this.hudKey = '';
   }
 
   private addSnack(kind: SnackKind, x: number, alt: number): void {
@@ -1428,6 +1516,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private collect(e: Entity): void {
+    if (e.letter) {
+      // GONA 글자 쿠키: 수집만 (일반 간식 수·성장 게이지와 별개 · 점수 조금)
+      e.done = true;
+      this.score += 20;
+      this.updateHud();
+      this.bangeul.collect(e.letter, e.sprite.x, e.sprite.y - 8);
+      this.tweens.add({ targets: e.sprite, y: e.sprite.y - 16, scale: 1.8, alpha: 0, duration: 300, onComplete: () => e.sprite.destroy() });
+      return;
+    }
     e.done = true;
     const info = SNACKS[e.snack ?? 'strawberry'];
     this.score += info.points;
@@ -1503,6 +1600,7 @@ export class GameScene extends Phaser.Scene {
     if (this.state !== 'playing') return false;
     if (this.shieldOn) return false;
     if (this.time.now < this.invincibleUntil) return false;
+    if (this.bangeul.invincible) return false; // 방글할매 소환 뒤 5초 무적
     if (this.battle?.protectPlayer) return false; // 필살기 연출 중 무적
     this.damageLog.push(`${source}:${damage}`);
     if (this.damageLog.length > 60) this.damageLog.shift();
@@ -2630,6 +2728,7 @@ export class GameScene extends Phaser.Scene {
       score: this.score,
       player: showPlayer ? { hearts: this.hearts, maxHearts: PLAYER.maxHearts, hp: this.hp, maxHp: BATTLE_HP.perHeart } : null,
       qte: b ? b.qteHud() : null,
+      gona: showPlayer ? { letters: this.bangeul.lettersKey, ready: this.bangeul.ready, busy: this.bangeul.active || (!!b && !b.canAssist) } : null,
       growth: showPlayer && !b ? { ratio: Math.round(this.growth.ratio * 40) / 40, level: this.growth.stageIndex + 1, levels: GROWTH_STAGES.length, final: this.growth.isFinal } : null,
     };
     // 하트·HP·성장 게이지는 화면 UI(왼쪽 위 패널)로 — 캔버스 하트·게이지는 쓰지 않음 (점수와 겹치던 '단계 칸' 제거)
@@ -2639,7 +2738,7 @@ export class GameScene extends Phaser.Scene {
       this.heartIcons.forEach((h) => h.setVisible(wantPhaser));
       this.gaugeGfx.setVisible(wantPhaser);
     }
-    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${this.qteKey(hud.qte)}|${hud.dubai}`;
+    const key = `${hud.mode}|${hud.enabled}|${hud.attack}|${hud.cooldown}|${hud.shield}|${hud.shieldCool}|${hud.special}|${hud.specialReady}|${hud.boss ? `${hud.boss.hp}/${hud.boss.maxHp}/${hud.boss.phase}` : '-'}|${hud.player ? `${hud.player.hearts}/${hud.player.hp}` : '-'}|${hud.growth ? `${hud.growth.level}/${hud.growth.ratio}` : '-'}|${hud.score}|${this.qteKey(hud.qte)}|${hud.dubai}|${hud.gona ? `${hud.gona.letters}${hud.gona.ready ? 'R' : ''}${hud.gona.busy ? 'B' : ''}` : '-'}`;
     if (key === this.hudKey) return;
     this.hudKey = key;
     bus.emit(EV.combatHud, hud);

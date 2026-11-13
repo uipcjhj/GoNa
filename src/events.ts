@@ -77,6 +77,8 @@ export const EV = {
   aimBar: 'aimBar',
   /** 최종 보스 미니게임 버튼 (퉤! · 으앙!): { btn: QteBtn, down: boolean } */
   qteInput: 'qteInput',
+  /** 방글할매 소환 버튼 */
+  summonBangeul: 'summonBangeul',
   /** 타이밍 바 판정 'perfect' | 'good' | 'miss' */
   aimJudge: 'aimJudge',
   /** 엔딩 액자 효과 ('kiss' | 'sniff') */
@@ -116,6 +118,8 @@ export interface CombatHud {
   qte?: QteHud | null;
   /** 성장 게이지 (보스전 중엔 null) */
   growth: { ratio: number; level: number; levels: number; final: boolean } | null;
+  /** 방글할매 스페셜: 모은 GONA 글자('gona' 중 모은 것) · 소환 가능 · 지금 소환 중 */
+  gona?: { letters: string; ready: boolean; busy: boolean } | null;
 }
 
 /**

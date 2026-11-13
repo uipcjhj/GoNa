@@ -956,6 +956,15 @@ class Sound {
     this.tone(accent ? 1180 : 880, 0.05, 'square', 0.06, 0);
   }
 
+  /** 방글할매 노래 음파 한 번 (목소리 아님 — 반짝이는 종소리 + 둥근 울림 · n 번째일수록 조금 높게) */
+  bangeulWave(n = 1): void {
+    const f = [hz('C6'), hz('E6'), hz('G6')][(n - 1) % 3];
+    this.bell(f, 0.45, 0.14, 0);
+    this.bell(f * 1.5, 0.35, 0.08, 0.05);
+    this.tone(220, 0.28, 'sine', 0.16, 0, 140);
+    this.noise(0.12, 0.08, 0, 'highpass', 4000);
+  }
+
   /** 후드리챱챱 난타 한 번 (n 번째마다 챱 · 퍽 · 찰박 소리가 번갈아) */
   chop(n = 0): void {
     const k = n % 3;

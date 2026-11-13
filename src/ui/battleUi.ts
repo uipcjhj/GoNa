@@ -104,6 +104,11 @@ export class BattleUi {
   private chopFill: HTMLDivElement;
   private chopPct: HTMLSpanElement;
   private chopHint: HTMLParagraphElement;
+  /** 방글할매 스페셜: GONA 수집 HUD (글자 4칸) · 소환 버튼 */
+  private gonaHud: HTMLDivElement;
+  private gonaSlots: HTMLImageElement[] = [];
+  private lastLetters = '';
+  private summonBtn: HTMLButtonElement;
   private bannerTimer = 0;
   private lastHp = -1;
   private lastPlayerHp = -1;
@@ -182,7 +187,20 @@ export class BattleUi {
     this.growFill = el('div', 'bt-grow-fill');
     gTrack.append(this.growFill);
     this.growRow.append(this.growText, gTrack);
-    this.me.append(hearts, track, this.growRow);
+    // GONA 수집 HUD: 어두운 글자 4칸(그림) 위에, 모은 글자만 원래 색 쿠키가 밝게
+    this.gonaHud = el('div', 'gona-hud') as HTMLDivElement;
+    this.gonaHud.setAttribute('aria-label', 'GONA 글자 쿠키 수집');
+    this.gonaHud.style.backgroundImage = 'url(assets/bangeul/gona-hud.png)';
+    'gona'.split('').forEach((l, i) => {
+      const img = document.createElement('img');
+      img.className = `gona-slot gona-slot-${i}`;
+      img.src = `assets/bangeul/gona-cookie-${l}.png`;
+      img.alt = l.toUpperCase();
+      img.draggable = false;
+      this.gonaSlots.push(img);
+      this.gonaHud.append(img);
+    });
+    this.me.append(hearts, track, this.growRow, this.gonaHud);
 
     this.bossBar = el('div', 'boss-bar');
     const bTop = el('div', 'bb-top');
@@ -274,8 +292,18 @@ export class BattleUi {
     });
     // 점수: 화면 위 왼쪽 (오른쪽 위 일시정지·소리 버튼과 겹치지 않게)
     this.scoreEl = el('div', 'hud-score hidden', '점수 0');
-    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.pad);
+    // 방글할매 소환 버튼 (GONA 네 글자를 다 모았을 때만 · 누를 때만 소환)
+    this.summonBtn = el('button', 'summon-btn hidden') as HTMLButtonElement;
+    this.summonBtn.type = 'button';
+    this.summonBtn.setAttribute('aria-label', '방글할매 소환');
+    const sImg = document.createElement('img');
+    sImg.src = 'assets/bangeul/summon-on.png';
+    sImg.alt = '방글할매 소환!';
+    sImg.draggable = false;
+    this.summonBtn.append(sImg);
+    root.append(this.scoreEl, this.top, this.banner, this.resistBox, this.aimBox, this.pad, this.summonBtn);
 
+    this.bindPress(this.summonBtn as Btn, () => bus.emit(EV.summonBangeul));
     this.bindPress(this.shieldBtn, () => bus.emit(EV.shield));
     this.bindPress(this.atk, () => bus.emit(EV.attack));
     this.bindPress(this.sp, () => bus.emit(EV.special));
@@ -451,6 +479,24 @@ export class BattleUi {
     this.sp2.classList.toggle('ready', spOk && h.dubai);
     this.sp2.classList.toggle('off', !(spOk && h.dubai));
     this.setText(this.sp2Label, h.specialReady ? '두바이!' : `${Math.round(h.special * 100)}%`);
+    // 방글할매 스페셜: 모은 글자 밝게 (새로 모은 글자는 반짝) · 네 글자 완성 → 소환 버튼 (미니게임·연출 중엔 숨김)
+    const g = h.gona;
+    this.gonaHud.classList.toggle('hidden', !g);
+    if (g && g.letters !== this.lastLetters) {
+      'gona'.split('').forEach((l, i) => {
+        const on = g.letters.includes(l);
+        const slot = this.gonaSlots[i];
+        if (on && !slot.classList.contains('on')) {
+          slot.classList.remove('pop');
+          void slot.offsetWidth;
+          slot.classList.add('pop');
+        }
+        slot.classList.toggle('on', on);
+      });
+      this.gonaHud.classList.toggle('complete', g.ready);
+      this.lastLetters = g.letters;
+    }
+    this.summonBtn.classList.toggle('hidden', !(g?.ready && h.enabled && !h.qte && !g.busy));
     // 위: 점수 · 고나 하트 + HP + 성장 · 보스 (보스전에서만)
     this.scoreEl.classList.toggle('hidden', !h.player);
     if (h.score !== this.lastScore) {
@@ -526,6 +572,8 @@ export class BattleUi {
     this.top.classList.add('hidden');
     this.scoreEl.classList.add('hidden');
     this.lastScore = -1;
+    this.summonBtn.classList.add('hidden');
+    this.lastLetters = '-';
     this.hideBanner();
     this.hud = null;
   }
