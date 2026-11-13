@@ -88,12 +88,32 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
   const info = el('div', 'tm-info hidden');
   parent.append(info);
   let sayTimer = 0;
+  let placeTimer = 0;
+  /** 세로 화면: 위쪽 HUD(점수·HP·성장·보스 HP·메뉴·일시정지) 바로 아래에 둠 — HP 바를 가리지 않게 (HUD 가 나중에 생겨도 따라 내려감) */
+  const place = (): void => {
+    if (!window.matchMedia('(orientation: portrait)').matches) {
+      info.style.top = '';
+      return;
+    }
+    let bottom = 0;
+    for (const n of document.querySelectorAll<HTMLElement>('.battle-top, .hud-score, .boss-bar, .tm-back, .icon-btn')) {
+      const r = n.getBoundingClientRect();
+      if (r.height > 0 && r.top < window.innerHeight * 0.4 && getComputedStyle(n).visibility !== 'hidden') bottom = Math.max(bottom, r.bottom);
+    }
+    info.style.top = `${Math.round(bottom + 6)}px`;
+  };
   const say = (t: string): void => {
     info.textContent = t;
     info.classList.remove('hidden');
-    // 안내는 잠깐만 (대사창·버튼을 가리지 않게)
+    place();
+    clearInterval(placeTimer);
+    placeTimer = window.setInterval(place, 300);
+    // 안내는 짧게 보여 주고 저절로 사라짐 (대사창·버튼·HP 를 오래 가리지 않게)
     clearTimeout(sayTimer);
-    sayTimer = window.setTimeout(() => info.classList.add('hidden'), 4500);
+    sayTimer = window.setTimeout(() => {
+      info.classList.add('hidden');
+      clearInterval(placeTimer);
+    }, 3000);
   };
   const g = (): Any => game.scene.getScene('Game');
   const waitFight = (fn: () => void): void => {

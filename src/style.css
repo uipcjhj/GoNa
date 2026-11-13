@@ -3011,7 +3011,8 @@ body.boss-talking .battle-pad {
 @media (orientation: portrait) {
   .tm-info {
     bottom: auto;
-    top: calc(max(8px, env(safe-area-inset-top)) + 58px);
+    /* 실제 위치는 devtest.ts place() 가 위쪽 HUD 바로 아래로 맞춤 (이 값은 첫 순간의 기본값) */
+    top: calc(max(8px, env(safe-area-inset-top)) + 120px);
   }
 }
 .tm-vib {
