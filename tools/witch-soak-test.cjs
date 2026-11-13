@@ -7,6 +7,8 @@ const { chromium, devices } = require('playwright');
 const URL = process.argv[2] || 'http://localhost:4173/';
 const orient = process.argv[3] || 'portrait';
 const MAX = Number(process.argv[4] || 420);
+/** 5번째 인자 art = 그림이 없어도 의자 탈출·후드리챱챱을 실제 순서대로 (흐름·시간 확인용) */
+const FORCE_ART = process.argv[5] === 'art';
 (async () => {
   const b = await chromium.launch({ args: ['--enable-precise-memory-info', '--js-flags=--expose-gc'] });
   const page = await (await b.newContext({ ...(orient === 'portrait' ? devices['iPhone 13'] : devices['iPhone 13 landscape']) })).newPage();
@@ -14,10 +16,12 @@ const MAX = Number(process.argv[4] || 420);
   page.on('pageerror', (e) => errs.push(e.message));
   await page.goto(URL + '?test=witch-p1');
   await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.battle?.mode === 'fight', null, { timeout: 40000 });
-  await page.evaluate(() => {
+  await page.evaluate((forceArt) => {
     document.querySelectorAll('.tm-info,.tm-back').forEach((n) => n.remove());
     const g = window.__gona.scene.getScene('Game');
+    if (forceArt) g.battle.debugForceArt = true;
     const done = new Set();
+    let tapAt = 0;
     const tick = () => {
       const bt = g.battle;
       if (bt && bt.mode === 'fight' && g.state === 'playing') {
@@ -39,6 +43,19 @@ const MAX = Number(process.argv[4] || 420);
             }
           }
         }
+        // 의자 탈출: 연타(초당 약 5번) → 숟가락이 오면 꾸욱 / 후드리챱챱: 챱챱 연타 → 방해 땐 꾸욱 → 마지막 버튼
+        const q = (btn, down) => window.__bus.emit('qteInput', { btn, down });
+        const cs = bt.chairS;
+        if (cs) {
+          if (cs.stage === 'mash' && now - tapAt > 0.2) { tapAt = now; q('mash', true); q('mash', false); }
+          else if (cs.stage === 'hold' && cs.holdAt < 0) q('mash', true);
+        }
+        const ch = bt.chopS;
+        if (ch) {
+          if (ch.stage === 'mash' && now - tapAt > 0.18) { tapAt = now; q('chop', true); }
+          else if (ch.stage === 'cry' && ch.holdAt < 0) q('mash', true);
+          else if (ch.stage === 'final') q('final', true);
+        }
         const tg = bt.telegraph;
         if (tg && tg.impactAt && !tg.high && g.grounded && ['spoon', 'combo', 'triple', 'pot'].includes(tg.kind) && tg.impactAt - now < 0.22 && tg.impactAt - now > 0) g.pressJump();
         for (const h of bt.hostiles) {
@@ -55,12 +72,13 @@ const MAX = Number(process.argv[4] || 420);
       requestAnimationFrame(tick);
     };
     tick();
-  });
+  }, FORCE_ART);
   const samples = [];
   const t0 = Date.now();
   let result = 'timeout';
   let lastLog = -1;
   const phaseAt = [];
+  const tl = { n: 0, list: [] };
   let lastRage = -1;
   let lastAt = 0;
   let lastLogAt = Date.now();
@@ -71,10 +89,11 @@ const MAX = Number(process.argv[4] || 420);
       const g = window.__gona.scene.getScene('Game');
       const bt = g.battle;
       const pf = window.__perf?.stats?.() ?? {};
-      return { mode: bt?.mode ?? 'none', rage: bt?.rage, hp: bt?.hp, last: bt?.lastPhase, gona: g.hearts * 100 + g.hp, state: g.state, objs: g.children.list.length, hostiles: bt?.hostiles.length ?? 0, tweens: g.tweens.getTweens().length, fps: pf.fps, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null, log: bt?.attackLog.length ?? 0 };
+      return { mode: bt?.mode ?? 'none', rage: bt?.rage, hp: bt?.hp, last: bt?.lastPhase, gona: g.hearts * 100 + g.hp, state: g.state, objs: g.children.list.length, hostiles: bt?.hostiles.length ?? 0, tweens: g.tweens.getTweens().length, fps: pf.fps, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null, log: bt?.attackLog.length ?? 0, lastAtk: bt?.attackLog.slice(-1)[0] ?? '' };
     });
+    if (s.log !== tl.n) { tl.n = s.log; tl.list.push(`${s.lastAtk}@${Math.round((Date.now() - t0) / 1000)}(${s.hp})`); }
     if (s.rage !== lastRage) { phaseAt.push(`P${(s.rage ?? 0) + 1}@${Math.round((Date.now() - t0) / 1000)}s`); lastRage = s.rage; }
-    if (s.last === 'swing' && !lastAt) { lastAt = Math.round((Date.now() - t0) / 1000); phaseAt.push(`FINAL@${lastAt}s`); }
+    if ((s.last === 'swing' || s.last === 'chop') && !lastAt) { lastAt = Math.round((Date.now() - t0) / 1000); phaseAt.push(`FINAL@${lastAt}s`); }
     if (!samples.length || Date.now() - samples[samples.length - 1].at > 10000) samples.push({ at: Date.now(), sec: Math.round((Date.now() - t0) / 1000), ...s });
     if (s.state === 'dead' || s.state === 'ending' || s.mode === 'victory' || s.mode === 'none') { result = s.state === 'dead' ? 'LOSE' : 'WIN'; break; }
     // 멈춤 감지: 25초 동안 새 공격이 없으면 (보스전이 멈춘 것) 상태를 남기고 끝냄
@@ -91,6 +110,7 @@ const MAX = Number(process.argv[4] || 420);
   const log = await page.evaluate(() => window.__gona.scene.getScene('Game').battle?.attackLog.join(',') ?? '');
   const qte = await page.evaluate(() => window.__gona.scene.getScene('Game').battle?.qteLog.join(',') ?? '');
   console.log('QTE', qte);
+  console.log('TIMELINE', tl.list.join(' '));
   const hist = await page.evaluate(() => { const m = {}; for (const o of window.__gona.scene.getScene('Game').children.list) { const k = `${o.type}:${o.texture?.key ?? ''}`; m[k] = (m[k] ?? 0) + 1; } return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 8); });
   console.log('objects', JSON.stringify(hist));
   const first = samples[1] ?? samples[0];

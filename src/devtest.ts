@@ -43,7 +43,7 @@ export const TEST_ITEMS: [string, string][] = [
   ['resist-fail', '29. 버티기 QTE 실패 테스트 (안 누름)'],
   ['sniff-dubai', '30. 킁카괴물 두바이 똥냄새 공격 (필살기 게이지 가득)'],
   ['witch-art', '31. 이유식 드래곤 셰프 마녀 — 그림 보기 (레퍼런스 스프라이트 10장 · 숟가락 · 성)'],
-  ['finale', '32. 마지막 모험 구간 바로 시작 (킁카괴물 뒤 · 약 75초)'],
+  ['finale', '32. 마지막 모험 구간 바로 시작 (킁카괴물 뒤 · 마녀 등장까지 약 28초)'],
   ['finale-castle', '33. 이유식 성 바로 진입 (성 앞 → 도착 → 등장 컷신)'],
   ['witch-intro', '34. 최종 보스 등장 컷신 + 대사'],
   ['witch-p1', '35. 최종 보스 1페이즈 (이유식의 유혹)'],
@@ -52,21 +52,21 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-attacks', '38. 최종 보스 공격 패턴별 테스트 (A~E · 신규 공격 버튼)'],
   ['witch-ending', '39. 최종 보스 처치 → 패배 컷신 → 가족 엔딩 연결'],
   ['witch-shield', '40. 방패 방어 공격: 숟가락 내려치기 (🛡방패!)'],
-  ['witch-chair', '41. 이유식 의자 감금 + 연타 탈출 — 에셋 대기'],
-  ['witch-chair-ok', '42. 울음 음파 탈출 성공 — 에셋 대기'],
-  ['witch-chair-fail', '43. 울음 음파 탈출 실패 — 에셋 대기'],
+  ['witch-chair', '41. 이유식 의자 탈출 (직접 · 2페이즈 → 3페이즈 강화 · 그림 대기 — 흐름만)'],
+  ['witch-chair-ok', '42. 울음 폭발 탈출 성공 (자동 연타 → 꾸욱 · 그림 대기)'],
+  ['witch-chair-fail', '43. 울음 폭발 탈출 실패 (안 누름 → 작은 피해 · 자동 탈출 · 그림 대기)'],
   ['witch-jump', '44. 점프 회피 공격 모음 (낮은 숟가락 · 통통 · 삼연타 · 소나기 · 냄비)'],
   ['witch-stay', '45. 가만히 있기 공격 모음 (높은 숟가락 · 숟가락 왕복 귀환)'],
   ['witch-size', '46. 마녀 크기 변경 전후 비교 (1.6배 ↔ 1.2배 버튼)'],
-  ['witch-crush', '47. 고나 필살기 이유식 으깨기 — 에셋 대기'],
+  ['witch-chop', '47. 후드리챱챱! 난타 (처음부터 → 방해 → 피니시 → 엔딩 · 그림 대기 — 흐름만)'],
   ['witch-full', '48. 1~3페이즈 연속 플레이 (처음부터 끝까지 · 고나 무적 아님)'],
   ['witch-last', '49. 마지막 발악 → 처치 → 엔딩'],
   ['witch-run3', '50. 3페이즈 연속 플레이 (35%부터)'],
   ['witch-parry', '51. ① 이유식 받아치기 (퉤! 타이밍)'],
   ['witch-rhythm', '52. ② 으아앙! 울음 리듬 배틀 (2페이즈 → 3페이즈 빠른 판)'],
   ['witch-reflect', '53. ③ 이유식 폭탄 방패 반사'],
-  ['witch-ui-chair', '54. 의자 탈출 조작 화면 미리보기 (으아앙!! 연타 + 탈출 게이지 · 그림 대기)'],
-  ['witch-ui-crush', '55. 최종 콰직 조작 화면 미리보기 (왼손·오른손 · 그림 대기)'],
+  ['witch-chop-cry', '54. 후드리챱챱 중 마녀 방해 (으아앙! 꾸욱 · 그림 대기)'],
+  ['witch-chop-final', '55. 최종 후드리챱챱!!! 피니시 → 패배 → 가족 엔딩 (그림 대기)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -335,8 +335,8 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'finale-castle': {
       sc.debugSetStage(3);
       sc.boomerangAwake = true;
-      sc.startFinale(id === 'finale' ? 0 : 64);
-      say(id === 'finale' ? '마지막 모험: 평화 → 수상한 흔적(22초~) → 암흑의 성(48초~) → 도착(72초)' : '성 앞 → 도착 → 성 안 → 최종 보스 등장 컷신');
+      sc.startFinale(id === 'finale' ? 0 : 14);
+      say(id === 'finale' ? '마지막 모험: 버섯숲(0~8초) → 먼 성(8초~) → 가까운 성·번개(15초~) → 입구 도착(22초) → 등장 컷신(약 28초)' : '가까운 성 → 입구 도착 → 성 안 → 최종 보스 등장 컷신');
       break;
     }
     case 'witch-intro':
@@ -345,8 +345,12 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
     case 'witch-p3':
     case 'witch-attacks':
     case 'witch-ending':
-    case 'witch-ui-chair':
-    case 'witch-ui-crush':
+    case 'witch-chair':
+    case 'witch-chair-ok':
+    case 'witch-chair-fail':
+    case 'witch-chop':
+    case 'witch-chop-cry':
+    case 'witch-chop-final':
     case 'witch-parry':
     case 'witch-rhythm':
     case 'witch-reflect':
@@ -385,19 +389,40 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         'witch-rhythm': [['rhythm', 1], ['rhythm', 2]],
         'witch-reflect': [['reflect', 0], ['reflect', 1], ['reflect', 2]],
       };
-      // 의자 탈출 · 콰직: 그림이 없어 조작 화면(버튼·게이지)만 미리보기 — 끝나면 3초 뒤 다시
-      if (id === 'witch-ui-chair' || id === 'witch-ui-crush') {
+      // 의자 탈출 · 후드리챱챱: 승인 그림이 아직 없어 '흐름만' 실행 (그림 자리는 비워 둠 · 임시 그림 없음)
+      if (id.startsWith('witch-chair') || id.startsWith('witch-chop')) {
+        const qte = (btn: string, down = true): void => {
+          bus.emit(EV.qteInput, { btn, down });
+        };
         ready(() => {
-          wb().debugSkipIntro();
-          const loop = (): void => {
-            const bt = wb();
-            if (!bt || bt.mode === 'victory' || bt.mode === 'done') return;
-            if (bt.mode === 'fight' && !bt.busy && !bt.uiPreview && bt.stunT <= 0) bt.debugUiPreview(id === 'witch-ui-chair' ? 'chair' : 'crush');
-            window.setTimeout(loop, 3000);
-          };
-          window.setTimeout(loop, 800);
+          const bt = wb();
+          bt.debugForceArt = true;
+          if (id.startsWith('witch-chair')) {
+            bt.debugSkipIntro();
+            let n = 0;
+            const loop = (): void => {
+              const b = wb();
+              if (!b || b.mode === 'victory' || b.mode === 'done') return;
+              if (b.mode === 'fight' && !b.busy && !b.chairS && b.stunT <= 0) b.debugChair(n++ % 2 === 0 ? 2 : 3);
+              window.setTimeout(loop, 2000);
+            };
+            window.setTimeout(loop, 600);
+            if (id === 'witch-chair-ok') {
+              // 자동: 연타 → 숟가락이 오면 꾸욱
+              window.setInterval(() => {
+                const c = wb()?.chairS;
+                if (!c) return;
+                if (c.stage === 'mash') {
+                  qte('mash', true);
+                  qte('mash', false);
+                } else if (c.holdAt < 0) qte('mash', true);
+              }, 140);
+            }
+          } else {
+            bt.debugChop(id === 'witch-chop' ? 'mash' : id === 'witch-chop-cry' ? 'cry' : 'final');
+          }
         });
-        say('그림 대기 기능 — 조작 버튼·게이지 배치만 확인 (전투 판정 없음)');
+        say(id.startsWith('witch-chair') ? '의자·우는 고나 그림 대기 — 조작·판정 흐름만 (마녀·숟가락·음파는 기존 그림·효과)' : '고나 난타·이유식 덩어리 그림 대기 — 조작·판정 흐름만');
         break;
       }
       if (sets[id]) {
@@ -516,32 +541,6 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         parent.append(panel);
         say('버튼으로 공격 하나씩 (고나 무적) · 예고 자리 = 판정 자리');
       }
-      break;
-    }
-    case 'witch-crush': {
-      const box = el('div', 'tm-art');
-      box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;color:#fff8e6;padding:16px;font-size:14px;line-height:1.6';
-      box.innerHTML =
-        '<h3 style="margin:0 0 8px">🥣 ⑤ 최종 피니시 「이유식 콰직!」 — 에셋 대기</h3>' +
-        '<p>고나가 이유식 덩어리를 두 손으로 잡고 왼손·오른손을 번갈아 눌러 콰지직 으깨는 모습이 핵심이라 승인 그림을 받은 뒤 완성해요. 그전까지 마지막은 기존 「마지막 발악 → 마지막 한 방」으로 끝납니다.</p>' +
-        '<ul style="padding-left:18px"><li>gona-crush.png — 이유식을 두 손으로 잡기 → 금이 감 → 콰직 으깨기</li><li>witch-goo-covered.png — 이유식을 뒤집어쓰고 쓰러지는 마녀</li><li>(선택) giant-goo.png — 마녀가 내미는 거대한 이유식 덩어리 (금 가는 단계)</li></ul>';
-      parent.append(box);
-      break;
-    }
-    case 'witch-chair':
-    case 'witch-chair-ok':
-    case 'witch-chair-fail': {
-      // 강제 이유식 의자: 핵심 그림(의자 · 고나 울음·몸부림)이 아직 없어 구현 대기 (CLAUDE.md — 임시 그림으로 대체하지 않음)
-      const box = el('div', 'tm-art');
-      box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;color:#fff8e6;padding:16px;font-size:14px;line-height:1.6';
-      box.innerHTML =
-        '<h3 style="margin:0 0 8px">🪑 ④ 강제 이유식 의자 — 울음 음파 대탈출 · 에셋 대기</h3>' +
-        '<p>의자와 의자에 갇혀 우는 고나는 핵심 그림이라 승인 이미지를 받은 뒤 완성해요 (임시 그림 없음).</p>' +
-        '<ul style="padding-left:18px"><li>witch-chair.png — 마법의 이유식 의자 (등장·붙잡음·흔들림·부서짐)</li>' +
-        '<li>gona-chair-cry.png — 의자에 앉아 우는 고나 (울음·몸부림)</li>' +
-        '<li>gona-cry-wave.png — 울음 음파를 내뿜는 고나</li></ul>' +
-        '<p>받으면: 2페이즈 1번 · 3페이즈 후반 강화형 1번 · 「으아앙!!」 연타 3~4초 · 음파가 의자를 부수고 마녀 강타 / 실패 시 HP 일부만 감소.</p>';
-      parent.append(box);
       break;
     }
     case 'witch-art': {

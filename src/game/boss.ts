@@ -102,7 +102,7 @@ export const BOSSES: Record<BossId, BossDef> = {
     intro: '뽀뽀괴물과 킁카괴물을 키운 진짜 흑막!',
     // 최종 보스 3페이즈 (HP 100~70% · 70~35% · 35~0%) — 수치는 아래 WITCH 에서 조절
     // 초보자 기준 약 90~120초: 210 → 180 (반격 기회·필살기 추가 피해가 있어 너무 길어지지 않게)
-    maxHp: 180,
+    maxHp: 200,
     phase2At: 0.7,
     specialDamage: 8,
     scoreBonus: 1000,
@@ -130,13 +130,13 @@ export const WITCH = {
   /** 공중에 떠 있는 높이 (땅에서 발까지) */
   hover: 34,
   /** A·D 늘어나는 숟가락: 경로 예고 시간 → 내리꽂기(이 순간 판정) · 빗나가면 어질어질 */
-  spoon: { telegraph: [1.25, 1.0, 0.9], strike: 0.2, dmg: 25, stun: 2.4, stunMul: 1.7, comboGap: 0.95 },
+  spoon: { telegraph: [1.25, 1.0, 0.9], strike: 0.2, dmg: 25, stun: 1.9, stunMul: 1.7, comboGap: 0.95 },
   /** B 이유식 폭탄: 낙하 자리 예고 → 떨어져 장판(땅을 따라 고나 쪽으로 — 점프로 넘음) */
   bomb: { telegraph: 1.1, count: [3, 3, 4], fall: 0.55, dmg: 20, spacing: 46 },
   /** C 이유식 회오리: 방울이 위·아래 줄로 날아옴 (오른쪽 화살표: 아래=점프 · 위=가만히) */
   swirl: { count: 6, gap: 1.0, arrow: 0.9, speed: 120, dmg: 20 },
   /** E 초대형 이유식 폭발: 냄비에서 솟아 차례로 떨어짐 (고나 자리 = 점프·방패) → 끝나면 지쳐서 멈춤 */
-  pot: { drops: 6, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 3.2, tiredMul: 1.8 },
+  pot: { drops: 4, gap: 0.72, telegraph: 1.0, dmg: 25, tired: 2.6, tiredMul: 1.8 },
   /** 공격이 끝난 직후 약점 노출 (초 · 피해 배율) */
   weak: { sec: 1.1, mul: 1.4 },
   // ── 확장 공격 (기존 A~E 는 그대로) ──
@@ -146,14 +146,14 @@ export const WITCH = {
   //   (덩어리가 고나 몸을 지나가는 시간이 점프 한 번(약 0.67초)보다 짧아야 피할 수 있음 → 통통을 짧고 빠르게: 가로 약 40px/s 이상)
   bounce: { count: 3, gap: 1.3, heights: [28, 16, 9], g: 500, throwSec: 0.25, telegraph: 0.9, dmg: 18 },
   /** 이유식 소나기: 착탄 자리 예고 → 동시에 떨어짐 → 아주 짧은 바닥 장판. 가운데 물결은 고나 자리가 비어 있음(안전) */
-  rain: { waves: 3, gap: 1.6, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
+  rain: { waves: 2, gap: 1.3, telegraph: 1.0, spacing: 26, dmg: 18, puddle: 0.35 },
   /** 숟가락 부메랑: 낮은 줄(점프)로 날아가 화면 끝에서 잠깐 멈췄다가 높은 줄(가만히)로 돌아옴 */
   boomer: { telegraph: 1.0, out: 150, back: 120, pause: 0.6, dmg: 20, low: 8, high: 30 },
   /** 높은 숟가락 (가만히): 손잡이가 늘어나 숟가락이 고나 머리 위 높이로 쓸고 지나감 — 서 있으면 안전 · 점프하면 맞음 */
   high: { telegraph: 1.2, lane: 30, speed: 210, dmg: 20 },
   /** 숟가락 내려치기 (방패): 위에서 고나 자리를 내려침 — 판정이 점프 높이까지 닿아 점프로는 못 피함 · 방패로 막으면 마녀가 휘청 (반격 기회)
    *  예고 telegraph 초 · 방패는 누른 뒤 1초 동안 유지(SHIELD.activeMs) → 예고 마지막 1초 안에 누르면 막힘 */
-  slam: { telegraph: [1.5, 1.35, 1.25], strike: 0.22, dmg: 25, height: 82, width: 22, stun: 2.4, stunMul: 1.7 },
+  slam: { telegraph: [1.5, 1.35, 1.25], strike: 0.22, dmg: 25, height: 82, width: 22, stun: 1.9, stunMul: 1.7 },
   /** 마지막 발악: HP 가 at 비율 아래로 → 대사 → 거대한 숟가락 휘두르기(낮은 줄 = 점프) → 무방비(window 초, 한 방이면 끝)
    *  못 맞히면 다시 휘두름 · retries 번 넘게 놓치면 맞을 때까지 어질어질 (무한정 늘어지지 않게) */
   // ── '이유식 대탈출!' 미니게임 ──
@@ -181,11 +181,31 @@ export const WITCH = {
    * 페이즈마다 꼭 한 번씩 겪는 상호작용 — 다 나오기 전엔 HP 가 다음 문턱 아래로 안 내려감
    * (공격력이 세도 페이즈가 순식간에 지나가지 않게 · 전체 약 100~120초)
    */
-  mustShow: [['parry', 'reflect'], ['triple', 'rhythm', 'reflect'], ['rhythm', 'reflect', 'pot']] as string[][],
+  mustShow: [
+    ['spoon', 'parry', 'reflect'],
+    ['chair', 'triple', 'rhythm'],
+    ['boomer', 'rain', 'reflect', 'rhythm', 'chair', 'pot'],
+  ] as string[][],
+  /** ④ 이유식 의자 탈출 (2페이즈 1번 · 3페이즈 강화 1번 — [2페이즈, 3페이즈])
+   *   '으아앙!' 연타 mash 초 (탭마다 perTap · 초당 decay 감소) → 숟가락이 입으로 (warn 초 안에 hold 초 꾸욱) → 성공: 음파 강타(dmg × (0.6+게이지)) + 기절
+   *   실패: 고나 hurt 피해 + 자동 탈출 */
+  chair: { mash: [3.0, 2.6], perTap: 0.07, decay: [0.08, 0.12], warn: [1.8, 1.5], hold: 0.55, dmg: 20, stun: 2.2, stunMul: 1.6, hurt: 10 },
+  /** ⑤ 후드리챱챱! (마지막): '챱챱!' 탭마다 perTap · interruptAt 에서 마녀 방해 → '으아앙!' cryWindow 초 안에 hold 초 꾸욱
+   *   (실패하면 cryHurt 피해 · retry 초 뒤 다시) → 100% → '후드리챱챱!!!' 한 번 */
+  chop: { perTap: 0.06, interruptAt: 0.6, cryWindow: 3.2, hold: 0.55, cryHurt: 8, retry: 1.0 },
   /** 기절한 마녀에게 고나 필살기를 쓰면 피해 배율 */
   stunSpecialMul: 1.5,
   last: { at: 0.07, telegraph: 1.2, speed: 190, dmg: 22, window: [4, 5], retries: 2, mul: 2 },
 };
+
+/**
+ * 최종 보스 신규 연출에 필요한 승인 그림 (텍스처 키) — 다 있어야 실제 전투에 나옴 (없으면 건너뜀 · 임시 그림 없음)
+ *   chair = 이유식 의자 탈출 · chop = 후드리챱챱 피니시 (없으면 기존 '마지막 발악'으로 끝)
+ */
+export const WITCH_EXTRA_ART = {
+  chair: ['witch-chair', 'gona-chair-cry'],
+  chop: ['gona-chop', 'giant-goo', 'witch-goo-face', 'witch-hat'],
+} as const;
 
 /** 필살 게이지 충전량 (0~1 기준) */
 export const SPECIAL_GAIN = {

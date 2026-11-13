@@ -3,6 +3,8 @@
  *   ① 받아치기 퉤!: 딱 맞춤 → perfect(마녀 피해·고나 무사) · 조금 일찍 → good · 안 누름 → miss(고나 피해) · 너무 일찍 → whiff
  *   ③ 폭탄 반사: 도착 직전 방패 → perfect(반사·마녀 피해) · 일찍 방패 → block · 방패 없음 → miss
  *   ② 울음 리듬: 정확히(꾸욱은 길게) → 5/5 · 꾸욱을 톡으로 → 꾸욱 실패 · 안 누름 → 0/5 + 고나 피해
+ *   ④ 의자 탈출(흐름): 연타 → 숟가락 경고 때 꾸욱 → 성공(마녀 피해·기절) / 안 누름 → 작은 피해·자동 탈출
+ *   ⑤ 후드리챱챱(흐름): 방해 꾸욱 실패 → 작은 피해·재도전 → 성공 → 챱챱 연타 → 후드리챱챱!!! → 새 패배 대사
  *   조작 화면 분리: 일반 = 방패·공격·필살 / 퉤! / 리듬 줄+으앙! / 의자 으아앙!!+게이지 / 콰직 왼손·오른손 (그때 그 버튼만 · 끝나면 복구)
  *   입력 잠금: 리듬 중 화면 터치 점프 안 됨 · 방패 안 켜짐 / 일시정지: 날아오던 이유식이 멈춤
  *   버튼은 실제 화면 버튼에 포인터 이벤트(누름·뗌)로 — 실제 터치(touchscreen.tap)도 한 번 확인
@@ -33,8 +35,8 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
     /** at(fn) 이 true 가 되는 순간 act() — 전투 시각으로 */
     window.__when = (cond, act) => new Promise((res) => { const loop = () => { const bt = g.battle; if (bt && cond(bt)) { act(bt); res(true); } else requestAnimationFrame(loop); }; loop(); });
   });
-  const fresh = (rage) => G((r) => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; g.hearts = 3; g.hp = 100; g.invincibleUntil = 0; bt.rage = r; bt.hp = bt.def.maxHp; bt.debugHold = true; bt.stunT = 0; bt.seen.add('parry'); bt.seen.add('reflect'); bt.seen.add('rhythm'); }, rage);
-  const idle = () => page.waitForFunction(() => { const bt = window.__gona.scene.getScene('Game').battle; return !bt.busy && bt.stunT <= 0 && !bt.rhythmS && !bt.parryS && !bt.reflectS && !bt.uiPreview; }, null, { timeout: 20000 }).catch(() => {});
+  const fresh = (rage) => G((r) => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; g.hearts = 3; g.hp = 100; g.invincibleUntil = 0; bt.rage = r; bt.hp = bt.def.maxHp; bt.debugHold = true; bt.stunT = 0; bt.seen.add('parry'); bt.seen.add('reflect'); bt.seen.add('rhythm'); bt.seen.add('chair'); }, rage);
+  const idle = () => page.waitForFunction(() => { const bt = window.__gona.scene.getScene('Game').battle; return !bt.busy && bt.stunT <= 0 && !bt.rhythmS && !bt.parryS && !bt.reflectS && !bt.chairS && !bt.chopS; }, null, { timeout: 20000 }).catch(() => {});
   const snap = () => G(() => { const g = window.__gona.scene.getScene('Game'); const bt = g.battle; return { boss: bt.hp, gona: g.hearts * 100 + g.hp, log: bt.qteLog.slice(-1)[0] }; });
 
   // ① 받아치기
@@ -66,7 +68,7 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   // ③ 반사
   for (const [mode, lead] of [['perfect', 0.15], ['block', 0.8], ['miss', null]]) {
     await fresh(1);
-    await page.waitForTimeout(4200); // 방패 재사용 대기 (4초)
+    await page.waitForTimeout(4700); // 방패 재사용 대기 (4초 + 여유)
     const s0 = await snap();
     await G(() => window.__gona.scene.getScene('Game').battle.debugAttack('reflect'));
     await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').battle.reflectS, null, { timeout: 5000 });
@@ -113,7 +115,7 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   // 조작 화면 분리: 미니게임마다 그 버튼·게이지만 (기존 방패·공격·필살은 화면·터치 판정 모두 없음) → 끝나면 일반 버튼 복구
   const ui = () => G(() => {
     const on = (s) => { const e = document.querySelector(s); return !!e && e.getClientRects().length > 0; };
-    const keys = ['.bt-shield', '.bt-attack', '.bt-special:not(.bt-special2)', '.bt-spit', '.bt-cry', '.rhythm-box', '.bt-mash', '.chair-box', '.bt-hand-l', '.bt-hand-r', '.crush-box'];
+    const keys = ['.bt-shield', '.bt-attack', '.bt-special:not(.bt-special2)', '.bt-spit', '.bt-cry', '.rhythm-box', '.chair-box', '.chop-box', '.bt-mash', '.bt-chop', '.bt-final'];
     return keys.filter(on).join(' ');
   });
   const normalUi = '.bt-shield .bt-attack .bt-special:not(.bt-special2)';
@@ -131,30 +133,40 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   await page.waitForTimeout(300);
   const uRh = await ui();
   await idle();
-  await G(() => window.__gona.scene.getScene('Game').battle.debugUiPreview('chair'));
-  await page.waitForTimeout(300);
+  // ④ 의자 탈출 (그림 대기 — 흐름만): 성공 = 연타 → 숟가락 경고 때 꾸욱 / 실패 = 안 누름
+  const down = (sel) => G((q) => document.querySelector(q).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 9, pointerType: 'touch', isPrimary: true })), sel);
+  const up = (sel) => G((q) => document.querySelector(q).dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 9, pointerType: 'touch', isPrimary: true })), sel);
+  await fresh(1);
+  const c0 = await snap();
+  await G(() => window.__gona.scene.getScene('Game').battle.debugChair(2));
+  await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').battle.chairS, null, { timeout: 8000 });
+  await page.waitForTimeout(200);
   const uChair = await ui();
-  for (let i = 0; i < 14; i++) await G(() => window.__press('.bt-mash'));
-  await page.waitForTimeout(200); // 성공 판정은 다음 프레임
-  const chairDone = await G(() => !window.__gona.scene.getScene('Game').battle.uiPreview);
+  for (let i = 0; i < 12; i++) { await G(() => window.__press('.bt-mash')); await page.waitForTimeout(120); }
+  const gauge = await G(() => window.__gona.scene.getScene('Game').battle.chairS?.gauge ?? -1);
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.chairS?.stage === 'hold', null, { timeout: 8000 });
+  const holdLabel = await G(() => document.querySelector('.bt-mash').textContent);
+  await down('.bt-mash');
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').battle.chairS, null, { timeout: 6000 }).catch(() => {});
+  await up('.bt-mash');
+  await page.waitForTimeout(700); // 음파가 마녀에 닿는 순간(0.3초 뒤) 피해·기절
+  const c1 = await snap();
+  const stunned = await G(() => window.__gona.scene.getScene('Game').battle.stunT > 0);
+  check(`${orient}: chair escape — 으아앙! mash + gauge only, then 꾸욱 on spoon warning → chair:ok, witch damaged + stunned`, uChair === '.chair-box .bt-mash' && gauge > 0.4 && /꾸욱/.test(holdLabel) && /^chair:ok/.test(c1.log) && c1.boss < c0.boss && stunned && c1.gona === c0.gona, JSON.stringify({ uChair, gauge, holdLabel, c0, c1, stunned }));
   await idle();
-  await G(() => window.__gona.scene.getScene('Game').battle.debugUiPreview('crush'));
-  await page.waitForTimeout(300);
-  const uCrush = await ui();
-  // 같은 손 연타는 안 셈 · 번갈아 눌러야 진행
-  await G(() => { window.__press('.bt-hand-l'); window.__press('.bt-hand-l'); });
-  const c1 = await G(() => window.__gona.scene.getScene('Game').battle.uiPreview.count);
-  for (let i = 0; i < 9; i++) await G((k) => window.__press(k % 2 ? '.bt-hand-l' : '.bt-hand-r'), i);
-  await page.waitForTimeout(200);
-  const crushDone = await G(() => !window.__gona.scene.getScene('Game').battle.uiPreview);
-  await page.waitForTimeout(200);
+  await fresh(2);
+  const f0 = await snap();
+  await G(() => window.__gona.scene.getScene('Game').battle.debugChair(3));
+  await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').battle.chairS, null, { timeout: 8000 });
+  await page.waitForFunction(() => !window.__gona.scene.getScene('Game').battle.chairS, null, { timeout: 12000 }).catch(() => {});
+  const f1 = await snap();
+  check(`${orient}: chair escape fail (no input) → small damage, auto escape (no game over)`, /^chair:fail/.test(f1.log) && f1.gona < f0.gona && f0.gona - f1.gona <= 20 && f1.boss === f0.boss, JSON.stringify({ f0, f1 }));
+  await idle();
   const uEnd = await ui();
-  const uiLog = JSON.stringify({ u0, uSpit, uAfterSpit, uRh, uChair, chairDone, uCrush, c1, crushDone, uEnd });
+  const uiLog = JSON.stringify({ u0, uSpit, uAfterSpit, uRh, uEnd });
   check(`${orient}: UI normal = 방패·공격·필살 only`, u0 === normalUi, uiLog);
   check(`${orient}: UI 퉤! = 퉤! only (normal buttons removed)`, uSpit === '.bt-spit', uiLog);
   check(`${orient}: UI rhythm = 리듬 줄 + 으앙! only`, uRh === '.bt-cry .rhythm-box', uiLog);
-  check(`${orient}: UI chair = 으아앙!! + 탈출 게이지 only · 연타로 성공`, uChair === '.bt-mash .chair-box' && chairDone, uiLog);
-  check(`${orient}: UI crush = 왼손·진행·오른손 only · 번갈아 눌러야 진행`, uCrush === '.bt-hand-l .bt-hand-r .crush-box' && c1 === 1 && crushDone, uiLog);
   check(`${orient}: UI restored to normal after each minigame`, uAfterSpit === normalUi && uEnd === normalUi, uiLog);
 
   // 일시정지: 날아오던 이유식이 멈추고, 다시 시작하면 이어짐
@@ -168,6 +180,32 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   await G(() => window.__gona.scene.getScene('Game').resumeGame());
   check(`${orient}: pause freezes the minigame (battle time and goo stop)`, p1.state === 'paused' && Math.abs(p1.t - p0.t) < 0.05 && p1.x === p0.x, JSON.stringify({ p0, p1 }));
   await idle();
+  // ⑤ 후드리챱챱 (그림 대기 — 흐름만): 방해 실패 → 작은 피해 · 다시 → 꾸욱 성공 → 챱챱 연타 → 후드리챱챱!!! → 패배 대사 → 엔딩
+  await G(() => { const g = window.__gona.scene.getScene('Game'); g.hearts = 3; g.hp = 100; g.invincibleUntil = 0; });
+  const k0 = await snap();
+  await G(() => window.__gona.scene.getScene('Game').battle.debugChop('cry'));
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.chopS?.stage === 'cry', null, { timeout: 6000 });
+  await page.waitForTimeout(150);
+  const uCry = await ui();
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.qteLog.slice(-1)[0] === 'chop:cry:fail', null, { timeout: 8000 }).catch(() => {});
+  const k1 = await snap();
+  check(`${orient}: 후드리챱챱 witch interrupt — 으아앙! 꾸욱 only · missing it = small damage, retry (no game over)`, uCry === '.chop-box .bt-mash' && k1.log === 'chop:cry:fail' && k1.gona < k0.gona && k0.gona - k1.gona <= 10, JSON.stringify({ uCry, k0, k1 }));
+  await page.waitForTimeout(1100);
+  await down('.bt-mash');
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.chopS?.stage === 'mash', null, { timeout: 4000 }).catch(() => {});
+  await up('.bt-mash');
+  await page.waitForTimeout(150);
+  const uMash = await ui();
+  const k2 = await snap();
+  for (let i = 0; i < 10; i++) { await G(() => window.__press('.bt-chop')); await page.waitForTimeout(110); }
+  await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.chopS?.stage === 'final', null, { timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(150);
+  const uFinal = await ui();
+  await G(() => window.__press('.bt-final'));
+  await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(2600);
+  const k3 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { mode: g.battle?.mode, log: g.battle?.qteLog.slice(-1)[0], talk: document.querySelector('.boss-talk .pr-shown')?.textContent + (document.querySelector('.boss-talk .pr-rest')?.textContent ?? '') }; });
+  check(`${orient}: 후드리챱챱 cry ok → 챱챱! mash → 후드리챱챱!!! once → witch defeated with the new last line`, k2.log === 'chop:cry:ok' && uMash === '.chop-box .bt-chop' && uFinal === '.chop-box .bt-final' && k3.mode === 'victory' && k3.log === 'chop:win:1' && k3.talk.includes('그렇게 맛없었니'), JSON.stringify({ k2, uMash, uFinal, k3 }));
   check(`${orient}: no page errors (QTE)`, errs.length === 0, errs.join(' | '));
   console.log(out.join('\n'));
   process.exitCode = out.some((l) => l.startsWith('FAIL')) ? 1 : 0;

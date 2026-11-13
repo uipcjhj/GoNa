@@ -1,11 +1,9 @@
 /**
- * 마지막 모험 (킁카괴물을 이긴 뒤 약 75초 → 암흑의 이유식 성 도착)
- *   A 평화로운 시작 (0~22초): 버섯숲 그대로 · 딸기·바나나·쿠키가 줄줄이 (점프·이단 점프로 모으기) · 쉬운 바위 몇 개
- *   B 수상한 흔적 (22~48초): 바닥의 초록 이유식 자국 · 이유식 묻은 작은 발자국 · 덤불 뒤 커다란 숟가락 · 옅은 보라 안개 · 멀리서 웃음소리
- *     (최종 보스의 정체는 보여 주지 않음)
- *   C 암흑의 성으로 (48~72초): 승인된 배경 그림으로 천천히 바뀜 — 원경(먼 성, finale-bg-far) → 60초 근경(finale-bg-near)
- *     · 작은 번개 · 배경의 초록 방울 · 음악이 긴장감 있는 '성으로 가는 길'로 자연스럽게 바뀜
- *   도착 (72초~): 성 입구(finale-bg-gate)가 겹쳐 나타나며 달리기를 멈춤 → 암전 → 성 안(castle-interior) → 등장 컷신
+ * 마지막 모험 (킁카괴물을 이긴 뒤 약 28초 → 암흑의 이유식 성 도착 · 달리기 속도는 그대로, 구간·연출 시간만 압축)
+ *   A 평화로운 버섯숲 (0~8초): 딸기·바나나·쿠키 줄 · 4초쯤부터 바닥의 초록 이유식 자국·발자국 · 멀리서 웃음소리
+ *   B 보라 하늘과 먼 성 (8~15초): 원경(finale-bg-far)으로 겹쳐 바뀜 · 음악이 '성으로 가는 길'로
+ *   C 가까워지는 성 (15~22초): 근경(finale-bg-near) · 번개 · 마녀 웃음소리 · 보라 안개
+ *   도착 (22초~): 성 입구(finale-bg-gate)가 겹쳐 나타나며 감속·정지 → 암전 → 성 안(castle-interior) → 바로 등장 컷신 (약 28초)
  * 배경 그림은 GameScene.finaleBackdrop 이 숲 배경과 같은 좌표계(772×460 · 지면선 400)로 지면 뒤에 겹쳐 그림.
  * 흔적은 땅과 함께 흘러감.
  */
@@ -32,14 +30,14 @@ export interface FinaleHost {
 }
 
 /** 구간 시각(초) */
-export const FINALE = { clues: 22, castle: 48, near: 60, arrive: 72 };
+export const FINALE = { clues: 4, castle: 8, near: 15, arrive: 22 };
 
 export class FinaleRun {
   t = 0;
   done = false;
   private cues: { at: number; fn: () => void; done?: boolean }[] = [];
   private snackT = 1.2;
-  private rockT = 7;
+  private rockT = 5;
   private objs: Phaser.GameObjects.GameObject[] = [];
   private drops: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private fog: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -63,45 +61,30 @@ export class FinaleRun {
 
   private build(): void {
     const h = this.host;
-    // ── B 수상한 흔적 (풀밭 위에서도 잘 보이게 크게 · 여러 번)
     const stain = (dx: number, sc = 1.8) => h.addProp('witch-puddle', h.W + dx, 0, 4.6, sc);
     const prints = (n: number) => {
       for (let i = 0; i < n; i++) h.addProp('clue-print', h.W + 14 + i * 20, 0, 4.6, 1.5);
     };
-    this.at(23, () => stain(20));
-    this.at(25.5, () => stain(30, 1.5));
-    this.at(27.5, () => prints(4));
-    this.at(30, () => {
-      h.addProp('clue-spoon', h.W + 34, 0, 4.4, 1.7);
-      h.addProp('clue-bush', h.W + 26, 0, 4.5, 1.3);
-    });
-    this.at(33, () => {
-      stain(20);
-      stain(64, 1.4);
-    });
-    this.at(34.5, () => sound.witchLaugh(false));
-    this.at(36, () => this.startFog(0.18));
-    this.at(38, () => prints(5));
-    this.at(40.5, () => stain(24, 2));
-    this.at(42.5, () => {
-      h.addProp('clue-spoon', h.W + 40, 0, 4.4, 1.4);
-      stain(70, 1.5);
-    });
-    this.at(44.5, () => sound.witchLaugh(false));
-    this.at(45.5, () => prints(6));
-    // ── C 암흑의 성으로
+    // ── A 끝자락: 수상한 흔적 (짧게)
+    this.at(4.5, () => stain(20));
+    this.at(5.5, () => prints(4));
+    this.at(6.5, () => sound.witchLaugh(false));
+    this.at(7, () => stain(30, 1.5));
+    // ── B 보라 하늘 · 먼 성
     // 그림 자체가 보라 하늘이라 색 덮개는 옅게 (숲 → 원경 사이를 부드럽게 잇는 정도)
     this.at(FINALE.castle, () => {
-      h.tint(0x2a1046, 0.16, 6000);
-      h.backdrop('far', 4000, FINALE.near - FINALE.castle);
-      sound.fadeOutMusic(1800);
+      h.tint(0x2a1046, 0.16, 2500);
+      h.backdrop('far', 2200, FINALE.near - FINALE.castle);
+      sound.fadeOutMusic(1200);
     });
-    this.at(FINALE.castle + 2, () => sound.startMusic('castle'));
-    this.at(FINALE.near, () => h.backdrop('near', 3500, FINALE.arrive - FINALE.near));
-    this.at(FINALE.castle + 5, () => this.startDrops());
-    for (const tt of [53, 58.5, 63, 67.5, 70.5]) this.at(tt, () => this.lightning());
-    this.at(60, () => sound.witchLaugh(true));
-    this.at(66, () => this.startFog(0.3));
+    this.at(FINALE.castle + 1.2, () => sound.startMusic('castle'));
+    this.at(FINALE.castle + 2, () => this.startDrops());
+    this.at(11, () => this.startFog(0.18));
+    // ── C 가까워지는 성 · 번개 · 웃음소리
+    this.at(FINALE.near, () => h.backdrop('near', 2000, FINALE.arrive - FINALE.near));
+    for (const tt of [16, 18.5, 20.5]) this.at(tt, () => this.lightning());
+    this.at(17, () => sound.witchLaugh(true));
+    this.at(17.5, () => this.startFog(0.3));
     this.at(FINALE.arrive, () => {
       this.done = true;
       h.arrive();
@@ -127,11 +110,11 @@ export class FinaleRun {
         c.fn();
       }
     }
-    if (this.t >= FINALE.castle - 4) return; // 성 앞 구간은 간식만 조금
+    if (this.t >= FINALE.near - 1) return; // 성 가까이부턴 간식·바위 없음
     // ── A·B 간식 줄 · 쉬운 바위
     this.snackT -= dt;
     if (this.snackT <= 0) {
-      this.snackT = this.t < FINALE.clues ? 1.6 : 2.4;
+      this.snackT = this.t < FINALE.castle ? 1.6 : 2.2;
       this.snackRow();
     }
     this.rockT -= dt;

@@ -125,16 +125,16 @@ export interface CombatHud {
  *   rhythm = 울음 리듬 배틀: 음표가 오른쪽에서 판정선(x≈0.18)으로 다가옴 (x 0~1 · len = 꾸욱 길이) + '으앙!' 버튼
  */
 /** 미니게임 버튼: 퉤! · 으앙!(리듬) · 으아앙!!(의자 연타) · 왼손 · 오른손 */
-export type QteBtn = 'spit' | 'cry' | 'mash' | 'left' | 'right';
+export type QteBtn = 'spit' | 'cry' | 'mash' | 'chop' | 'final';
 
 export type QteHud =
   | { kind: 'aim' | 'aimIntro' }
   | { kind: 'resist'; gauge: number; left: number }
   | { kind: 'spit'; show: boolean; ready: boolean }
-  /** 이유식 의자 탈출: '으아앙!!' 연타 + 탈출 게이지 (그림 대기 — 지금은 개발 메뉴 UI 미리보기만) */
-  | { kind: 'chair'; gauge: number; left: number }
-  /** 최종 이유식 콰직: 왼손·오른손 번갈아 (그림 대기 — 지금은 개발 메뉴 UI 미리보기만) */
-  | { kind: 'crush'; next: 'L' | 'R'; count: number; total: number; left: number }
+  /** 이유식 의자 탈출: mash = '으아앙!' 연타 + 탈출 게이지 · hold = 숟가락이 입으로 — 꾸욱 (hold 0~1 = 누른 정도) */
+  | { kind: 'chair'; stage: 'mash' | 'hold'; gauge: number; left: number; hold: number }
+  /** 후드리챱챱: mash = '챱챱!' 연타 · cry = 마녀 방해 — '으아앙!' 꾸욱 · final = '후드리챱챱!!!' 한 번 */
+  | { kind: 'chop'; stage: 'mash' | 'cry' | 'final'; gauge: number; left: number; hold: number }
   | { kind: 'rhythm'; notes: { x: number; len: number; hold: boolean; state: 'wait' | 'ok' | 'miss' | 'hold' }[]; holding: boolean; title: string; score: number; total: number };
 
 export interface BannerInfo {

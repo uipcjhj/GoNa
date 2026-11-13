@@ -956,6 +956,21 @@ class Sound {
     this.tone(accent ? 1180 : 880, 0.05, 'square', 0.06, 0);
   }
 
+  /** 후드리챱챱 난타 한 번 (n 번째마다 챱 · 퍽 · 찰박 소리가 번갈아) */
+  chop(n = 0): void {
+    const k = n % 3;
+    if (k === 0) {
+      this.noise(0.07, 0.2, 0, 'bandpass', 2600); // 챱
+      this.tone(300, 0.06, 'square', 0.07, 0, 180);
+    } else if (k === 1) {
+      this.noise(0.1, 0.26, 0, 'lowpass', 900); // 퍽
+      this.tone(140, 0.09, 'sine', 0.2, 0, 70);
+    } else {
+      this.noise(0.14, 0.18, 0, 'bandpass', 1300); // 찰박
+      this.tone(240, 0.1, 'triangle', 0.09, 0.02, 120);
+    }
+  }
+
   /** 철퍼덕 (이유식이 얼굴·바닥에 붙음) */
   splat(): void {
     this.noise(0.16, 0.2, 0, 'lowpass', 700);

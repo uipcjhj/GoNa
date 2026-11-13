@@ -462,7 +462,7 @@ async function bossTests(label, device) {
   await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').finale, null, { timeout: 15000 }).catch(() => {});
   const fin0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { fin: !!g.finale, phase: g.finale?.phase, battle: !!g.battle, cp: g.debugCheckpoint?.() ?? null }; });
   check(`${label}: sniff win → final adventure starts (no ending yet)`, fin0.fin && fin0.phase === 'peace' && !fin0.battle, JSON.stringify(fin0));
-  await G(() => { window.__gona.scene.getScene('Game').finale.t = 71.5; });
+  await G(() => { window.__gona.scene.getScene('Game').finale.t = 21.5; });
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.def?.id === 'witch', null, { timeout: 20000 }).catch(() => {});
   const w0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { id: g.battle?.def?.id, mode: g.battle?.mode, castle: g.inCastle }; });
   check(`${label}: final adventure → castle → witch intro`, w0.id === 'witch' && w0.mode === 'intro' && w0.castle, JSON.stringify(w0));

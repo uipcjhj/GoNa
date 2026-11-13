@@ -128,6 +128,8 @@ export class GameScene extends Phaser.Scene {
   private pendingFinale: number | null = null;
   /** 성 안 (최종 보스 무대) */
   inCastle = false;
+  /** 지금 카메라 배율 (캔버스 픽셀 / 논리 1px) — 도트 격자 맞춤용 */
+  private pxk = VIEW.renderScale;
   /** 달리기 멈춤 (성 입구 도착 · 등장 컷신) */
   private halt = false;
   /** 보스전 시작 때의 점수 (보스전 다시 도전용) */
@@ -486,7 +488,9 @@ export class GameScene extends Phaser.Scene {
 
   private layout(): void {
     // 캔버스는 논리 해상도 × renderScale 로 그리고, 카메라 확대로 논리 좌표를 그대로 사용
-    const k = VIEW.renderScale;
+    // 성 안(최종 보스): 고나·마녀가 화면에 너무 크게 붙어 보임 → 세로·가로 모두 조금 넓게 (castleZoom) · 1.2배 캐릭터 도트 1칸 = 정확히 5픽셀
+    const k = VIEW.renderScale * (this.inCastle ? VIEW.castleZoom : 1);
+    this.pxk = k;
     this.cameras.main.setOrigin(0, 0).setZoom(k).setScroll(0, 0);
     this.W = Math.round(this.scale.width / k);
     this.H = Math.round(this.scale.height / k);
@@ -530,7 +534,8 @@ export class GameScene extends Phaser.Scene {
     this.deepDirt.clear();
     const dirtTop = this.groundY + GROUND_TILE_H;
     if (dirtTop < this.H) {
-      const bands = ['#c48a55', '#b57c4b', '#a66f42', '#96633a', '#875833'];
+      // 성 안: 성 안 그림 맨 아래 흙과 같은 색으로 점점 어둡게 / 숲: 흙색
+      const bands = this.inCastle ? ['#6f3850', '#68344b', '#603046', '#572c41', '#4e273b'] : ['#c48a55', '#b57c4b', '#a66f42', '#96633a', '#875833'];
       const bandH = Math.ceil((this.H - dirtTop) / bands.length);
       bands.forEach((c, i) => {
         this.deepDirt.fillStyle(Phaser.Display.Color.HexStringToColor(c).color, 1);
@@ -776,7 +781,7 @@ export class GameScene extends Phaser.Scene {
 
   private scrollBackground(dt: number): void {
     // 스크롤은 캔버스 픽셀(논리 1/5) 단위로 — 논리 1px(=5 캔버스 px) 단위로 자르면 한 프레임 5px·10px 로 들쭉날쭉 움직여 끊겨 보임
-    const sp = (v: number): number => Math.round(v * VIEW.renderScale) / VIEW.renderScale;
+    const sp = (v: number): number => Math.round(v * this.pxk) / this.pxk;
     this.ground.tilePositionX = this.inCastle && this.ground.texture.key === CASTLE_ART.interior.key ? sp(this.distance) / this.bgScale : sp(this.distance);
     this.updateBackdrops(dt);
     if (this.near.visible) this.near.tilePositionX = sp(this.distance * 0.7);
@@ -858,7 +863,7 @@ export class GameScene extends Phaser.Scene {
     // 스쿼시 & 스트레치 (부드럽게 1로 복귀)
     this.squash += (1 - this.squash) * Math.min(1, dt * 12);
     // 찌그러짐 배율도 렌더 픽셀 단위(1/renderScale)로 맞춰 도트 한 칸이 항상 같은 정수 픽셀이 되게
-    const k = VIEW.renderScale;
+    const k = this.pxk;
     const sy = Math.round(this.vis.scale * this.squash * k) / k;
     const sx = Math.round(this.vis.scale * (2 - this.squash) * k) / k;
     this.player.setScale(sx, sy);
@@ -1118,7 +1123,7 @@ export class GameScene extends Phaser.Scene {
         else if (e.type === 'fx' && spr.texture.key === 'mon-shatter') spr.setFrame(e.age < 0.1 ? 0 : 1);
         else if (e.type === 'fx' && spr.texture.key === 'mon-flask') spr.setFrame(Math.floor(e.age / 0.12) % 3); // 손에 든 플라스크 보글보글
       }
-      e.sprite.setPosition(Math.round(e.x * VIEW.renderScale) / VIEW.renderScale, Math.round(this.groundY - e.alt + bob));
+      e.sprite.setPosition(Math.round(e.x * this.pxk) / this.pxk, Math.round(this.groundY - e.alt + bob));
 
       if (this.state === 'playing' && e.type !== 'fx') {
         const left = e.x - e.w / 2;
@@ -2376,17 +2381,7 @@ export class GameScene extends Phaser.Scene {
       this.bgTop = art.extraTop;
     }
     this.bgHaze?.clear();
-    this.deepDirt.clear();
-    const dirtTop = this.groundY + GROUND_TILE_H;
-    if (dirtTop < this.H) {
-      // 땅 띠 아래(세로 화면의 남는 아래쪽): 성 안 그림 맨 아래 흙과 같은 색으로 점점 어둡게
-      const bands = ['#6f3850', '#68344b', '#603046', '#572c41', '#4e273b'];
-      const bandH = Math.ceil((this.H - dirtTop) / bands.length);
-      bands.forEach((c, i) => {
-        this.deepDirt.fillStyle(Phaser.Display.Color.HexStringToColor(c).color, 1);
-        this.deepDirt.fillRect(0, dirtTop + i * bandH, this.W, bandH + 1);
-      });
-    }
+    // 땅 띠 아래 흙색은 layout 이 성 안 색으로 칠함
     this.tweens.killTweensOf(this.moodTint);
     this.moodTint.setFillStyle(0x1d1640, 0.12);
     this.layout();
@@ -2650,8 +2645,8 @@ export class GameScene extends Phaser.Scene {
     if (!q) return '-';
     if (q.kind === 'resist') return `r${Math.round(q.gauge * 50)}`;
     if (q.kind === 'spit') return `s${q.show ? 1 : 0}${q.ready ? 1 : 0}`;
-    if (q.kind === 'chair') return `c${Math.round(q.gauge * 50)}:${Math.ceil(q.left)}`;
-    if (q.kind === 'crush') return `k${q.next}${q.count}:${Math.ceil(q.left)}`;
+    if (q.kind === 'chair') return `c${q.stage}${Math.round(q.gauge * 50)}:${Math.ceil(q.left * 4)}:${Math.round(q.hold * 10)}`;
+    if (q.kind === 'chop') return `k${q.stage}${Math.round(q.gauge * 50)}:${Math.ceil(q.left * 4)}:${Math.round(q.hold * 10)}`;
     if (q.kind === 'rhythm') return `m${q.holding ? 1 : 0}${q.score}:${q.notes.map((n) => `${Math.round(n.x * 300)}${n.state[0]}`).join(',')}`;
     return q.kind;
   }

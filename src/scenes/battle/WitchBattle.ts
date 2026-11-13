@@ -17,11 +17,11 @@ import { bus, EV, type BannerInfo, type QteBtn, type QteHud } from '../../events
 import { sound } from '../../audio';
 import { haptics } from '../../haptics';
 import { perf } from '../../perf';
-import { WITCH } from '../../game/boss';
+import { WITCH, WITCH_EXTRA_ART } from '../../game/boss';
 import { BossBattle, type Hostile } from './BossBattle';
 import type { BattleHost } from './types';
 
-type Attack = 'spoon' | 'bomb' | 'swirl' | 'combo' | 'pot' | 'triple' | 'bounce' | 'rain' | 'boomer' | 'high' | 'slam' | 'last' | 'parry' | 'reflect' | 'rhythm';
+type Attack = 'spoon' | 'bomb' | 'swirl' | 'combo' | 'pot' | 'triple' | 'bounce' | 'rain' | 'boomer' | 'high' | 'slam' | 'last' | 'parry' | 'reflect' | 'rhythm' | 'chair';
 /** 대응 방법 (예고 아이콘): 점프 · 가만히 · 방패 · (연타 — 의자, 에셋 대기) */
 export type Counter = 'jump' | 'stay' | 'shield';
 
@@ -45,7 +45,11 @@ const MINIGAME_INFO: Partial<Record<Attack, { name: string; hint: string }>> = {
   parry: { name: '이유식 받아치기', hint: '이유식이 입 앞에 왔을 때 「퉤!」 — 딱 맞추면 마녀에게 철퍼덕!' },
   reflect: { name: '이유식 폭탄 돌려주기', hint: '폭탄이 닿기 직전에 방패! — 딱 맞추면 마녀에게 반사' },
   rhythm: { name: '으아앙! 울음 리듬', hint: '음표가 노란 줄에 오면 「으앙!」 · 긴 음표는 꾸욱 누르기' },
+  chair: { name: '이유식 의자 탈출!', hint: '「으아앙!」 마구 누르기 → 숟가락이 오면 꾸욱 길게!' },
 };
+export const WITCH_CHAIR_LINE = '얌전히 앉아서 이유식 먹어!';
+export const WITCH_CHOP_INTERRUPT = '내 이유식에 무슨 짓이야!!!';
+export const WITCH_CHOP_DEFEAT = '내… 이유식이… 그렇게 맛없었니…?';
 export const WITCH_RHYTHM_LINE = '이것도 안 먹을 거야?!';
 
 const NEW_ATTACK_INFO: Partial<Record<Attack, { name: string; hint: string }>> = {
@@ -93,7 +97,7 @@ export class WitchBattle extends BossBattle {
   /** 날아가는 숟가락 부메랑 */
   private boomerSp: { h: Hostile; stage: 'out' | 'wait' | 'back'; t: number; arm: Phaser.GameObjects.TileSprite | null } | null = null;
   /** 마지막 발악: none → swing(휘두르는 중) → open(무방비 · 한 방) → done */
-  lastPhase: 'none' | 'swing' | 'open' | 'done' = 'none';
+  lastPhase: 'none' | 'swing' | 'open' | 'chop' | 'done' = 'none';
   private lastTries = 0;
   /** ① 받아치기 상태 (날아오는 이유식 · 도착 시각 · 누른 결과) */
   private parryS: { s: Phaser.GameObjects.Image; x0: number; y0: number; x1: number; y1: number; t0: number; arrive: number; result: 'perfect' | 'good' | 'whiff' | null; done: boolean } | null = null;
@@ -106,8 +110,16 @@ export class WitchBattle extends BossBattle {
   /** (검증용) 미니게임 결과 기록 */
   readonly qteLog: string[] = [];
   private onQte = (e: { btn: QteBtn; down: boolean }): void => this.qteInput(e.btn, e.down);
-  /** (개발 메뉴) 의자 탈출 · 콰직 조작 화면 미리보기 — 그림이 없어 버튼·게이지만 (전투 판정 없음) */
-  uiPreview: { kind: 'chair' | 'crush'; gauge: number; count: number; next: 'L' | 'R'; t0: number; end: number } | null = null;
+  /** ④ 이유식 의자 탈출 상태 */
+  chairS: { stage: 'mash' | 'hold'; gauge: number; end: number; holdAt: number; strong: boolean; taps: number } | null = null;
+  /** ⑤ 후드리챱챱 상태 (마지막) */
+  chopS: { stage: 'mash' | 'cry' | 'final' | 'finish'; gauge: number; cryEnd: number; holdAt: number; interrupted: boolean; taps: number; fails: number } | null = null;
+  /** 미니게임 공격을 고른 뒤 시작 전 (이동·안내 중) — 고나 필살기가 끼어들어 미니게임이 사라지지 않게 */
+  private qtePending = false;
+  /** 후드리챱챱으로 끝났는지 (패배 대사가 바뀜) */
+  private chopped = false;
+  /** (개발 메뉴) 그림이 없어도 의자·후드리챱챱 흐름을 미리 실행 (승인 그림 자리는 비워 둠) */
+  debugForceArt = false;
   private lastTalked = false;
   /** 공격 중에만 쓰는 예고·효과 (고나 필살기 등으로 공격이 끊기면 바로 정리 — 깜빡이는 고리·점선이 남아 쌓이지 않게) */
   private temps: Phaser.GameObjects.GameObject[] = [];
@@ -128,7 +140,8 @@ export class WitchBattle extends BossBattle {
 
   constructor(host: BattleHost, tex: string) {
     super(host, 'witch', tex);
-    this.homeX = Math.min(host.W - 30, host.basePlayerX + 150); // 날개 끝까지 화면 안에
+    // 날개 끝까지 화면 안에 (화면에 보이는 반폭 + 여백)
+    this.homeX = Math.min(host.W - Math.ceil((this.fw * WitchBattle.SCALE) / 2) - 3, host.basePlayerX + 150);
     this.boss.setScale(WitchBattle.SCALE);
     this.restScale = WitchBattle.SCALE;
     bus.on(EV.qteInput, this.onQte);
@@ -312,33 +325,84 @@ export class WitchBattle extends BossBattle {
       this.cooldown = 0.5;
       return;
     }
-    // 마지막 발악 (HP 가 거의 다 닳았을 때 · 한 번)
+    // 마지막 (HP 가 거의 다 닳았을 때): 후드리챱챱! (승인 그림이 있을 때) · 없으면 기존 마지막 발악
     if (this.lastPhase === 'none' && this.rage >= 2 && this.hp <= this.def.maxHp * WITCH.last.at) {
-      this.attackLog.push('last');
-      this.lastStand();
+      if (this.artReady('chop')) {
+        this.attackLog.push('chop');
+        this.chopFinale();
+      } else {
+        this.attackLog.push('last');
+        this.lastStand();
+      }
       return;
     }
-    // 무작위로 섞지 않고 정해진 순서 (회피·방어 가능한 조합만 · 새 조작은 하나씩 익히기)
-    //   1페이즈 식사 시간: 숟가락 → 받아치기 → 숟가락 → 폭탄 반사 …  2페이즈 억지로 먹어!: 삼연타 · 리듬 · 받아치기 · 반사
-    //   3페이즈 대폭주: 부메랑 · 강화 리듬 · 소나기 · 반사 · 냄비 · 받아치기
+    // 정해진 순서 (무작위 아님 · 새 조작은 하나씩) — 앞부분이 그 페이즈 필수 이벤트, 뒤는 반복
+    //   1페이즈 식사 시간: 숟가락 → 받아치기 → 폭탄 반사
+    //   2페이즈 억지로 먹어!: (분노 컷신) → 의자 → 삼연타 → 울음 리듬 → 반복
+    //   3페이즈 대폭주: 부메랑 → 소나기 → 반사 → 강화 리듬 → 강화 의자 → 냄비 → 반복
+    // HP 가 문턱에 닿았는데 필수 이벤트가 남았으면: 반복 공격을 건너뛰고 남은 필수 이벤트를 바로 (무적으로 오래 기다리지 않게)
+    const script = this.script();
+    const need = this.mustList();
     let pick: Attack;
-    if (this.rage === 0) {
-      const intro: Attack[] = ['spoon', 'parry', 'reflect'];
-      const loop: Attack[] = ['spoon', 'parry', 'reflect'];
-      pick = this.count < intro.length ? intro[this.count] : loop[(this.count - intro.length) % loop.length];
-    } else if (this.rage === 1) {
-      const order: Attack[] = ['triple', 'rhythm', 'reflect', 'parry', 'triple', 'rhythm'];
-      pick = order[this.count % order.length];
-    } else {
-      const order: Attack[] = ['rhythm', 'boomer', 'reflect', 'pot', 'rain', 'parry', 'rhythm', 'boomer', 'reflect'];
-      pick = order[this.count % order.length];
+    const left = need.filter((x) => !this.phaseSeen.has(x));
+    if (left.length && this.atFloor) pick = script.order.find((x) => left.includes(x)) ?? (left[0] as Attack);
+    else {
+      const all = script.order;
+      const head = script.loopFrom;
+      pick = this.count < all.length ? all[this.count] : all[head + ((this.count - all.length) % (all.length - head))];
     }
     this.count++;
+    this.qtePending = !!MINIGAME_INFO[pick];
     this.lastAttack = pick;
     this.attackLog.push(`${pick}#${this.rage + 1}`);
     // 공격 전 제자리 공중으로 · 처음 나오는 새 공격이면 짧은 안내 뒤에
     this.moveTo(this.homeX, this.hov(), 0.35, 0, (t) => 1 - (1 - t) ** 2);
     this.after(0.4 + this.introduce(pick), () => this.runAttack(pick));
+  }
+
+  /** 이번 페이즈 공격 순서 (그림이 없는 의자는 빠짐) — loopFrom 부터 반복 */
+  private script(): { order: Attack[]; loopFrom: number } {
+    const chair = this.artReady('chair');
+    const f = (xs: Attack[]): Attack[] => xs.filter((x) => x !== 'chair' || chair);
+    if (this.rage === 0) return { order: ['spoon', 'parry', 'reflect', 'spoon', 'parry', 'reflect'], loopFrom: 3 };
+    if (this.rage === 1) {
+      const order = f(['chair', 'triple', 'rhythm', 'parry', 'reflect', 'triple', 'rhythm']);
+      return { order, loopFrom: order.indexOf('parry') };
+    }
+    const order = f(['boomer', 'rain', 'reflect', 'rhythm', 'chair', 'pot', 'boomer', 'parry', 'reflect', 'rain', 'rhythm']);
+    return { order, loopFrom: order.lastIndexOf('boomer') };
+  }
+
+  /** 이번 페이즈 필수 이벤트 (그림이 없는 의자는 빠짐) */
+  private mustList(): string[] {
+    const chair = this.artReady('chair');
+    return (WITCH.mustShow[this.phaseIdx] ?? []).filter((x) => x !== 'chair' || chair);
+  }
+
+  /** HP 가 페이즈 문턱(바닥)에 닿아 더 안 깎이는 중 */
+  get atFloor(): boolean {
+    return !this.phaseDone && this.hp <= this.hpFloor();
+  }
+
+  /** 공격이 끝남: 문턱에서 기다리는 중이면 다음 필수 이벤트를 바로 · 필수가 다 끝났으면 바로 다음 페이즈로 */
+  protected endAttack(cool: number): void {
+    const waiting = this.lastPhase === 'none' && this.hp <= this.floorAt() + 0;
+    super.endAttack(cool);
+    if (this.mode !== 'fight') return;
+    if (waiting && !this.phaseDone) this.cooldown = Math.min(this.cooldown, 0.6);
+    else if (waiting && this.phaseDone) {
+      // 문턱에서 필수 이벤트를 다 봤음 → 바로 다음 페이즈 (한 번 더 때릴 때까지 기다리지 않게)
+      this.after(0.3, () => {
+        if (this.mode === 'fight' && !this.busy) this.damage(2);
+      });
+    }
+  }
+
+  /** 지금 페이즈의 문턱 HP (그 아래로는 필수 이벤트를 다 보기 전에 못 내려감) */
+  private floorAt(): number {
+    const ats: readonly number[] = WITCH.phaseAt;
+    const at = this.rage < ats.length ? ats[this.rage] : WITCH.last.at;
+    return Math.floor(this.def.maxHp * at + 1e-6) + 1;
   }
 
   /** 미니게임 첫 등장: 짧은 안내 팝업 + 전투를 잠깐(1.2초) 멈춤 → 기다릴 시간 */
@@ -369,10 +433,11 @@ export class WitchBattle extends BossBattle {
 
   /** 이번 페이즈에 꼭 나와야 하는 상호작용이 다 나왔는지 */
   get phaseDone(): boolean {
-    return (WITCH.mustShow[this.phaseIdx] ?? []).every((a) => this.phaseSeen.has(a));
+    return this.mustList().every((a) => this.phaseSeen.has(a));
   }
 
   private runAttack(a: Attack): void {
+    this.qtePending = false;
     this.phaseSeen.add(a);
     if (a === 'spoon') this.spoonAttack(1);
     else if (a === 'combo') this.spoonAttack(2);
@@ -388,6 +453,7 @@ export class WitchBattle extends BossBattle {
     else if (a === 'rhythm') this.cryRhythm();
     else if (a === 'slam') this.slam();
     else if (a === 'last') this.lastStand();
+    else if (a === 'chair') this.chairTrap();
     else this.potBlast();
   }
 
@@ -429,6 +495,8 @@ export class WitchBattle extends BossBattle {
 
   /** 기절(어질어질·휘청·지침) 때마다 마녀 머리 위에 ★지금 공격! */
   protected stun(sec: number, mul: number, text: string): void {
+    // HP 가 페이즈 문턱에 닿아 더 깎이지 않는 동안엔 기절을 짧게 (때려도 소용없는 시간을 기다리지 않게 — 남은 필수 이벤트로 바로)
+    if (this.atFloor && this.lastPhase === 'none') sec = Math.min(sec, 0.9);
     super.stun(sec, mul, text);
     this.cue('counter', Math.min(sec, 30));
   }
@@ -1240,11 +1308,7 @@ export class WitchBattle extends BossBattle {
   protected hpFloor(): number {
     let base = super.hpFloor();
     // 이번 페이즈의 상호작용이 다 나오기 전엔 다음 페이즈(3페이즈는 마지막 발악)로 못 넘어감
-    if (!this.phaseDone && this.lastPhase !== 'open' && this.lastPhase !== 'done') {
-      const ats: readonly number[] = WITCH.phaseAt;
-      const at = this.rage < ats.length ? ats[this.rage] : WITCH.last.at;
-      base = Math.max(base, Math.floor(this.def.maxHp * at + 1e-6) + 1); // (180×0.7 = 125.999… 소수 오차 보정)
-    }
+    if (!this.phaseDone && this.lastPhase !== 'open' && this.lastPhase !== 'done') base = Math.max(base, this.floorAt()); // (0.7 배 소수 오차 보정 포함)
     if (this.rage >= 2 && this.lastPhase !== 'open' && this.lastPhase !== 'done') return Math.max(base, 1);
     return base;
   }
@@ -1256,7 +1320,14 @@ export class WitchBattle extends BossBattle {
 
   /** 미니게임 버튼이 떠 있는 동안: 공격·방패·필살 버튼 잠금 */
   get qteBusy(): boolean {
-    return (!!this.parryS && !this.parryS.done) || !!this.rhythmS || !!this.uiPreview;
+    return this.qtePending || (!!this.parryS && !this.parryS.done) || !!this.rhythmS || !!this.chairS || !!this.chopS;
+  }
+
+  /** 신규 연출의 승인 그림이 다 있는지 (없으면 그 연출은 실제 전투에서 건너뜀 — 임시 그림으로 채우지 않음) */
+  artReady(kind: keyof typeof WITCH_EXTRA_ART): boolean {
+    if (this.debugForceArt) return true;
+    const tm = this.host.scene.textures;
+    return WITCH_EXTRA_ART[kind].every((k) => tm.exists(k));
   }
 
   /** 미니게임 동안 화면 터치 점프 막기 */
@@ -1273,9 +1344,15 @@ export class WitchBattle extends BossBattle {
     const p = this.parryS;
     // 받아치기 공격 내내 '받아치기 화면' (기존 버튼 숨김) · 퉤! 버튼은 이유식이 다가올 때만
     if (p && !p.done) return { kind: 'spit', show: this.spitVisible, ready: this.spitVisible && this.time >= p.arrive - WITCH.parry.early };
-    const u = this.uiPreview;
-    if (u?.kind === 'chair') return { kind: 'chair', gauge: u.gauge, left: Math.max(0, u.end - this.time) };
-    if (u?.kind === 'crush') return { kind: 'crush', next: u.next, count: u.count, total: 10, left: Math.max(0, u.end - this.time) };
+    const c = this.chairS;
+    if (c) {
+      const C = WITCH.chair;
+      return { kind: 'chair', stage: c.stage, gauge: c.gauge, left: Math.max(0, c.end - this.time), hold: c.holdAt >= 0 ? Math.min(1, (this.time - c.holdAt) / C.hold) : 0 };
+    }
+    const ch = this.chopS;
+    if (ch && ch.stage !== 'finish') {
+      return { kind: 'chop', stage: ch.stage, gauge: ch.gauge, left: ch.stage === 'cry' ? Math.max(0, ch.cryEnd - this.time) : 0, hold: ch.holdAt >= 0 ? Math.min(1, (this.time - ch.holdAt) / WITCH.chop.hold) : 0 };
+    }
     const r = this.rhythmS;
     if (r) {
       return {
@@ -1298,47 +1375,13 @@ export class WitchBattle extends BossBattle {
   private qteInput(btn: QteBtn, down: boolean): void {
     const state = (this.host.scene as unknown as { state?: string }).state;
     if (state !== 'playing' || this.frozen || this.mode !== 'fight') return;
-    if (this.uiPreview) {
-      if (down) this.previewPress(btn);
-      return;
-    }
     if (btn === 'spit' && down) this.spitPress();
     else if (btn === 'cry') this.cryPress(down);
-  }
-
-  /** (개발 메뉴) 의자 탈출 · 콰직 조작 화면 미리보기 시작 — 그림 대기라 고나·마녀·의자 연출 없이 조작 UI 만 */
-  debugUiPreview(kind: 'chair' | 'crush'): void {
-    this.debugHold = true;
-    this.uiPreview = { kind, gauge: 0.3, count: 0, next: 'L', t0: this.time, end: this.time + (kind === 'chair' ? 4 : 6) };
-    this.banner({ top: '🧪 UI 미리보기', name: kind === 'chair' ? '이유식 의자 탈출 (그림 대기)' : '이유식 콰직! (그림 대기)', desc: kind === 'chair' ? '으아앙!! 연타로 게이지 채우기' : '왼손·오른손 번갈아 누르기', ms: 1400, tone: 'aim' });
-  }
-
-  private previewPress(btn: QteBtn): void {
-    const u = this.uiPreview!;
-    if (u.kind === 'chair' && btn === 'mash') {
-      u.gauge = Math.min(1, u.gauge + 0.08);
-      sound.cry(1);
-      if (u.gauge >= 1) this.endPreview(true);
-    } else if (u.kind === 'crush' && (btn === 'left' || btn === 'right')) {
-      if ((btn === 'left') === (u.next === 'L')) {
-        u.count++;
-        u.next = u.next === 'L' ? 'R' : 'L';
-        sound.splat();
-        if (u.count >= 10) this.endPreview(true);
-      }
-    }
-  }
-
-  private updatePreview(dt: number): void {
-    const u = this.uiPreview;
-    if (!u) return;
-    if (u.kind === 'chair') u.gauge = Math.max(0, u.gauge - 0.12 * dt);
-    if (this.time >= u.end) this.endPreview(false);
-  }
-
-  private endPreview(ok: boolean): void {
-    this.uiPreview = null;
-    this.banner({ top: '🧪 UI 미리보기', name: ok ? '성공!' : '실패', desc: '조작 화면이 일반 전투로 돌아왔어요', ms: 1200, tone: ok ? 'good' : 'aim' });
+    else if (btn === 'mash') {
+      if (this.chairS) this.chairPress(down);
+      else if (this.chopS) this.chopCry(down);
+    } else if (btn === 'chop' && down) this.chopHit();
+    else if (btn === 'final' && down) this.chopFinal();
   }
 
   /** 마녀 얼굴 자리 (스프라이트 칸 66×53 에서 얼굴 가운데 28,27) */
@@ -1679,13 +1722,249 @@ export class WitchBattle extends BossBattle {
     });
   }
 
+  // ───────── ④ 이유식 의자 탈출 (승인 그림: 의자 · 의자에 앉아 우는 고나 — artReady('chair')) ─────────
+  //   '얌전히 앉아서 이유식 먹어!' → 의자에 갇힘 → '으아앙!' 연타(탈출 게이지 · 음파가 커짐)
+  //   → 마녀 숟가락이 입으로 (경고) → 꾸욱 길게 = 강력한 울음 음파 → 의자 부서짐 · 마녀 밀려나 기절 / 실패 = 작은 피해 + 자동 탈출
+
+  private chairTrap(): void {
+    const C = WITCH.chair;
+    const i = Math.max(0, this.phaseIdx - 1);
+    const strong = this.phaseIdx >= 2;
+    this.setPose(5, 0.9);
+    sound.witchLaugh(true);
+    this.floatText(WITCH_CHAIR_LINE, this.bx - 34, this.host.groundY - this.balt - this.fh * this.k - 4, '#ff9ad0');
+    this.showChairArt(true);
+    this.chairS = { stage: 'mash', gauge: 0, end: this.time + 0.6 + C.mash[i], holdAt: -1, strong, taps: 0 };
+    this.telegraph = { kind: 'chair', x: this.host.basePlayerX, y: this.host.groundY - 20, r: 0 };
+  }
+
+  private chairPress(down: boolean): void {
+    const c = this.chairS!;
+    const C = WITCH.chair;
+    if (c.stage === 'mash') {
+      if (!down) return;
+      c.taps++;
+      c.gauge = Math.min(1, c.gauge + C.perTap);
+      sound.cry(c.gauge);
+      this.soundWave(c.gauge * 0.8, false);
+      haptics.play('monsterHit');
+    } else if (down) {
+      c.holdAt = this.time;
+      sound.cry(1);
+    } else c.holdAt = -1; // 일찍 뗌 → 다시 꾸욱
+  }
+
+  private updateChair(dt: number): void {
+    const c = this.chairS;
+    if (!c) return;
+    const C = WITCH.chair;
+    const i = c.strong ? 1 : 0;
+    if (c.stage === 'mash') {
+      c.gauge = Math.max(0, c.gauge - C.decay[i] * dt);
+      if (this.time >= c.end) {
+        // 숟가락이 고나 입으로 다가옴 → 경고 · 꾸욱!
+        c.stage = 'hold';
+        c.end = this.time + C.warn[i];
+        const m = this.mouth();
+        this.setPose(2, C.warn[i]);
+        this.warn(C.warn[i]);
+        this.moveTo(Math.min(this.homeX, m.x + 46), this.hov(-8), C.warn[i] * 0.9);
+        this.floatText('숟가락이 온다! 꾸욱!', m.x - 10, m.y - 26, '#ffe14a');
+      }
+      return;
+    }
+    if (c.holdAt >= 0 && this.time - c.holdAt >= C.hold) return this.endChair(true);
+    if (this.time >= c.end) this.endChair(false);
+  }
+
+  private endChair(ok: boolean): void {
+    const c = this.chairS!;
+    const C = WITCH.chair;
+    this.chairS = null;
+    this.telegraph = null;
+    this.qteLog.push(`chair:${ok ? 'ok' : 'fail'}:${Math.round(c.gauge * 100)}`);
+    this.showChairArt(false);
+    if (ok) {
+      // 강력한 울음 음파 → 의자 부서짐 · 마녀가 뒤로 밀려나 기절
+      this.soundWave(1, true);
+      sound.cry(1);
+      this.host.scene.cameras.main.shake(240, 0.012);
+      this.banner({ top: '😭 으아아앙!!', name: '울음 폭발 탈출!', desc: '마녀가 날아갔어요 — 지금 공격!', ms: 1300, tone: 'good' });
+      this.after(0.3, () => {
+        if (this.mode !== 'fight') return;
+        this.moveTo(this.homeX, this.hov(), 0.35);
+        this.damage(Math.round(C.dmg * (0.6 + c.gauge)));
+        this.stun(C.stun, C.stunMul, '울음 음파에 날아가 어질어질!');
+      });
+    } else {
+      this.banner({ top: '🥄 냠…', name: '억지로 한 입…', desc: '퉤퉤! 겨우 빠져나왔어요', ms: 1200, tone: 'aim' });
+      this.host.hurtPlayer(this.dmg(C.hurt), 'witch-chair');
+      this.moveTo(this.homeX, this.hov(), 0.5);
+      this.finish(1.2);
+    }
+  }
+
+  /** 의자 그림 (승인 에셋 witch-chair · gona-chair-cry) — 받으면 여기서 붙임. 없으면 아무것도 그리지 않음 */
+  private showChairArt(_on: boolean): void {
+    /* 승인 그림 대기 (CLAUDE.md — 임시 그림 없음) */
+  }
+
+  // ───────── ⑤ 후드리챱챱! (마지막 · 승인 그림: 고나 양손 난타 · 거대한 이유식 덩어리 · 이유식 뒤집어쓴 마녀 · 날아가는 모자 — artReady('chop')) ─────────
+  //   '안 돼!! 내 이유식을 거부하다니!!' → 거대한 덩어리 소환 → '챱챱!' 연타(때릴 때마다 덩어리 출렁 · 초록 방울 · 챱/퍽/찰박)
+  //   → 60% 마녀 방해 '내 이유식에 무슨 짓이야!!!' → '으아앙!' 꾸욱 = 음파로 밀어냄(실패해도 짧게 다시) → 100% '후드리챱챱!!!' 한 번 → 피니시
+
+  private chopFinale(): void {
+    this.lastPhase = 'chop';
+    this.busy = true;
+    this.moveTo(this.homeX, this.hov(), 0.3);
+    this.talk([WITCH_LAST_LINE], () => {
+      sound.rage();
+      this.host.scene.cameras.main.shake(300, 0.012);
+      this.setPose(5, 0.8);
+      this.showChopArt('summon');
+      this.banner({ top: '🥣 고나의 대반란!', name: '후드리챱챱!', desc: '「챱챱!」 을 마구 눌러서 이유식을 후드려 패기!', ms: 1600, tone: 'special' });
+      this.chopS = { stage: 'mash', gauge: 0, cryEnd: 0, holdAt: -1, interrupted: false, taps: 0, fails: 0 };
+      this.telegraph = { kind: 'last', x: this.host.basePlayerX, y: this.host.groundY - 20, r: 0 };
+    });
+  }
+
+  private chopHit(): void {
+    const c = this.chopS;
+    if (!c || c.stage !== 'mash') return;
+    const K = WITCH.chop;
+    c.taps++;
+    c.gauge = Math.min(1, c.gauge + K.perTap);
+    sound.chop(c.taps);
+    haptics.play('monsterHit');
+    this.showChopArt('hit');
+    // 초록 이유식 방울이 튐 (작은 픽셀 효과)
+    const scene = this.host.scene;
+    const m = this.mouth();
+    const x = m.x + 16;
+    const y = this.host.groundY - 14;
+    for (let i = 0; i < (perf.low ? 2 : 4); i++) {
+      const d = this.tmp(scene.add.image(x, y, 'witch-drop').setDepth(11.4));
+      scene.tweens.add({ targets: d, x: x + (Math.random() - 0.3) * 40, y: y - 10 - Math.random() * 26, alpha: 0, duration: 380, ease: 'Quad.Out', onComplete: () => d.destroy() });
+    }
+    if (c.taps % 2 === 0) this.floatText(['챱!', '퍽!', '찰박!'][(c.taps / 2) % 3], x - 6 + (Math.random() - 0.5) * 12, y - 20, '#b8ff7a');
+    scene.cameras.main.shake(50, 0.003);
+    if (!c.interrupted && c.gauge >= K.interruptAt) this.chopInterrupt();
+    else if (c.gauge >= 1) this.chopReady();
+  }
+
+  /** 60%: 마녀 방해 — 거대한 숟가락으로 다가옴 → '으아앙!' 꾸욱 */
+  private chopInterrupt(): void {
+    const c = this.chopS!;
+    const K = WITCH.chop;
+    c.stage = 'cry';
+    c.holdAt = -1;
+    c.cryEnd = this.time + K.cryWindow;
+    const m = this.mouth();
+    sound.rage();
+    this.setPose(2, K.cryWindow);
+    this.warn(K.cryWindow);
+    this.floatText(WITCH_CHOP_INTERRUPT, this.bx - 40, this.host.groundY - this.balt - this.fh * this.k - 4, '#ff9ad0');
+    this.moveTo(Math.min(this.homeX, m.x + 50), this.hov(-6), K.cryWindow * 0.8);
+  }
+
+  private chopCry(down: boolean): void {
+    const c = this.chopS;
+    if (!c || c.stage !== 'cry') return;
+    if (down) {
+      c.holdAt = this.time;
+      sound.cry(0.6);
+    } else c.holdAt = -1;
+  }
+
+  private chopReady(): void {
+    const c = this.chopS!;
+    c.stage = 'final';
+    this.host.scene.cameras.main.flash(160, 255, 250, 200);
+    this.banner({ top: '💥 게이지 가득!', name: '후드리챱챱!!!', desc: '마지막 버튼을 한 번!', ms: 1800, tone: 'special' });
+  }
+
+  private chopFinal(): void {
+    const c = this.chopS;
+    if (!c || c.stage !== 'final') return;
+    c.stage = 'finish';
+    this.qteLog.push(`chop:win:${c.fails}`);
+    const scene = this.host.scene;
+    this.showChopArt('rush');
+    // 초고속 난타 (0.9초) → 마지막 한 방에 이유식이 마녀 얼굴로
+    for (let i = 0; i < 9; i++) {
+      this.after(i * 0.1, () => {
+        sound.chop(i);
+        scene.cameras.main.shake(60, 0.005);
+        const m = this.mouth();
+        for (let j = 0; j < (perf.low ? 2 : 3); j++) {
+          const d = this.tmp(scene.add.image(m.x + 16, this.host.groundY - 14, 'witch-drop').setDepth(11.4));
+          scene.tweens.add({ targets: d, x: d.x + (Math.random() - 0.5) * 60, y: d.y - 14 - Math.random() * 30, alpha: 0, duration: 360, onComplete: () => d.destroy() });
+        }
+      }, true);
+    }
+    this.after(1.0, () => {
+      sound.spit(true);
+      scene.cameras.main.shake(260, 0.014);
+      this.showChopArt('launch');
+      this.faceSplat(true);
+      this.setPose(4, 1.2);
+    }, true);
+    this.after(1.6, () => {
+      this.chopS = null;
+      this.telegraph = null;
+      this.chopped = true;
+      this.lastPhase = 'done';
+      this.hp = 1;
+      this.damage(5);
+    }, true);
+  }
+
+  private updateChop(_dt: number): void {
+    const c = this.chopS;
+    if (!c || c.stage !== 'cry') return;
+    const K = WITCH.chop;
+    if (c.holdAt >= 0 && this.time - c.holdAt >= K.hold) {
+      // 울음 음파로 밀어냄 → 기절 → 다시 난타
+      c.stage = 'mash';
+      c.interrupted = true;
+      c.holdAt = -1;
+      this.soundWave(1, true);
+      sound.cry(1);
+      this.host.scene.cameras.main.shake(200, 0.01);
+      this.qteLog.push('chop:cry:ok');
+      this.after(0.3, () => {
+        this.moveTo(this.homeX, this.hov(), 0.35);
+        this.setPose(4, 1.4);
+        this.floatText('으악!', this.bx, this.host.groundY - this.balt - this.fh * this.k, '#e2b8ff');
+        this.banner({ top: '😭 으아앙!', name: '마녀가 날아갔어요!', desc: '다시 「챱챱!」', ms: 1100, tone: 'good' });
+      }, true);
+      return;
+    }
+    if (this.time >= c.cryEnd) {
+      // 실패: 작은 피해 → 잠깐 뒤 다시 방해 (게임 오버 없음)
+      c.fails++;
+      c.holdAt = -1;
+      this.qteLog.push('chop:cry:fail');
+      this.host.hurtPlayer(this.dmg(K.cryHurt), 'witch-chop');
+      this.banner({ top: '🥄 앗!', name: '숟가락에 맞았어요', desc: '이번엔 「으아앙!」 을 꾸욱 길게!', ms: 1100, tone: 'aim' });
+      c.cryEnd = this.time + K.retry + K.cryWindow;
+    }
+  }
+
+  /** 후드리챱챱 그림 (승인 에셋 gona-chop · giant-goo · witch-goo-face · witch-hat) — 받으면 여기서 붙임. 없으면 그리지 않음 */
+  private showChopArt(_step: 'summon' | 'hit' | 'rush' | 'launch'): void {
+    /* 승인 그림 대기 (CLAUDE.md — 임시 그림 없음) */
+  }
+
   private clearMinigames(): void {
     this.parryS?.s.destroy();
     this.parryS = null;
     this.reflectS?.s.destroy();
     this.reflectS = null;
     this.rhythmS = null;
-    this.uiPreview = null;
+    this.qtePending = false;
+    this.chairS = null;
+    this.chopS = null;
     this.faceGoo?.s.destroy();
     this.faceGoo = null;
   }
@@ -1700,7 +1979,8 @@ export class WitchBattle extends BossBattle {
     this.updateParry();
     this.updateReflect();
     this.updateRhythm();
-    this.updatePreview(dt);
+    this.updateChair(dt);
+    this.updateChop(dt);
     if (this.faceGoo) {
       // 얼굴에 붙은 이유식: 마녀를 따라다니다 흘러내림
       const f = this.face();
@@ -1812,6 +2092,36 @@ export class WitchBattle extends BossBattle {
     this.after(0.35 + this.introduce(a), () => this.runAttack(a));
   }
 
+  /** (테스트) 이유식 의자 탈출 바로 (2 · 3페이즈 강화형) — 그림이 없어도 흐름 확인용 */
+  debugChair(p: 2 | 3): void {
+    this.debugForceArt = true;
+    this.rage = (p - 1) as 1 | 2;
+    this.applyTint();
+    this.debugAttack('chair');
+  }
+
+  /** (테스트) 후드리챱챱 바로: mash = 처음부터(대사 포함) · cry = 60% 마녀 방해부터 · final = 게이지 가득(마지막 버튼) */
+  debugChop(from: 'mash' | 'cry' | 'final'): void {
+    this.debugSkipIntro();
+    this.debugForceArt = true;
+    this.debugHold = true;
+    this.rage = 2;
+    this.applyTint();
+    this.debugMustDone();
+    this.hp = Math.max(1, Math.floor(this.def.maxHp * WITCH.last.at) - 1);
+    this.busy = true;
+    this.cooldown = 99;
+    if (from === 'mash') {
+      this.attackLog.push('chop#test');
+      this.chopFinale();
+      return;
+    }
+    this.lastPhase = 'chop';
+    this.lastTalked = true;
+    this.chopS = { stage: 'mash', gauge: from === 'cry' ? WITCH.chop.interruptAt - 0.01 : 0.99, cryEnd: 0, holdAt: -1, interrupted: from === 'final', taps: 0, fails: 0 };
+    this.chopHit();
+  }
+
   /** (테스트) 바로 처치 (마지막 발악 건너뜀) → 패배 컷신 → 엔딩 */
   debugKill(): void {
     this.debugSkipIntro();
@@ -1836,6 +2146,15 @@ export class WitchBattle extends BossBattle {
   // ───────────────────────── 패배 ─────────────────────────
 
   protected defeatLines(): string[] {
+    if (this.chopped) {
+      // 후드리챱챱으로 끝: 마지막 대사 → 고나 '에퉤!'
+      bus.once(EV.bossTalkDone, () => {
+        const h = this.host.playerHead();
+        this.floatText('에퉤!', h.x - 6, h.y - 18, '#b8ff7a');
+        sound.spit(false);
+      });
+      return [WITCH_CHOP_DEFEAT];
+    }
     return WITCH_DEFEAT_LINES;
   }
 
