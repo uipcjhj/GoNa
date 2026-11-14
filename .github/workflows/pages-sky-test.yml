@@ -1,0 +1,94 @@
+# GONA's Sky Adventure 공개 테스트판 배포 (sky-test 브랜치 전용)
+#   기존 pages.yml 과 같은 방식으로 main(정식 /GoNa/) + dev(/GoNa/dev/) 를 그대로 빌드·검사하고,
+#   sky-test 브랜치의 미리 빌드된 파일을 /GoNa/sky-test/ 에만 추가해서 배포함.
+#   정식 릴리스 태그 작업은 하지 않음. 검사가 하나라도 실패하면 배포하지 않음(지금 사이트 유지).
+name: Pages + Sky test (Production + Development + /sky-test/)
+
+on:
+  push:
+    branches: [sky-test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout production (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: prod
+      - name: Checkout sky test (sky-test · prebuilt static files)
+        uses: actions/checkout@v4
+        with:
+          ref: sky-test
+          path: skytest
+      - name: Checkout development (dev)
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: devsrc
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            prod/package-lock.json
+            devsrc/package-lock.json
+      - name: Build production (main)
+        working-directory: prod
+        run: |
+          npm ci
+          npm run build
+      - name: Build development (dev)
+        working-directory: devsrc
+        run: |
+          npm ci
+          SHORT=$(git rev-parse --short=7 HEAD)
+          WHEN=$(TZ=Asia/Seoul date '+%m-%d %H:%M')
+          VITE_BUILD_LABEL="🧪 개발 테스트 · ${SHORT} · ${WHEN}" npm run build:dev
+      - name: Assemble site (site/ = production · site/dev/ = development)
+        run: |
+          mkdir -p site
+          cp -R prod/dist/. site/
+          rm -rf site/dev
+          mkdir -p site/dev
+          cp -R devsrc/dist/. site/dev/
+          # 개발 사이트를 홈 화면에 추가하면 이름이 'GONA dev' (정식 'GONA' 와 구분)
+          sed -i 's/"short_name": "GONA"/"short_name": "GONA dev"/' site/dev/manifest.webmanifest
+          sed -i 's/name="apple-mobile-web-app-title" content="GONA"/name="apple-mobile-web-app-title" content="GONA dev"/' site/dev/index.html
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
+          printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
+          touch site/.nojekyll
+          # 공개 테스트판 (GONA's Sky Adventure BETA) — 정식·개발 파일은 건드리지 않고 sky-test/ 폴더만 추가
+          test ! -e site/sky-test
+          mkdir -p site/sky-test
+          cp -R skytest/sky-test/. site/sky-test/
+          test -f site/sky-test/index.html
+      - name: Verify (assets present · no dev tools in production)
+        run: node devsrc/tools/verify-site.cjs site prod devsrc
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
