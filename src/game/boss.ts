@@ -220,8 +220,12 @@ export const WITCH_EXTRA_SHEETS: Record<string, { url: string; fw: number; fh: n
   'witch-chair': { url: 'assets/boss/witch-chair.png', fw: 64, fh: 61, frames: 4 },
   'gona-chair-cry': { url: 'assets/boss/gona-chair-cry.png', fw: 63, fh: 62, frames: 4 },
   'gona-chop': { url: 'assets/boss/gona-chop.png', fw: 64, fh: 45, frames: 4 },
+  /** 후드리챱챱 방해 때 우는 고나 (gona-chop 준비 자세 + gona-chair-cry 우는 얼굴 — tools/art/gona_chop_cry.py) */
+  'gona-chop-cry': { url: 'assets/boss/gona-chop-cry.png', fw: 64, fh: 45, frames: 1 },
   'giant-goo': { url: 'assets/boss/giant-goo.png', fw: 69, fh: 44, frames: 4 },
   'witch-goo-face': { url: 'assets/boss/witch-goo-face.png', fw: 58, fh: 42, frames: 3 },
+  /** 모자가 날아간 뒤 (witch-goo-face 에서 모자만 지움 — tools/art/witch_hatless.py) */
+  'witch-goo-face-nohat': { url: 'assets/boss/witch-goo-face-nohat.png', fw: 58, fh: 42, frames: 3 },
   'witch-hat': { url: 'assets/boss/witch-hat.png', fw: 30, fh: 26, frames: 5 },
 };
 

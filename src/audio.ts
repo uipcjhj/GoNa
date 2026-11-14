@@ -963,6 +963,44 @@ class Sound {
     this.tone(f, 0.06, 'square', 0.07, 0.03);
   }
 
+  /** 짧은 음성 효과 (방글할매 웃음·노래 — 새로 만든 음원 · 효과음 길로 재생: BGM 은 그대로 · 음소거 따름) */
+  private voiceBufs = new Map<string, AudioBuffer | 'loading' | 'fail'>();
+  private voiceSrc: AudioBufferSourceNode | null = null;
+  /** (검증용) 마지막으로 재생한 음성 */
+  lastVoice = '';
+  preloadVoice(name: 'bangeul-laugh' | 'bangeul-song'): void {
+    if (!this.ctx || this.voiceBufs.has(name)) return;
+    const ctx = this.ctx;
+    this.voiceBufs.set(name, 'loading');
+    fetch(AUDIO_DIR + name + '.mp3')
+      .then((r) => r.arrayBuffer())
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => this.voiceBufs.set(name, buf))
+      .catch(() => this.voiceBufs.set(name, 'fail'));
+  }
+  /** 재생 (아직 못 읽었으면 false → 부른 쪽에서 종소리만) · 이전 음성은 멈춤 (겹치지 않게) */
+  voice(name: 'bangeul-laugh' | 'bangeul-song', vol = 0.55): boolean {
+    const buf = this.voiceBufs.get(name);
+    if (!this.ctx || !this.sfxBus || !(buf instanceof AudioBuffer)) {
+      this.preloadVoice(name);
+      return false;
+    }
+    try {
+      this.voiceSrc?.stop();
+    } catch {
+      /* 이미 끝남 */
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = vol;
+    src.connect(g).connect(this.sfxBus);
+    src.start();
+    this.voiceSrc = src;
+    this.lastVoice = name;
+    return true;
+  }
+
   /** 방글할매 노래 음파 한 번 (목소리 아님 — 반짝이는 종소리 + 둥근 울림 · n 번째일수록 조금 높게) */
   bangeulWave(n = 1): void {
     const f = [hz('C6'), hz('E6'), hz('G6')][(n - 1) % 3];

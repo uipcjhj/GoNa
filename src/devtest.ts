@@ -52,21 +52,21 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-attacks', '38. 최종 보스 공격 패턴별 테스트 (A~E · 신규 공격 버튼)'],
   ['witch-ending', '39. 최종 보스 처치 → 패배 컷신 → 가족 엔딩 연결'],
   ['witch-shield', '40. 방패 방어 공격: 숟가락 내려치기 (🛡방패!)'],
-  ['witch-chair', '41. 이유식 의자 탈출 (직접 · 2페이즈 → 3페이즈 강화 · 그림 대기 — 흐름만)'],
+  ['witch-chair', '41. 이유식 의자 탈출 (직접 · 2페이즈 → 3페이즈 강화)'],
   ['witch-chair-ok', '42. 이유식 의자 연타 → 꾸욱 → 탈출 성공 (자동 · 눈물·금·파편)'],
-  ['witch-chair-fail', '43. 울음 폭발 탈출 실패 (안 누름 → 작은 피해 · 자동 탈출 · 그림 대기)'],
+  ['witch-chair-fail', '43. 울음 폭발 탈출 실패 (안 누름 → 작은 피해 · 자동 탈출)'],
   ['witch-jump', '44. 점프 회피 공격 모음 (낮은 숟가락 · 통통 · 삼연타 · 소나기 · 냄비)'],
   ['witch-stay', '45. 가만히 있기 공격 모음 (높은 숟가락 · 숟가락 왕복 귀환)'],
   ['witch-size', '46. 마녀 크기 변경 전후 비교 (1.6배 ↔ 1.2배 버튼)'],
-  ['witch-chop', '47. 후드리챱챱! 난타 (처음부터 → 방해 → 피니시 → 엔딩 · 그림 대기 — 흐름만)'],
+  ['witch-chop', '47. 후드리챱챱! 난타 (처음부터 → 방해 → 피니시 → 엔딩)'],
   ['witch-full', '48. 1~3페이즈 연속 플레이 (처음부터 끝까지 · 고나 무적 아님)'],
   ['witch-last', '49. (그림이 없을 때의 대체) 마지막 발악 → 처치 → 엔딩 · 실제 마지막은 후드리챱챱'],
   ['witch-run3', '50. 3페이즈 연속 플레이 (35%부터)'],
   ['witch-parry', '51. ① 이유식 받아치기 (퉤! 타이밍)'],
   ['witch-rhythm', '52. ② 으아앙! 울음 리듬 배틀 (2페이즈 → 3페이즈 빠른 판)'],
   ['witch-reflect', '53. ③ 이유식 폭탄 방패 반사'],
-  ['witch-chop-cry', '54. 후드리챱챱 중 마녀 방해 (으아앙! 꾸욱 · 그림 대기)'],
-  ['witch-chop-final', '55. 최종 후드리챱챱!!! 피니시 → 패배 → 가족 엔딩'],
+  ['witch-chop-cry', '54. 후드리챱챱 중 마녀 방해 (우는 고나 · 양옆 눈물 · 으아앙! 꾸욱)'],
+  ['witch-chop-final', '55. 최종 후드리챱챱!!! 피니시 → 모자 날아감(모자 없는 마녀) → 패배 → 가족 엔딩'],
   ['bangeul-art', '56. 방글할매 스페셜 — 그림 미리보기 (방글할매 · 음파 · 보호막 · GONA 쿠키 · HUD · 버튼)'],
   ['bangeul-spawn', '57. GONA 글자 쿠키 등장·획득 (빨리 나오게 · 아직 없는 글자 우선)'],
   ['bangeul-hud', '58. GONA 수집 HUD (G·O 모은 상태에서 시작)'],
@@ -408,7 +408,7 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
         'witch-rhythm': [['rhythm', 1], ['rhythm', 2]],
         'witch-reflect': [['reflect', 0], ['reflect', 1], ['reflect', 2]],
       };
-      // 의자 탈출 · 후드리챱챱: 승인 그림이 아직 없어 '흐름만' 실행 (그림 자리는 비워 둠 · 임시 그림 없음)
+      // 의자 탈출 · 후드리챱챱 (승인 그림 사용)
       if (id.startsWith('witch-chair') || id.startsWith('witch-chop')) {
         const qte = (btn: string, down = true): void => {
           bus.emit(EV.qteInput, { btn, down });
@@ -441,7 +441,7 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
             bt.debugChop(id === 'witch-chop' ? 'mash' : id === 'witch-chop-cry' ? 'cry' : 'final');
           }
         });
-        say(id.startsWith('witch-chair') ? '의자·우는 고나 그림 대기 — 조작·판정 흐름만 (마녀·숟가락·음파는 기존 그림·효과)' : '고나 난타·이유식 덩어리 그림 대기 — 조작·판정 흐름만');
+        say(id.startsWith('witch-chair') ? '의자 탈출 — 으아앙! 연타 → 숟가락이 오면 꾸욱' : id === 'witch-chop-cry' ? '마녀 방해 — 고나가 엉엉 (우는 얼굴 · 양옆 눈물) → 으아앙! 꾸욱' : '후드리챱챱 — 마지막 한 방 → 모자가 날아가고 모자 없는 마녀 → 패배');
         break;
       }
       if (sets[id]) {

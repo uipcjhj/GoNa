@@ -180,13 +180,15 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   await G(() => window.__gona.scene.getScene('Game').resumeGame());
   check(`${orient}: pause freezes the minigame (battle time and goo stop)`, p1.state === 'paused' && Math.abs(p1.t - p0.t) < 0.05 && p1.x === p0.x, JSON.stringify({ p0, p1 }));
   await idle();
-  // ⑤ 후드리챱챱 (그림 대기 — 흐름만): 방해 실패 → 작은 피해 · 다시 → 꾸욱 성공 → 챱챱 연타 → 후드리챱챱!!! → 패배 대사 → 엔딩
+  // ⑤ 후드리챱챱 (승인 그림): 방해 실패 → 작은 피해 · 다시 → 꾸욱 성공 → 챱챱 연타 → 후드리챱챱!!! → 패배 대사 → 엔딩
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hearts = 3; g.hp = 100; g.invincibleUntil = 0; });
   const k0 = await snap();
   await G(() => window.__gona.scene.getScene('Game').battle.debugChop('cry'));
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.chopS?.stage === 'cry', null, { timeout: 6000 });
   await page.waitForTimeout(150);
   const uCry = await ui();
+  const cryArt = await G(() => { const b = window.__gona.scene.getScene('Game').battle; return { key: b.chopArt?.gona.texture.key, tears: b.host.scene.children.list.filter((o) => o.texture?.key === 'fx-tear').length }; });
+  check(`${orient}: 후드리챱챱 interrupt — GONA cries (crying-face sprite) with tears on both sides`, cryArt.key === 'gona-chop-cry' && cryArt.tears >= 2, JSON.stringify(cryArt));
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle.qteLog.slice(-1)[0] === 'chop:cry:fail', null, { timeout: 8000 }).catch(() => {});
   const k1 = await snap();
   check(`${orient}: 후드리챱챱 witch interrupt — 으아앙! 꾸욱 only · missing it = small damage, retry (no game over)`, uCry === '.chop-box .bt-mash' && k1.log === 'chop:cry:fail' && k1.gona < k0.gona && k0.gona - k1.gona <= 10, JSON.stringify({ uCry, k0, k1 }));
@@ -202,6 +204,10 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   await page.waitForTimeout(150);
   const uFinal = await ui();
   await G(() => window.__press('.bt-final'));
+  await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').battle.gooFace, null, { timeout: 6000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const hat = await G(() => { const b = window.__gona.scene.getScene('Game').battle; return { face: b.gooFace?.texture.key, witchVisible: b.boss.visible, hats: b.host.scene.children.list.filter((o) => o.visible && o.alpha > 0 && o.texture?.key === 'witch-hat').length }; });
+  check(`${orient}: hat flies off → hatless goo-covered witch (one hat only, on the floor)`, hat.face === 'witch-goo-face-nohat' && !hat.witchVisible && hat.hats === 1, JSON.stringify(hat));
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2600);
   const k3 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { mode: g.battle?.mode, log: g.battle?.qteLog.slice(-1)[0], talk: document.querySelector('.boss-talk .pr-shown')?.textContent + (document.querySelector('.boss-talk .pr-rest')?.textContent ?? '') }; });

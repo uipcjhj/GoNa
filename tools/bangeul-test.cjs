@@ -135,6 +135,28 @@ const until = (fn, t = 20000) => page.waitForFunction(fn, null, { timeout: t }).
     await LOG("l === 'inv-end'");
     const b1 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { hp: g.hearts * 100 + g.hp, kills: g.kills, dmg: g.damageLog.slice(-3) }; });
     check(`${orient}: monsters touching GONA during invincibility bounce away (no damage)`, b1.hp === b0.hp && b1.kills > b0.kills, JSON.stringify({ b0, b1 }));
+    // 9) 뽀뽀괴물 이후 GONA LOVE 8칸: 순서대로 모아 완성 → 소환 버튼
+    await page.goto(URL + '?test=gona-love');
+    await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.state === 'playing', null, { timeout: 40000 });
+    const tl = Date.now();
+    while (Date.now() - tl < 30000) {
+      const done = await G(() => { const g = window.__gona.scene.getScene('Game'); const e = g.entities.find((x) => x.letter && !x.done && x.alt > 10 && x.x - g.playerX < 40 && x.x - g.playerX > 10); if (e && g.grounded) g.pressJump(); return g.debugBangeul().ready; });
+      if (done) break;
+      await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(500);
+    const lv = await G(() => ({ b: window.__gona.scene.getScene('Game').debugBangeul(), slots: [...document.querySelectorAll('.gona-slot')].map((x) => x.alt + (x.classList.contains('on') ? '1' : '0')).join(''), imgs: [...document.querySelectorAll('.gona-slot')].every((x) => x.complete && x.naturalWidth === 32), btn: !document.querySelector('.summon-btn').classList.contains('hidden') }));
+    await shot('10-love');
+    check(`${orient}: after 뽀뽀괴물 GONA LOVE — 8 cookie slots (L·V·E images) filled in order → summon button`, lv.b.letters === 'gonalove:8' && lv.slots === 'G1O1N1A1L1O1V1E1' && lv.imgs && lv.btn, JSON.stringify(lv));
+    // 보관: 완성한 소환 기회는 누를 때까지 그대로 (10초 뒤에도)
+    await page.waitForTimeout(4000);
+    const keep = await G(() => window.__gona.scene.getScene('Game').debugBangeul());
+    check(`${orient}: completed summon charge is kept until the player uses it`, keep.ready && !keep.active && !keep.log.slice(keep.log.lastIndexOf('get:e')).some((l) => l.startsWith('spawn:')), JSON.stringify(keep));
+    // 10) 황금 소환: 폭발·고리 그림 · 웃음·노래 음원 재생 · BGM 하나
+    await page.goto(URL + '?test=bangeul-gold');
+    await LOG("l === 'exit'");
+    const gold = await G(() => { const g = window.__gona.scene.getScene('Game'); const tm = g.textures; return { log: g.debugBangeul().log, fx: tm.exists('bangeul-fx-burst') && tm.exists('bangeul-fx-ring'), sheets: ['idle', 'laugh', 'song', 'appear', 'exit'].every((k) => tm.exists('bangeul-' + k)), bgm: window.__sound?.bgmDebug?.().active ?? -1 }; });
+    check(`${orient}: golden summon — burst/ring art, new laugh + song audio played (once each), sprites loaded`, gold.fx && gold.sheets && gold.bgm <= 1 && gold.log.filter((l) => l === 'voice:laugh').length === 1 && gold.log.filter((l) => l === 'voice:song').length === 1, JSON.stringify(gold));
     check(`${orient}: no page errors`, errs.length === 0, errs.join(' | '));
     await ctx.close();
   }

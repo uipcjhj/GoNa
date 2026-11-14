@@ -17,7 +17,7 @@ export type Letter = 'g' | 'o' | 'n' | 'a' | 'l' | 'v' | 'e';
 export const LETTERS: Letter[] = ['g', 'o', 'n', 'a'];
 /** 뽀뽀괴물 이후 목표 (L·V·E 쿠키 그림을 받으면 켜짐 — 없으면 GONA 를 다시 모음) */
 export const LOVE_LETTERS: Letter[] = ['l', 'v', 'e'];
-export const LETTER_COLOR: Record<Letter, string> = { g: '#ff8fb8', o: '#ffc94a', n: '#8fe36a', a: '#7fc8ff', l: '#ff8fb8', v: '#c9a2ff', e: '#7fc8ff' };
+export const LETTER_COLOR: Record<Letter, string> = { g: '#ff8fb8', o: '#ffc94a', n: '#8fe36a', a: '#7fc8ff', l: '#ff8fb8', v: '#8fe36a', e: '#7fc8ff' };
 
 export const BANGEUL = {
   /** 글자 쿠키: 첫 등장(초) · 그다음 간격 [최소, 최대] · 아직 없는 글자가 나올 확률 */
@@ -44,6 +44,11 @@ export const BANGEUL_SHEETS: Record<string, { url: string; fw: number; fh: numbe
   'bangeul-exit': { url: 'assets/bangeul/bangeul-exit.png', fw: 64, fh: 58 },
   'bangeul-wave': { url: 'assets/bangeul/bangeul-wave.png', fw: 51, fh: 55 },
   'bangeul-shield': { url: 'assets/bangeul/bangeul-shield.png', fw: 59, fh: 44 },
+};
+/** 황금 효과 그림 (레퍼런스 '주요 이펙트 요소'에서 정리 — tools/art/bangeul_from_concept.py) */
+export const BANGEUL_FX: Record<string, string> = {
+  'bangeul-fx-ring': 'assets/bangeul/bangeul-fx-ring.png',
+  'bangeul-fx-burst': 'assets/bangeul/bangeul-fx-burst.png',
 };
 /** 게임 안 글자 쿠키 (20×20) · HUD 는 32×32 (DOM) */
 export const COOKIE_TEX = (l: Letter): string => `gona-cookie-${l}-s`;
@@ -150,6 +155,8 @@ export class BangeulSpecial {
       const word = this.goal === 'gonalove' ? 'GONA LOVE' : 'GONA';
       this.host.banner({ top: `✨ ${word} 완성! ✨`, name: '방글할매 소환 가능!', desc: '원할 때 「방글할매 소환!」 버튼', ms: 1800, tone: 'special' });
       sound.reflect();
+      sound.preloadVoice('bangeul-laugh');
+      sound.preloadVoice('bangeul-song');
     }
     this.host.changed();
   }
@@ -186,7 +193,14 @@ export class BangeulSpecial {
     this.host.changed();
     // 따뜻한 황금빛 번쩍 → 방글할매가 고나 앞(오른쪽)에 반짝이며 등장 (노래가 몬스터 쪽으로)
     scene.cameras.main.flash(260, 255, 214, 120);
+    sound.preloadVoice('bangeul-laugh');
+    sound.preloadVoice('bangeul-song');
     const x = Math.min(this.host.W - 22, f.x + 34);
+    // 황금빛 폭발 (빛살이 퍼지며 사라짐)
+    if (scene.textures.exists('bangeul-fx-burst')) {
+      const b = scene.add.image(x, this.host.groundY - 2, 'bangeul-fx-burst').setOrigin(0.5, 1).setDepth(10.35).setScale(0.6).setAlpha(1);
+      scene.tweens.add({ targets: b, scale: 1.8, alpha: 0, duration: 700, ease: 'Quad.Out', onComplete: () => b.destroy() });
+    }
     const spr = scene.add.sprite(x, this.host.groundY + 1, 'bangeul-appear', 0).setOrigin(0.5, 1).setDepth(10.4).setScale(BANGEUL.scale);
     this.run = { t: 0, step: 'appear', spr, pulses: 0, waves: [] };
     this.startShield(); // 소환 중에도 보호 (보호막은 노래가 끝나면 5초 카운트)
@@ -209,6 +223,7 @@ export class BangeulSpecial {
       if (r.step !== 'laugh') {
         r.step = 'laugh';
         this.host.floatText('아하하하하하!!!', s.x - 10, s.y - s.displayHeight - 2, '#ffe14a');
+        if (sound.voice('bangeul-laugh')) this.log.push('voice:laugh');
       }
       s.setTexture('bangeul-laugh', Math.floor(r.t * 8) % 4);
       s.y = this.host.groundY + 1 - (Math.floor(r.t * 8) % 2); // 웃음에 몸이 들썩
@@ -218,6 +233,7 @@ export class BangeulSpecial {
         r.step = 'song';
         s.y = this.host.groundY + 1;
         this.host.floatText('♪ 랄라~ 라라라~ ♪', s.x - 14, s.y - s.displayHeight - 2, '#ffe14a');
+        if (sound.voice('bangeul-song')) this.log.push('voice:song');
       }
       s.setTexture('bangeul-song', Math.floor(r.t * 6) % 4);
       // 노래 음표 광역 2번
@@ -228,6 +244,12 @@ export class BangeulSpecial {
         r.step = 'exit';
         // 고나에게 황금 보호막 5초 (퇴장한 뒤에도 유지)
         this.invT = Math.max(this.invT, BANGEUL.invSec);
+        // 황금 고리가 고나를 감싸며 보호막으로
+        const pf = this.host.playerFoot();
+        if (this.host.scene.textures.exists('bangeul-fx-ring')) {
+          const ring = this.host.scene.add.image(pf.x, pf.y - pf.h / 2, 'bangeul-fx-ring').setDepth(10.65).setScale(1.6).setAlpha(0.2);
+          this.host.scene.tweens.add({ targets: ring, scale: 0.9, alpha: 1, duration: 260, ease: 'Quad.In', yoyo: true, hold: 120, onComplete: () => ring.destroy() });
+        }
         this.host.sparkle(perf.low ? 6 : 12, this.host.playerFoot().x, this.host.playerFoot().y - 18);
         this.host.floatText('또 보자~ 하하!', s.x - 8, s.y - s.displayHeight - 2, '#ffe14a');
       }
@@ -262,8 +284,26 @@ export class BangeulSpecial {
     sound.bangeulWave(r.pulses);
     scene.cameras.main.shake(90, 0.004);
     // 음표가 퍼짐 (작은 글자 효과 · 화면을 덮지 않게 2~3개)
-    const notes = r.pulses === 1 ? ['♪'] : ['♪', '♫', '♪'];
-    notes.forEach((n, i) => this.host.floatText(n, s.x + 10 + i * 12 + r.pulses * 4, y - 6 - i * 5, '#ffe14a'));
+    // 반짝이는 황금 음표가 물결치며 몬스터 쪽으로 (레퍼런스의 음표 물결 · 작은 효과)
+    const notes = r.pulses === 1 ? ['♪', '♫'] : ['♪', '♫', '♪', '♫'];
+    notes.forEach((n, i) => {
+      const t = scene.add
+        .text(s.x + 8 + i * 6, y - 4 - (i % 2) * 6, n, { fontFamily: 'Galmuri11, monospace', fontSize: '10px', color: '#ffd84a', stroke: '#7a4a06', strokeThickness: 2, resolution: 5 })
+        .setOrigin(0.5)
+        .setDepth(10.55);
+      const y0 = t.y;
+      const ph = i * 1.3;
+      scene.tweens.add({
+        targets: t,
+        x: t.x + 70 + i * 8,
+        alpha: { from: 1, to: 0 },
+        duration: 900 + i * 80,
+        delay: i * 70,
+        ease: 'Sine.Out',
+        onUpdate: (tw) => t.setY(y0 + Math.sin(tw.progress * 7 + ph) * 4),
+        onComplete: () => t.destroy(),
+      });
+    });
     this.host.sparkle(perf.low ? 3 : 6, s.x + 30, y);
     const n = this.host.waveMonsters();
     const id = this.host.bossId();

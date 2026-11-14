@@ -1916,10 +1916,11 @@ export class WitchBattle extends BossBattle {
       g.fillRect(1, 1, 1, 2);
       scene.textures.addCanvas('fx-tear', c);
     }
-    const h = this.chairArt ? { x: this.chairArt.x, y: this.chairArt.y - this.chairArt.displayHeight * 0.72 } : this.host.playerHead();
+    const h = this.chairArt ? { x: this.chairArt.x, y: this.chairArt.y - this.chairArt.displayHeight * 0.72 } : this.chopArt ? this.chopHead() : this.host.playerHead();
     for (let k = 0; k < n; k++) {
       const side = k % 2 ? 1 : -1;
-      const t = this.tmp(scene.add.image(h.x + side * 9, h.y, 'fx-tear').setDepth(10.5).setScale(1.2));
+      const big = !!this.chopArt; // 후드리챱챱 방해 땐 큰 눈물방울
+      const t = this.tmp(scene.add.image(h.x + side * (big ? 12 : 9), h.y, 'fx-tear').setDepth(10.5).setScale(big ? 2.2 : 1.2));
       scene.tweens.add({ targets: t, x: t.x + side * (6 + Math.random() * 8), duration: 520, ease: 'Quad.Out' });
       scene.tweens.add({ targets: t, y: { from: h.y - 2, to: h.y + 22 + Math.random() * 8 }, alpha: { from: 1, to: 0 }, duration: 520, ease: 'Quad.In', onComplete: () => t.destroy() });
     }
@@ -2143,10 +2144,24 @@ export class WitchBattle extends BossBattle {
     }, true);
   }
 
-  private updateChop(_dt: number): void {
+  /** 후드리챱챱 고나 얼굴 자리 (눈물이 나오는 곳) — 그림 64×45 안 얼굴 가운데 (41, 17) */
+  private chopHead(): { x: number; y: number } {
+    const g = this.chopArt!.gona;
+    const S = WitchBattle.SCALE;
+    return { x: g.x + (41 - 32) * S, y: g.y - (45 - 17) * S };
+  }
+  private chopTearT = 0;
+
+  private updateChop(dt: number): void {
     const c = this.chopS;
     if (!c || c.stage !== 'cry') return;
     const K = WITCH.chop;
+    // 우는 동안 양옆으로 눈물 뚝뚝
+    this.chopTearT += dt;
+    if (this.chopArt && this.chopTearT >= 0.22) {
+      this.chopTearT = 0;
+      this.tears(2);
+    }
     if (c.holdAt >= 0 && this.time - c.holdAt >= K.hold) {
       // 울음 음파로 밀어냄 → 기절 → 다시 난타
       c.stage = 'mash';
@@ -2233,6 +2248,7 @@ export class WitchBattle extends BossBattle {
       return;
     }
     if (!art) return;
+    if (step !== 'cry' && art.gona.texture.key !== 'gona-chop') art.gona.setTexture('gona-chop', 0);
     const dentedNow = (): boolean => !!this.chopS && this.chopS.gauge >= WITCH.chop.interruptAt;
     scene.tweens.killTweensOf(art.gona);
     art.gona.setAngle(0).setX(foot.x);
@@ -2254,10 +2270,20 @@ export class WitchBattle extends BossBattle {
         true,
       );
     } else if (step === 'cry') {
-      art.gona.setFrame(0);
-      scene.tweens.add({ targets: art.gona, angle: { from: -3, to: 3 }, duration: 70, yoyo: true, repeat: -1 });
+      // 눈 찡그리고 엉엉 (우는 얼굴 그림) · 몸을 부르르 · 양옆 큰 눈물 · 으아앙!
+      if (scene.textures.exists('gona-chop-cry')) art.gona.setTexture('gona-chop-cry', 0);
+      else art.gona.setFrame(0);
+      scene.tweens.add({ targets: art.gona, angle: { from: -2.5, to: 2.5 }, duration: 60, yoyo: true, repeat: -1 });
+      scene.tweens.add({ targets: art.gona, x: { from: foot.x - 1, to: foot.x + 1 }, duration: 45, yoyo: true, repeat: -1 });
+      this.chopTearT = 0;
+      this.tears(6);
+      const hd = this.chopHead();
+      this.floatText('으아앙!', hd.x, hd.y - 14, '#9fe0ff');
+      sound.cry(0.5);
     } else if (step === 'resume') {
+      // 울음을 그치고 부르르 떨며 다시 난타 준비
       art.gona.setFrame(0);
+      scene.tweens.add({ targets: art.gona, x: { from: foot.x - 2, to: foot.x + 2 }, duration: 50, yoyo: true, repeat: 3, onComplete: () => art.gona.setX(foot.x) });
       art.goo.setFrame(dentedNow() ? 1 : 0);
     } else if (step === 'launch') {
       // 마지막 한 방: 크게 휘두르기 → 덩어리가 마녀 얼굴로 휙
@@ -2302,7 +2328,9 @@ export class WitchBattle extends BossBattle {
     const scene = this.host.scene;
     const S = WitchBattle.SCALE;
     this.gooFace?.destroy();
-    this.gooFace = scene.add.sprite(this.boss.x, this.boss.y, 'witch-goo-face', 0).setOrigin(0.5, 1).setDepth(this.boss.depth + 0.01).setScale(S);
+    // 모자가 날아가는 순간부터 모자 없는 그림 (중복 모자 없음)
+    const faceKey = scene.textures.exists('witch-goo-face-nohat') ? 'witch-goo-face-nohat' : 'witch-goo-face';
+    this.gooFace = scene.add.sprite(this.boss.x, this.boss.y, faceKey, 0).setOrigin(0.5, 1).setDepth(this.boss.depth + 0.01).setScale(S);
     this.boss.setVisible(false);
     // 모자: 머리 위에서 튕겨 올라 빙글빙글 → 바닥에 툭
     const top = this.host.groundY - this.balt - this.fh * this.k;
@@ -2323,8 +2351,8 @@ export class WitchBattle extends BossBattle {
           ease: 'Bounce.Out',
           onComplete: () => {
             hat.setFrame(4).setAngle(0);
-            // (마녀 그림에도 모자가 그려져 있어 오래 두 개로 보이지 않게 — 떨어진 모자는 곧 사라짐)
-            scene.tweens.add({ targets: hat, alpha: 0, delay: 500, duration: 400 });
+            // 모자 없는 마녀 그림이 있으면 떨어진 모자는 바닥에 그대로 (없을 때만 곧 사라짐)
+            if (!scene.textures.exists('witch-goo-face-nohat')) scene.tweens.add({ targets: hat, alpha: 0, delay: 500, duration: 400 });
           },
         }),
     });
@@ -2510,6 +2538,7 @@ export class WitchBattle extends BossBattle {
     this.lastPhase = 'chop';
     this.lastTalked = true;
     this.chopS = { stage: 'mash', gauge: from === 'cry' ? WITCH.chop.interruptAt - 0.01 : 0.99, cryEnd: 0, holdAt: -1, interrupted: from === 'final', taps: 0, fails: 0 };
+    this.showChopArt('summon'); // 중간부터 시작해도 고나 난타 그림·이유식 덩어리
     this.chopHit();
   }
 
