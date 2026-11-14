@@ -205,7 +205,7 @@ const check = (name, ok, info = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2600);
   const k3 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { mode: g.battle?.mode, log: g.battle?.qteLog.slice(-1)[0], talk: document.querySelector('.boss-talk .pr-shown')?.textContent + (document.querySelector('.boss-talk .pr-rest')?.textContent ?? '') }; });
-  check(`${orient}: 후드리챱챱 cry ok → 챱챱! mash → 후드리챱챱!!! once → witch defeated with the new last line`, k2.log === 'chop:cry:ok' && uMash === '.chop-box .bt-chop' && uFinal === '.chop-box .bt-final' && k3.mode === 'victory' && k3.log === 'chop:win:1' && k3.talk.includes('그렇게 맛없었니'), JSON.stringify({ k2, uMash, uFinal, k3 }));
+  check(`${orient}: 후드리챱챱 cry ok → 챱챱! mash → 후드리챱챱!!! once → witch defeated with the new last line`, k2.log === 'chop:cry:ok' && uMash === '.chop-box .bt-chop' && uFinal === '.chop-box .bt-final' && k3.mode === 'victory' && k3.log === 'chop:win:1' && (k3.talk.includes('미슐랭') || k3.talk.includes('이유식 안 만들래')), JSON.stringify({ k2, uMash, uFinal, k3 }));
   check(`${orient}: no page errors (QTE)`, errs.length === 0, errs.join(' | '));
   console.log(out.join('\n'));
   process.exitCode = out.some((l) => l.startsWith('FAIL')) ? 1 : 0;

@@ -1,7 +1,7 @@
 /**
  * 보스 패배 대사 (픽셀 대화창 · 타이핑 효과 · 건너뛰기)
  *   EV.bossTalk { name, lines } → 한 줄씩 타이핑(문장 전체를 미리 배치해 줄바꿈이 흔들리지 않게) → 끝나면 EV.bossTalkDone
- *   음성 없음. 건너뛰기 버튼 = 바로 끝.
+ *   음성 없음. 버튼은 '다음 ▶' 하나 (타이핑 중 = 문장 완성 · 다 보였으면 다음 · 마지막 뒤 = 닫힘)
  */
 import { bus, EV } from '../events';
 import { el } from './dom';
@@ -22,7 +22,7 @@ export class BossTalk {
 
   constructor(parent: HTMLElement) {
     // 레이아웃 (모두 상자 안 흐름대로 — 상자 밖으로 삐져나가 잘리는 요소 없음):
-    //   [이름표] / [대사 본문 (자동 줄바꿈, 높이 자동)] / [다음 ▶ · 건너뛰기 ▶▶]
+    //   [이름표] / [대사 본문 (자동 줄바꿈, 높이 자동)] / [다음 ▶]
     this.root = el('div', 'boss-talk hidden');
     const head = el('div', 'btk-head');
     this.nameEl = el('span', 'btk-name');
@@ -38,13 +38,8 @@ export class BossTalk {
       e.stopPropagation();
       this.advance();
     });
-    const skip = el('button', 'btk-btn bt-skip', '건너뛰기 ▶▶');
-    skip.type = 'button';
-    skip.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.finish();
-    });
-    foot.append(nextBtn, skip);
+    // 버튼은 '다음 ▶' 하나만 — 타이핑 중이면 문장을 바로 다 보여 주고, 다 보였으면 다음 문장 · 마지막 문장 뒤엔 닫힘
+    foot.append(nextBtn);
     this.root.append(head, text, foot);
     parent.append(this.root);
     bus.on(EV.bossTalk, (t: BossTalkInfo) => this.play(t));

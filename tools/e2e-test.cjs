@@ -339,6 +339,15 @@ async function bossTests(label, device) {
   const battle = () => G(() => window.__gona.scene.getScene('Game').debugBattle());
   const combat = () => G(() => window.__gona.scene.getScene('Game').debugCombat());
   const tapEl = async (sel) => { const bb = await page.locator(sel).boundingBox(); await page.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); };
+  // 대사창: '다음 ▶' 만 (건너뛰기 버튼 없음) — 대사가 닫힐 때까지 다음을 누름
+  const nextTalk = async () => {
+    for (let i = 0; i < 12; i++) {
+      const nx = page.locator('.boss-talk:not(.hidden) .btk-next');
+      if (!(await nx.isVisible().catch(() => false))) return;
+      await tapEl('.boss-talk:not(.hidden) .btk-next').catch(() => {});
+      await page.waitForTimeout(250);
+    }
+  };
   const begin = async (boss) => {
     await page.goto(URL + '?test&boss=' + boss);
     await startFromTitle(page).catch(() => {});
@@ -399,7 +408,7 @@ async function bossTests(label, device) {
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 6000 }).catch(() => {});
   await page.waitForFunction(() => (document.querySelector('.boss-talk .pr-shown')?.textContent ?? '').length > 3, null, { timeout: 6000 }).catch(() => {});
   const talk1 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
-  check(`${label}: 뽀뽀괴물 last words typed in pixel dialog`, /^(크윽|하지만|절대)/.test(talk1) && (await page.locator('.bt-skip').isVisible()), talk1);
+  check(`${label}: 뽀뽀괴물 last words typed in pixel dialog`, /^(크윽|하지만|절대)/.test(talk1) && (await page.locator('.btk-next').isVisible()) && (await page.locator('.bt-skip').count()) === 0, talk1);
   await page.waitForFunction(() => { const c = window.__gona.scene.getScene('Game').debugCombat(); return c.stage === 2 && c.state === 'playing'; }, null, { timeout: 30000 }).catch(() => {});
   const w = await combat();
   check(`${label}: after win → evolves to walker, boomerang kept`, w.stage === 2 && w.state === 'playing' && w.canThrow && !(await battle()) && (await page.locator('.bt-attack').isVisible()), JSON.stringify(w));
@@ -456,7 +465,7 @@ async function bossTests(label, device) {
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 6000 }).catch(() => {});
   await page.waitForTimeout(700);
   const talk2 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
-  await tapEl('.bt-skip');
+  await nextTalk();
   check(`${label}: 킁카괴물 last words + skip`, talk2.startsWith('크으윽'), talk2);
   // 킁카괴물 다음: 마지막 모험 → 암흑의 이유식 성 → 최종 보스(마녀) → 가족 엔딩
   await page.waitForFunction(() => !!window.__gona.scene.getScene('Game').finale, null, { timeout: 15000 }).catch(() => {});
@@ -472,8 +481,8 @@ async function bossTests(label, device) {
   await page.waitForSelector('.boss-talk:not(.hidden)', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(700);
   const talk3 = await G(() => document.querySelector('.boss-talk .pr-shown')?.textContent ?? '');
-  await tapEl('.bt-skip');
-  check(`${label}: witch defeat lines + skip`, talk3.startsWith('내…'), talk3);
+  await nextTalk();
+  check(`${label}: witch defeat lines + next`, talk3.startsWith('말도 안 돼'), talk3);
   // 가족 엔딩: 연출이 시작되고 (자막 저절로) → 끝까지 빨리 감기 → THE END + 버튼 3개
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').debugEnding()?.state === 'ending', null, { timeout: 20000 }).catch(() => {});
   const en = await G(() => ({ e: window.__gona.scene.getScene('Game').debugEnding(), gameHidden: !window.__gona.scene.getScene('Game').sys.settings.visible, bg: window.__gona.scene.getScene('EndingCine').children.list.some((o) => /^end-bgB-/.test(o.texture?.key || '')) }));
@@ -696,7 +705,7 @@ async function featureTests(label, device) {
   // 몬스터: 1·2단계엔 안 나옴
   const early = await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.clear(); g.debugSetStage(1); let n = 0; for (let i = 0; i < 300; i++) { const before = g.spawned; g.spawnPattern(); n += g.spawned - before; } g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; return n; });
   check(`${label}: no monsters in stage 1-2`, early === 0, `spawned ${early}`);
-  const later = await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.add('kiss'); g.debugSetStage(2); let n = 0; for (let i = 0; i < 300; i++) { const before = g.spawned; g.spawnPattern(); n += g.spawned - before; g.entities.filter((e) => e.type === 'monster').forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = g.entities.filter((e) => !e.done); } g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.distToNext = 1e9; return n; });
+  const later = await G(() => { const g = window.__gona.scene.getScene('Game'); g.clearedBosses.add('kiss'); g.debugSetStage(2); let n = 0; for (let i = 0; i < 300; i++) { const before = g.spawned; g.spawnPattern(); n += g.spawned - before + g.pendingMonsters.length; g.pendingMonsters.forEach((p) => { p.warn.destroy(); p.bar.destroy(); }); g.pendingMonsters = []; g.entities.filter((e) => e.type === 'monster').forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = g.entities.filter((e) => !e.done); } g.entities.forEach((e) => { e.done = true; e.sprite.destroy(); }); g.entities = []; g.distToNext = 1e9; return n; });
   check(`${label}: monsters appear from stage 3`, later > 10, `spawned ${later} / 300 patterns`);
   // 몬스터 공격(예고 뒤) → 맞으면 HP / 부메랑 처치 → 점수·필살 게이지
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.invincibleUntil = 0; g.addMonster('glasses', g.W + 5); });
@@ -777,11 +786,11 @@ async function qteTests(label, device) {
     const d = await G(() => {
       const vw = innerWidth, vh = innerHeight;
       const r = (s) => { const e = document.querySelector(s); if (!e) return null; const q = e.getBoundingClientRect(); return { x: q.x, y: q.y, r: q.right, b: q.bottom }; };
-      const box = r('.boss-talk'), name = r('.btk-name'), text = r('.btk-text'), next = r('.btk-next'), skip = r('.bt-skip');
+      const box = r('.boss-talk'), name = r('.btk-name'), text = r('.btk-text'), next = r('.btk-next'), skip = document.querySelector('.bt-skip');
       const inside = (a) => a && a.x >= 0 && a.y >= 0 && a.r <= vw + 0.5 && a.b <= vh + 0.5;
       const within = (a) => a && box && a.x >= box.x - 0.5 && a.y >= box.y - 0.5 && a.r <= box.r + 0.5 && a.b <= box.b + 0.5;
       const hidden = ['.battle-top', '.battle-pad'].every((s) => { const e = document.querySelector(s); return !e || getComputedStyle(e).visibility === 'hidden' || getComputedStyle(e).display === 'none' || e.classList.contains('hidden'); });
-      return { ok: inside(box) && within(name) && within(text) && within(next) && within(skip) && name.b <= text.y + 0.5 && text.b <= Math.min(next.y, skip.y) + 0.5, hidden, box };
+      return { ok: inside(box) && within(name) && within(text) && within(next) && !skip && name.b <= text.y + 0.5 && text.b <= next.y + 0.5, hidden, box };
     });
     check(`${label}: ${id} dialog — name/text/buttons inside a safe box, HUD hidden`, d.ok && d.hidden, JSON.stringify(d));
     await page.screenshot({ path: `${S}/${label}-${id}.png` });
@@ -1213,7 +1222,7 @@ async function witchTests(label, device) {
   // 타이핑 중에 읽은 앞부분 조각은 빼기 (다음 ▶ 첫 번째 누름은 타이핑을 끝까지 보여 줌)
   for (let i = lines.length - 2; i >= 0; i--) if (lines[i + 1].startsWith(lines[i])) lines.splice(i, 1);
   const f0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { mode: g.battle?.mode, music: window.__sound?.wantMusic ?? null, castle: g.inCastle, padHidden: document.body.classList.contains('boss-talking') }; });
-  check(`${label}: witch intro — 7 lines in the dialog box, then the fight starts`, lines.length === 7 && lines[0].startsWith('여기까지') && lines[6].startsWith('각오는') && f0.mode === 'fight' && f0.castle && !f0.padHidden, JSON.stringify({ lines, f0, pad0 }));
+  check(`${label}: witch intro — 3 lines in the dialog box, then the fight starts`, lines.length === 3 && lines[0].startsWith('호호호') && lines[2].startsWith('좋아.') && f0.mode === 'fight' && f0.castle && !f0.padHidden, JSON.stringify({ lines, f0, pad0 }));
   // 2) 숟가락: 예고(점선·고리) = 판정 · 가만히 있으면 맞고, 점프하면 안 맞음 · 바닥에 꽂히면 어질어질(기절)
   await G(() => { const g = window.__gona.scene.getScene('Game'); g.hp = 100; g.hearts = 3; g.battle.debugAttack('spoon'); });
   await page.waitForFunction(() => { const t = window.__gona.scene.getScene('Game').battle.telegraph; return t?.kind === 'spoon' && t.impactAt; }, null, { timeout: 8000 }).catch(() => {});
@@ -1230,7 +1239,7 @@ async function witchTests(label, device) {
   for (let i = 0; i < 6 && (await page.locator('.boss-talk:not(.hidden) .btk-next').isVisible().catch(() => false)); i++) { await page.locator('.boss-talk .btk-next').click().catch(() => {}); await page.waitForTimeout(900); }
   await page.waitForTimeout(800);
   const ph = await G(() => ({ label: document.querySelector('.bb-phase')?.textContent, rage: window.__gona.scene.getScene('Game').battle.rage }));
-  check(`${label}: witch phase 2 lines + 'PHASE 2' label`, p2.startsWith('이 녀석') && ph.rage === 1 && /PHASE 2/.test(ph.label || ''), JSON.stringify({ p2, ph }));
+  check(`${label}: witch phase 2 lines + 'PHASE 2' label`, p2.startsWith('뭐야?!') && ph.rage === 1 && /PHASE 2/.test(ph.label || ''), JSON.stringify({ p2, ph }));
   await page.screenshot({ path: `${S}/witch-${label}-p2.png` });
   check(`${label}: no page errors (witch)`, errs.length === 0, errs.join(' | '));
   // 4) 체크포인트 '최종 보스부터' → 게임 오버 → 이어하기로 마녀전 다시 (HP 가득)
@@ -1277,7 +1286,7 @@ async function witchTests(label, device) {
   await page.waitForFunction(() => window.__gona.scene.getScene('Game').battle?.mode === 'victory', null, { timeout: 8000 }).catch(() => {});
   const lv = await G(() => window.__gona.scene.getScene('Game').battle?.mode ?? 'none');
   for (let i = 0; i < 20 && !(await G(() => window.__gona.scene.isActive('EndingCine'))); i++) {
-    const sk = page.locator('.boss-talk:not(.hidden) .bt-skip');
+    const sk = page.locator('.boss-talk:not(.hidden) .btk-next');
     if (await sk.isVisible().catch(() => false)) await sk.click({ timeout: 800 }).catch(() => {});
     await page.waitForTimeout(500);
   }

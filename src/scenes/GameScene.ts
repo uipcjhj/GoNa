@@ -253,6 +253,9 @@ export class GameScene extends Phaser.Scene {
     this.grounded = true;
     this.jumpsUsed = 0;
     this.invincibleUntil = 0;
+    this.pendingMonsters = [];
+    this.combo = 0;
+    this.comboAt = -9999;
     this.squash = 1;
     this.exprFrame = -1;
     this.exprUntil = 0;
@@ -359,6 +362,7 @@ export class GameScene extends Phaser.Scene {
       waveMonsters: () => this.bangeulWaveMonsters(),
       waveBoss: (dmg) => !!this.battle && this.battle.assistHit(dmg),
       bossId: () => (this.battle && this.battle.mode !== 'done' && this.battle.mode !== 'victory' ? this.battle.id : null),
+      kissCleared: () => this.clearedBosses.has('kiss'),
       banner: (b) => bus.emit(EV.banner, b),
       floatText: (t, x, y, c) => this.floatText(t, x, y, c),
       sparkle: (n, x, y) => this.sparkleEmitter.explode(perf.low ? Math.ceil(n / 2) : n, x, y),
@@ -809,6 +813,15 @@ export class GameScene extends Phaser.Scene {
     this.syncMonsterTags();
     if (this.battle && this.state === 'playing') this.battle.update(rawDt);
     // 방글할매 스페셜: 글자 쿠키는 일반 달리기 중에만 · 소환 연출·무적은 게임 시간으로 (일시정지면 멈춤)
+    if (this.state === 'playing') {
+      this.updatePendingMonsters(dt);
+      // GONA 글자 쿠키는 일반 간식과 구분되게 계속 반짝
+      this.letterGlowT -= dt;
+      if (this.letterGlowT <= 0) {
+        this.letterGlowT = 0.35;
+        for (const e of this.entities) if (e.letter && !e.done && e.x < this.W) this.sparkleEmitter.explode(1, e.x + (Math.random() - 0.5) * 14, this.groundY - e.alt - 8 - Math.random() * 10);
+      }
+    }
     if (this.state === 'playing') this.bangeul.update(rawDt, !this.battle && !this.halt && !this.inCastle && !this.inNest && this.speed > 0);
     this.updateBoomerang(dt);
     this.updateShield();
@@ -959,8 +972,9 @@ export class GameScene extends Phaser.Scene {
 
   private randomGap(): number {
     const d = this.difficulty();
-    const min = this.speed * Phaser.Math.Linear(0.95, 0.75, d) + 24;
-    const max = this.speed * Phaser.Math.Linear(1.9, 1.3, d) + 50;
+    // 간식이 더 자주 (패턴 사이 빈칸을 줄임 — 바위·몬스터 패턴은 각자 뒤에 충분한 빈칸을 둠)
+    const min = this.speed * Phaser.Math.Linear(0.75, 0.6, d) + 18;
+    const max = this.speed * Phaser.Math.Linear(1.45, 1.05, d) + 36;
     return Phaser.Math.Between(Math.round(min), Math.round(max));
   }
 
@@ -1006,11 +1020,36 @@ export class GameScene extends Phaser.Scene {
 
     const patterns: { w: number; run: () => number }[] = [
       {
-        w: 3,
+        // 낮은 직선: 그냥 달리며 3~7개
+        w: 5,
         run: () => {
-          const n = Phaser.Math.Between(3, 5);
+          const n = Phaser.Math.Between(3, 7);
           const kind = this.randomSnack();
-          for (let i = 0; i < n; i++) this.addSnack(kind, x0 + i * 18, 4);
+          for (let i = 0; i < n; i++) this.addSnack(kind, x0 + i * 16, 4);
+          return n * 16;
+        },
+      },
+      {
+        // 곡선: 점프 궤적을 따라 5~7개 (점프하면 줄줄이)
+        w: 4,
+        run: () => {
+          const n = Phaser.Math.Between(5, 7);
+          const kind = this.randomSnack();
+          const cx = x0 + airHalf;
+          for (let i = 0; i < n; i++) {
+            const dx = ((i - (n - 1) / 2) / ((n - 1) / 2)) * airHalf * 0.8;
+            this.addSnack(kind, cx + dx, 6 + peak * (1 - (dx / airHalf) ** 2) * 0.9);
+          }
+          return airHalf * 2;
+        },
+      },
+      {
+        // 물결: 낮게-높게 번갈아 4~6개 (작은 점프로)
+        w: 2.5,
+        run: () => {
+          const n = Phaser.Math.Between(4, 6);
+          const kind = this.randomSnack();
+          for (let i = 0; i < n; i++) this.addSnack(kind, x0 + i * 18, i % 2 ? 26 : 4);
           return n * 18;
         },
       },
@@ -1039,10 +1078,11 @@ export class GameScene extends Phaser.Scene {
       {
         w: 2,
         run: () => {
-          // 더블 점프로만 닿는 높은 간식
+          // 더블 점프로만 닿는 높은 간식 3~5개
           const kind: SnackKind = Math.random() < 0.5 ? 'cookie' : 'banana';
-          for (let i = 0; i < 3; i++) this.addSnack(kind, x0 + i * 16, 80 + (i === 1 ? 6 : 0));
-          return 48;
+          const n = Phaser.Math.Between(3, 5);
+          for (let i = 0; i < n; i++) this.addSnack(kind, x0 + i * 16, 80 + Math.round(Math.sin((i / (n - 1)) * Math.PI) * 6));
+          return n * 16;
         },
       },
       {
@@ -1073,25 +1113,35 @@ export class GameScene extends Phaser.Scene {
     ];
 
     // 3단계부터 일반 몬스터 (뽀뽀괴물을 이기고 부메랑을 얻은 뒤) — 처음엔 한 마리씩, 성장할수록 조금씩 자주
-    const alive = this.entities.filter((e) => !e.done && e.type === 'monster').length;
+    const alive = this.entities.filter((e) => !e.done && e.type === 'monster').length + this.pendingMonsters.length;
     const mw = this.clearedBosses.has('kiss') && alive < maxMonsters(this.growth.stageIndex) ? monsterWeight(this.growth.stageIndex, this.growth.ratio) : 0;
     if (mw > 0) {
       // 오래 안 나왔으면(3단계 14초 · 4단계 10초) 이번엔 꼭 몬스터 — 무작위라 한참 안 보이는 일 방지
-      const due = this.sinceMonster >= (this.growth.stageIndex >= 3 ? 10 : 14);
+      const due = this.sinceMonster >= (this.growth.stageIndex >= 3 ? 8 : 11);
       if (due) {
-        this.addMonster(Math.random() < 0.55 ? 'glasses' : 'farter', x0 + 10);
+        this.queueMonster(Math.random() < 0.55 ? 'glasses' : 'farter');
         return 40 + Math.round(this.speed * 0.9);
       }
       for (const kind of ['glasses', 'farter'] as const) {
         patterns.push({
           w: mw * (kind === 'glasses' ? 0.55 : 0.45),
           run: () => {
-            this.addMonster(kind, x0 + 10);
+            this.queueMonster(kind);
             // 몬스터 뒤로 넉넉한 빈칸 (바위·몬스터·투사체가 한꺼번에 겹치지 않게)
             return 40 + Math.round(this.speed * 0.9);
           },
         });
       }
+      // 몬스터 + 간식: 몬스터 위 점프 높이에 간식 줄 (뛰어넘으며 먹기 — 바닥엔 간식 없음)
+      patterns.push({
+        w: mw * 0.6,
+        run: () => {
+          this.queueMonster(Math.random() < 0.5 ? 'glasses' : 'farter');
+          const kind = this.randomSnack();
+          for (let i = 0; i < 4; i++) this.addSnack(kind, x0 + 40 + i * 16, 40 + (i % 2) * 6);
+          return 60 + Math.round(this.speed * 0.9);
+        },
+      });
     }
 
     const total = patterns.reduce((s, p) => s + p.w, 0);
@@ -1101,6 +1151,67 @@ export class GameScene extends Phaser.Scene {
       if (r <= 0) return p.run();
     }
     return patterns[0].run();
+  }
+
+  /** 몬스터 예고: 화면 오른쪽 끝에 '!' 가 깜빡인 뒤(0.8초) 등장 — 갑자기 튀어나오지 않게 (게임 시간 · 일시정지면 멈춤) */
+  private queueMonster(kind: MonsterKind): void {
+    // 크게(2배) + 오른쪽 끝 빨간 예고 띠 — 배경의 빨간 버섯에 묻히지 않게
+    const warn = this.add.image(this.W - 9, this.groundY - 24, 'boss-warn').setOrigin(0.5, 1).setDepth(9.5).setScale(2);
+    const bar = this.add.rectangle(this.W, this.groundY, 6, 52, 0xff3a2a, 0.45).setOrigin(1, 1).setDepth(9.4);
+    this.tweens.add({ targets: [warn, bar], alpha: { from: 1, to: 0.3 }, duration: 160, yoyo: true, repeat: -1 });
+    this.pendingMonsters.push({ kind, t: 0.8, warn, bar });
+    sound.warn();
+  }
+  private pendingMonsters: { kind: MonsterKind; t: number; warn: Phaser.GameObjects.Image; bar: Phaser.GameObjects.Rectangle }[] = [];
+
+  private updatePendingMonsters(dt: number): void {
+    for (const p of this.pendingMonsters) {
+      p.t -= dt;
+      p.warn.setPosition(this.W - 9, this.groundY - 24);
+      p.bar.setPosition(this.W, this.groundY);
+      if (p.t <= 0) {
+        this.tweens.killTweensOf([p.warn, p.bar]);
+        p.warn.destroy();
+        p.bar.destroy();
+        if (this.state === 'playing' && !this.battle) this.addMonster(p.kind, this.W + 10);
+      }
+    }
+    this.pendingMonsters = this.pendingMonsters.filter((p) => p.t > 0);
+  }
+
+  /** 방글할매 무적 중 몬스터와 부딪힘 → 몬스터가 튕겨 나감 (처치 · 점수) */
+  private bumpMonster(e: Entity): void {
+    const m = e.mon!;
+    const d = MONSTERS[m.kind];
+    e.done = true;
+    sound.bangeulWave(2);
+    this.cameras.main.shake(80, 0.004);
+    this.sparkleEmitter.explode(perf.low ? 4 : 8, e.x, this.groundY - e.h / 2);
+    this.floatText('팅!', e.x, this.groundY - e.h - 4, '#ffe14a');
+    this.tweens.add({ targets: e.sprite, x: e.sprite.x + 60, y: e.sprite.y - 46, angle: 540, alpha: 0, duration: 520, ease: 'Quad.Out', onComplete: () => e.sprite.destroy() });
+    this.addPoints(d.score, e.x, this.groundY - 22);
+    this.kills++;
+  }
+
+  /** 간식 연속 획득 (콤보) */
+  private combo = 0;
+  private comboAt = -9999;
+
+  private onSnackCombo(x: number, y: number, points: number): void {
+    const now = this.time.now;
+    this.combo = now - this.comboAt < 1100 ? this.combo + 1 : 1;
+    this.comboAt = now;
+    if (this.combo >= 2) sound.comboChime(this.combo);
+    this.floatText(`+${points}`, x, y - 8, '#fff3a0');
+    if (this.combo >= 5 && this.combo % 5 === 0) {
+      // 5개마다 콤보 보너스
+      const bonus = this.combo * 5;
+      this.score += bonus;
+      this.updateHud();
+      this.floatText(`콤보 ×${this.combo}! +${bonus}`, this.playerX + 6, this.groundY - this.alt - 40, '#ffb43a');
+      this.sparkleEmitter.explode(perf.low ? 5 : 10, this.playerX, this.groundY - this.alt - 24);
+      sound.reflect();
+    }
   }
 
   private addRock(x: number): void {
@@ -1121,6 +1232,7 @@ export class GameScene extends Phaser.Scene {
     return true;
   }
   private letterAlt = 26;
+  private letterGlowT = 0;
 
   /** 방글할매 소환 버튼 */
   private summonBangeul(): void {
@@ -1150,13 +1262,16 @@ export class GameScene extends Phaser.Scene {
   debugBangeul(): { letters: string; ready: boolean; active: boolean; inv: number; log: string[] } {
     const b = this.bangeul;
     if (!b) return { letters: '', ready: false, active: false, inv: 0, log: [] };
-    return { letters: b.lettersKey, ready: b.ready, active: b.active, inv: +b.invT.toFixed(2), log: b.log.slice(-12) };
+    return { letters: b.lettersKey, ready: b.ready, active: b.active, inv: +b.invT.toFixed(2), log: b.log.slice(-14) };
   }
 
   /** (개발 메뉴) 글자 주기 · 빨리 나오게 */
-  debugGiveLetters(ls: string, fast = false): void {
-    for (const l of ls) if ('gona'.includes(l)) this.bangeul.letters.add(l as Letter);
-    this.bangeul.fastSpawn = fast;
+  debugGiveLetters(n: number | string, fast = false): void {
+    const b = this.bangeul;
+    b.progress = 0;
+    void b.next; // 목표 정하기
+    b.progress = Math.min(b.goal.length, typeof n === 'number' ? n : n.length);
+    b.fastSpawn = fast;
     this.hudKey = '';
   }
 
@@ -1221,6 +1336,7 @@ export class GameScene extends Phaser.Scene {
         if (right > p.left && left < p.right && top > p.bottom && bottom < p.top) {
           if (e.type === 'snack') this.collect(e);
           else if (e.type === 'rock') this.hitRock(e);
+          else if (e.type === 'monster' && this.bangeul.invincible) this.bumpMonster(e);
           else if (!e.hit && this.hurtHp(e.dmg ?? 20, e.type === 'monster' ? `mon-${e.mon?.kind}` : e.type)) {
             if (e.type === 'mshot') {
               if (e.grav) this.breakFlask(e, false); // 고나에게 맞음 → 그 자리에서 깨짐 (웅덩이 없이)
@@ -1528,6 +1644,7 @@ export class GameScene extends Phaser.Scene {
     e.done = true;
     const info = SNACKS[e.snack ?? 'strawberry'];
     this.score += info.points;
+    this.onSnackCombo(e.sprite.x, e.sprite.y - 6, info.points);
     this.snacksEaten++;
     this.updateHud();
     sound.pickup(info.points);

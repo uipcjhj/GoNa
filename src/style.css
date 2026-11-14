@@ -4237,3 +4237,46 @@ body.boss-defeat .summon-btn {
     bottom: max(6px, env(safe-area-inset-bottom));
   }
 }
+/* GONA LOVE (8칸): 작은 쿠키 8개 · 안 모은 칸은 어둡게 (승인된 쿠키 그림 그대로 · 색만 어둡게) */
+.gona-hud.love {
+  width: 132px;
+  height: 18px;
+  background: rgba(40, 22, 54, 0.85);
+  border: 2px solid #c99a3a;
+  border-radius: 5px;
+  box-sizing: border-box;
+}
+.gona-hud.love .gona-slot {
+  width: 11.5%;
+  opacity: 1;
+  filter: grayscale(1) brightness(0.45);
+  transform: translate(-50%, -50%) scale(0.9);
+}
+.gona-hud.love .gona-slot.on {
+  filter: none;
+  transform: translate(-50%, -50%) scale(1);
+}
+/* 다음에 모을 글자: 살짝 깜빡 */
+.gona-slot.next {
+  animation: gona-next 0.8s ease-in-out infinite alternate;
+}
+.gona-hud:not(.love) .gona-slot.next {
+  opacity: 0.35;
+  transform: translate(-50%, -50%) scale(0.85);
+}
+@keyframes gona-next {
+  from { filter: grayscale(1) brightness(0.45); }
+  to { filter: grayscale(0.4) brightness(0.9); }
+}
+/* 뽀뽀괴물 전 한 번 쓴 뒤: 잠김 (흐리게) */
+.gona-hud.locked {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+}
+/* 의자 탈출 게이지 색: 진행도에 따라 */
+.qte-gauge-fill.mid {
+  background: linear-gradient(#ffe68a, #f0b83a);
+}
+.qte-gauge-fill.high {
+  background: linear-gradient(#b8ff7a, #4cbf2a);
+}

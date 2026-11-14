@@ -97,10 +97,11 @@ export const ROCK_DAMAGE = 50;
 export function monsterWeight(stageIndex: number, gaugeRatio: number): number {
   if (stageIndex < 2) return 0;
   // 다른 패턴 가중치 합(약 14) 대비 — 3단계 약 15% → 4단계 끝 약 30%
-  const base = stageIndex === 2 ? 2.4 : 4.0;
+  // (뽀뽀괴물 이후 — 방글할매 소환·무적을 쓸 일이 생기게 조금 더 자주. 예고 '!' 뒤에 나오고 점프로 언제나 피할 수 있음)
+  const base = stageIndex === 2 ? 3.6 : 5.0;
   return base * (1 + gaugeRatio * 0.5);
 }
 
-export function maxMonsters(stageIndex: number): number {
-  return stageIndex >= 3 ? 2 : 1;
+export function maxMonsters(_stageIndex: number): number {
+  return 2;
 }

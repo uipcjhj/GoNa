@@ -956,6 +956,13 @@ class Sound {
     this.tone(accent ? 1180 : 880, 0.05, 'square', 0.06, 0);
   }
 
+  /** 간식 콤보 (n 번째 연속일수록 조금씩 높게 · 짧고 경쾌하게) */
+  comboChime(n: number): void {
+    const steps = [0, 2, 4, 5, 7, 9, 11, 12];
+    const f = hz('C6') * Math.pow(2, steps[Math.min(steps.length - 1, n - 2)] / 12);
+    this.tone(f, 0.06, 'square', 0.07, 0.03);
+  }
+
   /** 방글할매 노래 음파 한 번 (목소리 아님 — 반짝이는 종소리 + 둥근 울림 · n 번째일수록 조금 높게) */
   bangeulWave(n = 1): void {
     const f = [hz('C6'), hz('E6'), hz('G6')][(n - 1) % 3];

@@ -32,12 +32,13 @@ const until = (fn, t = 20000) => page.waitForFunction(fn, null, { timeout: t }).
         const e = g.entities.find((x) => x.letter && !x.done && x.alt > 10 && x.x - g.playerX < 40 && x.x - g.playerX > 10);
         if (e && g.grounded) g.pressJump();
       });
-      if ((await st()).letters.length >= 2) break;
+      if (parseInt((await st()).letters.split(':')[1], 10) >= 2) break;
       await page.waitForTimeout(100);
     }
     const s1 = await st();
     const hud1 = await G(() => [...document.querySelectorAll('.gona-slot')].map((s) => s.classList.contains('on')));
-    check(`${orient}: letter cookies spawn and are collected → HUD lights those letters`, s1.letters.length >= 2 && hud1.filter(Boolean).length === s1.letters.length, JSON.stringify({ s1, hud1 }));
+    const n1 = parseInt(s1.letters.split(':')[1], 10);
+    check(`${orient}: letter cookies spawn in order (G→O→…) and are collected → HUD lights those letters`, n1 >= 2 && hud1.filter(Boolean).length === n1 && s1.log.filter((l) => l.startsWith('spawn:')).map((l) => l.slice(6)).slice(0, 2).join('') === 'go', JSON.stringify({ s1, hud1 }));
     const spawns = s1.log.filter((l) => l.startsWith('spawn:'));
     await shot('2-hud');
     // 2) 완성 → 버튼 (누르기 전엔 소환 안 됨)
@@ -68,7 +69,7 @@ const until = (fn, t = 20000) => page.waitForFunction(fn, null, { timeout: t }).
     await LOG("l === 'exit'");
     await shot('7-after');
     const r2 = await st();
-    check(`${orient}: tap → 방글할매 appears, letters reset, 5s invincible, no double summon, exits`, r1.active && r1.letters === '' && r1.inv > 4 && r2.log.filter((l) => l.startsWith('summon')).length === 1 && r2.log.includes('exit'), JSON.stringify({ r1, r2 }));
+    check(`${orient}: tap → 방글할매 appears, letters reset, protected, no double summon, exits with a 5s shield`, r1.active && /:0$/.test(r1.letters) && r2.inv > 3 && r2.log.filter((l) => l.startsWith('summon')).length === 1 && r2.log.includes('exit'), JSON.stringify({ r1, r2 }));
     await LOG("l === 'inv-end'");
     const r3 = await st();
     check(`${orient}: invincibility ends after ~5s`, r3.inv === 0 && r3.log.includes('inv-end'), JSON.stringify(r3));
@@ -96,9 +97,9 @@ const until = (fn, t = 20000) => page.waitForFunction(fn, null, { timeout: t }).
     await page.goto(URL + '?test=bangeul-summon');
     await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.debugBangeul().active, null, { timeout: 40000 });
     await page.waitForTimeout(300);
-    const p0 = await G(() => { const g = window.__gona.scene.getScene('Game'); g.pauseGame(); return g.debugBangeul().inv; });
+    const p0 = await G(() => { const g = window.__gona.scene.getScene('Game'); g.pauseGame(); return g.bangeul.run?.t ?? -1; });
     await page.waitForTimeout(1500);
-    const p1 = await G(() => window.__gona.scene.getScene('Game').debugBangeul().inv);
+    const p1 = await G(() => window.__gona.scene.getScene('Game').bangeul.run?.t ?? -1);
     await G(() => window.__gona.scene.getScene('Game').resumeGame());
     check(`${orient}: pause freezes the summon and invincibility timer`, p0 === p1 && p0 > 0, JSON.stringify({ p0, p1 }));
     // 6) 보스 피해 (뽀뽀 · 킁카 · 마녀) + 마녀 필수 이벤트 보호
@@ -116,6 +117,24 @@ const until = (fn, t = 20000) => page.waitForFunction(fn, null, { timeout: t }).
       if (id === 'bangeul-guard') check(`${orient}: witch HP stops at the phase threshold (required events protected)`, res.hp === Math.floor(res.max * 0.7 + 1e-6) + 1 && res.rage === 0, JSON.stringify({ hpA, res }));
       else check(`${orient}: ${id.slice(8)} boss takes song damage`, hpA !== undefined && res.hp < hpA && res.log.filter((l) => l.endsWith(':boss')).length === 3, JSON.stringify({ hpA, res }));
     }
+    // 7) 뽀뽀괴물 이전: 한 번 쓰면 잠김 (다시 안 모임)
+    await page.goto(URL + '?test=gona-prekiss');
+    await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.state === 'playing', null, { timeout: 40000 });
+    await until(() => window.__gona.scene.getScene('Game').debugBangeul().ready, 30000).catch(() => {});
+    // 마지막 글자는 고나가 먹어야 함 → 안 먹히면 직접 줌
+    await G(() => { const g = window.__gona.scene.getScene('Game'); if (!g.debugBangeul().ready) g.debugGiveLetters(99); });
+    await G(() => window.__bus.emit('summonBangeul'));
+    await LOG("l === 'exit'");
+    await page.waitForTimeout(3000);
+    const pk = await st();
+    check(`${orient}: before 뽀뽀괴물 GONA works once, then locked (no more letter spawns)`, pk.letters.endsWith('!') && !pk.log.slice(pk.log.indexOf('exit')).some((l) => l.startsWith('spawn:')), JSON.stringify(pk));
+    // 8) 무적 중 몬스터 충돌 → 튕겨 나감 (피해 없음)
+    await page.goto(URL + '?test=bangeul-bump');
+    await page.waitForFunction(() => window.__gona?.scene.getScene('Game')?.state === 'playing', null, { timeout: 40000 });
+    const b0 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { hp: g.hearts * 100 + g.hp, kills: g.kills }; });
+    await LOG("l === 'inv-end'");
+    const b1 = await G(() => { const g = window.__gona.scene.getScene('Game'); return { hp: g.hearts * 100 + g.hp, kills: g.kills, dmg: g.damageLog.slice(-3) }; });
+    check(`${orient}: monsters touching GONA during invincibility bounce away (no damage)`, b1.hp === b0.hp && b1.kills > b0.kills, JSON.stringify({ b0, b1 }));
     check(`${orient}: no page errors`, errs.length === 0, errs.join(' | '));
     await ctx.close();
   }

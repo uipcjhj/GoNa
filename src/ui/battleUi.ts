@@ -187,19 +187,10 @@ export class BattleUi {
     this.growFill = el('div', 'bt-grow-fill');
     gTrack.append(this.growFill);
     this.growRow.append(this.growText, gTrack);
-    // GONA 수집 HUD: 어두운 글자 4칸(그림) 위에, 모은 글자만 원래 색 쿠키가 밝게
+    // GONA 수집 HUD: GONA(4칸) = 어두운 글자 그림 위에 모은 글자 쿠키가 밝게 · GONA LOVE(8칸) = 작은 쿠키 8칸(안 모은 건 어둡게)
     this.gonaHud = el('div', 'gona-hud') as HTMLDivElement;
     this.gonaHud.setAttribute('aria-label', 'GONA 글자 쿠키 수집');
-    this.gonaHud.style.backgroundImage = 'url(assets/bangeul/gona-hud.png)';
-    'gona'.split('').forEach((l, i) => {
-      const img = document.createElement('img');
-      img.className = `gona-slot gona-slot-${i}`;
-      img.src = `assets/bangeul/gona-cookie-${l}.png`;
-      img.alt = l.toUpperCase();
-      img.draggable = false;
-      this.gonaSlots.push(img);
-      this.gonaHud.append(img);
-    });
+    this.buildGonaSlots('gona');
     this.me.append(hearts, track, this.growRow, this.gonaHud);
 
     this.bossBar = el('div', 'boss-bar');
@@ -421,9 +412,13 @@ export class BattleUi {
     this.chairBox.classList.toggle('hidden', !chair);
     if (chair) {
       this.setStyle(this.chairFill, 'width', `${Math.round(chair.gauge * 100)}%`);
-      this.chairFill.classList.toggle('low', chair.gauge < 0.25);
+      this.chairFill.classList.toggle('low', chair.gauge < 0.35);
       this.setText(this.chairLeft, `${Math.ceil(chair.left)}초`);
-      this.setText(this.chairHint, chair.stage === 'mash' ? '으아앙! 을 마구 눌러요' : '⚠ 숟가락! 으아앙을 꾸욱 길게!');
+      // 지금 할 일 한 문장만
+      this.setText(this.chairHint, chair.stage === 'mash' ? '으아앙!! 연타해서 탈출!' : '숟가락이 온다! 꾸욱 눌러!');
+      // 게이지 색: 낮음(빨강) → 중간(노랑) → 높음(초록)
+      this.chairFill.classList.toggle('mid', chair.gauge >= 0.35 && chair.gauge < 0.7);
+      this.chairFill.classList.toggle('high', chair.gauge >= 0.7);
       this.chairBox.classList.toggle('warn', chair.stage === 'hold');
     }
     // 후드리챱챱: 게이지(60% 표시) + '챱챱!' · 방해 땐 '으아앙!' 꾸욱 · 마지막 '후드리챱챱!!!'
@@ -441,7 +436,7 @@ export class BattleUi {
     if (mashOn) {
       const holdMode = chair ? chair.stage === 'hold' : true;
       const hold = chair ? chair.hold : chop!.hold;
-      this.setText(this.mashLabel, holdMode ? '으아앙!\n꾸욱' : '으아앙!');
+      this.setText(this.mashLabel, holdMode ? (chair ? '꾸욱\n눌러!' : '으아앙!\n꾸욱') : '으아앙!!');
       this.mashBtn.classList.toggle('hold-mode', holdMode);
       this.setStyle(this.mashHold, 'height', `${Math.round(hold * 100)}%`);
     }
@@ -483,17 +478,23 @@ export class BattleUi {
     const g = h.gona;
     this.gonaHud.classList.toggle('hidden', !g);
     if (g && g.letters !== this.lastLetters) {
-      'gona'.split('').forEach((l, i) => {
-        const on = g.letters.includes(l);
-        const slot = this.gonaSlots[i];
+      // 'gona:2' · 'gonalove:5' · 끝에 ! = 뽀뽀괴물 전엔 한 번 써서 잠김
+      const [goal, rest] = g.letters.split(':');
+      const n = parseInt(rest, 10) || 0;
+      if (goal !== this.gonaGoal) this.buildGonaSlots(goal);
+      this.gonaSlots.forEach((slot, i) => {
+        const on = i < n;
         if (on && !slot.classList.contains('on')) {
           slot.classList.remove('pop');
           void slot.offsetWidth;
           slot.classList.add('pop');
         }
         slot.classList.toggle('on', on);
+        slot.classList.toggle('next', i === n && !g.ready);
       });
       this.gonaHud.classList.toggle('complete', g.ready);
+      this.gonaHud.classList.toggle('locked', rest.endsWith('!'));
+      this.gonaHud.title = rest.endsWith('!') ? '뽀뽀괴물을 이기면 다시 모을 수 있어요' : '';
       this.lastLetters = g.letters;
     }
     this.summonBtn.classList.toggle('hidden', !(g?.ready && h.enabled && !h.qte && !g.busy));
@@ -534,6 +535,28 @@ export class BattleUi {
       if (this.lastHp >= 0 && h.boss.hp < this.lastHp) this.shake(this.bossBar);
       this.lastHp = h.boss.hp;
     } else this.lastHp = -1;
+  }
+
+  private gonaGoal = '';
+
+  /** 수집 칸 만들기 (목표 글자 수만큼) */
+  private buildGonaSlots(goal: string): void {
+    this.gonaGoal = goal;
+    this.gonaHud.replaceChildren();
+    this.gonaSlots = [];
+    const four = goal.length <= 4;
+    this.gonaHud.classList.toggle('love', !four);
+    this.gonaHud.style.backgroundImage = four ? 'url(assets/bangeul/gona-hud.png)' : '';
+    goal.split('').forEach((l, i) => {
+      const img = document.createElement('img');
+      img.className = `gona-slot gona-slot-${i}`;
+      img.src = `assets/bangeul/gona-cookie-${l}.png`;
+      img.alt = l.toUpperCase();
+      img.draggable = false;
+      if (!four) img.style.left = `${(i + 0.5) * (100 / goal.length)}%`;
+      this.gonaSlots.push(img);
+      this.gonaHud.append(img);
+    });
   }
 
   /** 조작 상태 전환: normal = 방패·공격·필살 / 그 밖 = 그 미니게임 버튼·게이지만 */

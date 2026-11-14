@@ -53,7 +53,7 @@ export const TEST_ITEMS: [string, string][] = [
   ['witch-ending', '39. 최종 보스 처치 → 패배 컷신 → 가족 엔딩 연결'],
   ['witch-shield', '40. 방패 방어 공격: 숟가락 내려치기 (🛡방패!)'],
   ['witch-chair', '41. 이유식 의자 탈출 (직접 · 2페이즈 → 3페이즈 강화 · 그림 대기 — 흐름만)'],
-  ['witch-chair-ok', '42. 울음 폭발 탈출 성공 (자동 연타 → 꾸욱 · 그림 대기)'],
+  ['witch-chair-ok', '42. 이유식 의자 연타 → 꾸욱 → 탈출 성공 (자동 · 눈물·금·파편)'],
   ['witch-chair-fail', '43. 울음 폭발 탈출 실패 (안 누름 → 작은 피해 · 자동 탈출 · 그림 대기)'],
   ['witch-jump', '44. 점프 회피 공격 모음 (낮은 숟가락 · 통통 · 삼연타 · 소나기 · 냄비)'],
   ['witch-stay', '45. 가만히 있기 공격 모음 (높은 숟가락 · 숟가락 왕복 귀환)'],
@@ -80,6 +80,12 @@ export const TEST_ITEMS: [string, string][] = [
   ['bangeul-witch', '66. 이유식 마녀 보스 피해'],
   ['bangeul-guard', '67. 마녀전 필수 이벤트 보호 (HP 가 페이즈 문턱 아래로 안 내려감)'],
   ['bangeul-again', '68. 재소환 · 상태 초기화 (소환 → 글자 0 → 다시 모아 소환 반복)'],
+  ['snack-combo', '69. 일반 간식 연속 수집 (줄·곡선·물결·높은 간식 · 콤보 보너스)'],
+  ['gona-prekiss', '70. 뽀뽀괴물 이전 GONA 완성 (한 번 소환하면 뽀뽀괴물 전엔 다시 안 모임)'],
+  ['gona-love', '71. 뽀뽀괴물 이후 GONA LOVE 완성 (L·V·E 그림 대기 중이면 GONA)'],
+  ['bangeul-gold', '72. 방글할매 황금 소환 (번쩍 → 등장 → 웃음 음파 → 노래 → 보호막 → 퇴장)'],
+  ['bangeul-bump', '73. 무적 상태에서 몬스터 충돌 (몬스터가 튕겨 나감)'],
+  ['witch-lines', '74. 마녀 대사 전체 보기 (등장 · 페이즈 · 의자 · 후드리챱챱 · 패배)'],
 ];
 
 /** 주소의 ?test=값 (없으면 null · '' = 자동 테스트 훅만) */
@@ -589,6 +595,73 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
       parent.append(box);
       break;
     }
+    case 'witch-lines': {
+      void import('./scenes/battle/WitchBattle').then((W) => {
+        const box = el('div', 'tm-art');
+        box.style.cssText = 'position:absolute;inset:0;z-index:60;overflow:auto;background:#2b2140;color:#fff8e6;padding:12px;font-size:13px;line-height:1.7';
+        const sec = (t: string, lines: string[]): string => `<h4 style="margin:10px 0 2px;color:#ffe14a">${t}</h4>` + lines.map((l) => `<div>· ${l}</div>`).join('');
+        box.innerHTML =
+          '<h3 style="margin:0 0 6px">🧙 이유식 드래곤 셰프 마녀 — 대사 (대화창: 「다음 ▶」 하나)</h3>' +
+          sec('첫 등장 (대화창)', W.WITCH_INTRO_LINES) +
+          sec('1페이즈 한마디 (공격 시작 때 · 머리 위)', W.WITCH_QUIPS[0].map((q) => q[0])) +
+          sec('2페이즈 분노 (대화창)', W.WITCH_PHASE2_LINES) +
+          sec('2페이즈 한마디', W.WITCH_QUIPS[1].map((q) => q[0])) +
+          sec('의자 탈출', [W.WITCH_CHAIR_QUIPS.start, `(고나가 몸부림) ${W.WITCH_CHAIR_QUIPS.shake}`, `(탈출 성공) ${W.WITCH_CHAIR_QUIPS.broke}`]) +
+          sec('울음 리듬', [W.WITCH_RHYTHM_LINE]) +
+          sec('3페이즈 (대화창)', W.WITCH_PHASE3_LINES) +
+          sec('3페이즈 한마디', W.WITCH_QUIPS[2].map((q) => q[0])) +
+          sec('후드리챱챱', [W.WITCH_CHOP_LINE, W.WITCH_CHOP_QUIPS.first, W.WITCH_CHOP_QUIPS.mid, `(방해) ${W.WITCH_CHOP_INTERRUPT}`, W.WITCH_CHOP_QUIPS.hit]) +
+          sec('패배 (대화창)', W.WITCH_DEFEAT_LINES) +
+          sec('(그림이 없을 때의) 마지막 발악', [W.WITCH_LAST_LINE]);
+        parent.append(box);
+      });
+      break;
+    }
+    case 'snack-combo': {
+      sc.debugGod();
+      sc.debugSetStage(2);
+      sc.clearedBosses.add('kiss');
+      say('간식이 3~7개씩 줄·곡선·물결·높게 — 연달아 먹으면 띵띵 · 5개마다 콤보 보너스');
+      break;
+    }
+    case 'gona-prekiss':
+    case 'gona-love': {
+      sc.debugGod();
+      sc.debugSetStage(id === 'gona-love' ? 2 : 1);
+      sc.boomerangAwake = id === 'gona-love';
+      if (id === 'gona-love') sc.clearedBosses.add('kiss');
+      sc.debugGiveLetters(0);
+      const goal = sc.bangeul.goal as string;
+      sc.debugGiveLetters(goal.length - 1, true);
+      say(
+        id === 'gona-love'
+          ? goal === 'gonalove'
+            ? 'GONA LOVE — 마지막 E 를 먹으면 완성 · 소환 뒤 다시 모음'
+            : 'L·V·E 쿠키 그림이 아직 없어 GONA 를 다시 모아요 (그림을 받으면 GONA LOVE 8칸)'
+          : '뽀뽀괴물 이전: 마지막 A 를 먹으면 완성 → 소환 → 뽀뽀괴물을 이기기 전엔 다시 안 모임',
+      );
+      break;
+    }
+    case 'bangeul-gold':
+    case 'bangeul-bump': {
+      sc.debugSetStage(2);
+      sc.boomerangAwake = true;
+      sc.clearedBosses.add('kiss');
+      clearWorld();
+      sc.debugGiveLetters(99);
+      window.setTimeout(() => bus.emit(EV.summonBangeul), 1000);
+      if (id === 'bangeul-bump') {
+        // 무적 동안 몬스터가 바로 앞에서 계속 → 부딪히면 튕겨 나감
+        const t = window.setInterval(() => {
+          const s2 = g();
+          const b = s2.debugBangeul();
+          if (!b.active && !b.inv && b.log.includes('summon:run')) return clearInterval(t);
+          s2.addMonster(Math.random() < 0.5 ? 'glasses' : 'farter', s2.playerX + 40);
+        }, 900);
+      }
+      say(id === 'bangeul-bump' ? '무적 동안 몬스터와 부딪히면 「팅!」 튕겨 나감 (피해 없음)' : '황금 소환: 번쩍 → 등장 → 웃음 음파 → 노래 음표 → 고나 보호막 5초');
+      break;
+    }
     case 'bangeul-spawn':
     case 'bangeul-hud':
     case 'bangeul-ready':
@@ -601,7 +674,9 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
       sc.debugSetStage(2);
       sc.boomerangAwake = true;
       clearWorld();
-      const give = id === 'bangeul-spawn' ? '' : id === 'bangeul-hud' ? 'go' : 'gona';
+      // 3단계 = 뽀뽀괴물 이후 (목표 GONA LOVE · L·V·E 그림이 없으면 GONA)
+      sc.clearedBosses.add('kiss');
+      const give = id === 'bangeul-spawn' ? 0 : id === 'bangeul-hud' ? 2 : 99;
       sc.debugGiveLetters(give, id === 'bangeul-spawn' || id === 'bangeul-hud');
       const mobs = (): void => {
         const s2 = g();
@@ -630,7 +705,7 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
           if (s2.state !== 'playing') return;
           if (!s2.debugBangeul().active) {
             if (id === 'bangeul-mobs') mobs();
-            s2.debugGiveLetters('gona');
+            s2.debugGiveLetters(99);
             window.setTimeout(summon, 1200);
           }
           window.setTimeout(loop, 7000);
@@ -670,7 +745,7 @@ export function runScenario(id: string, game: Game, parent: HTMLElement): void {
           }
         }
         const hp0 = b.hp;
-        s2.debugGiveLetters('gona');
+        s2.debugGiveLetters(99);
         const t = window.setInterval(() => {
           const b2 = g().battle;
           if (!b2) return clearInterval(t);
