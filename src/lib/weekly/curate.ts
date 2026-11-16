@@ -21,6 +21,8 @@ function amountText(r: WeeklyRow) {
   return `${r.title} ${r.titleKo ?? ""} ${r.summary4.join(" ")}`;
 }
 
+const PRIORITY_REGION = /폴란드|헝가리|체코|슬로바키아|루마니아|독일|네덜란드|스페인|이탈리아|영국|프랑스|베트남|인도네시아|태국|말레이시아|싱가포르|필리핀|아랍에미리트|UAE|호주/;
+
 /** Priority tier (spec 1–6) + adjustments; returns score and human-readable reasons. */
 export function curationPriority(r: WeeklyRow): { score: number; reasons: string[]; side: "global" | "domestic" } {
   const j = r.judgment;
@@ -41,6 +43,8 @@ export function curationPriority(r: WeeklyRow): { score: number; reasons: string
     if (j.lowValueType && !(d.group === "competitor" && j.lowValueType === "제품 출시 중심")) { base -= 25; reasons.push(`${j.lowValueType} (감점)`); }
     if (j.basis === "title_only") base -= 4;
   }
+  // 미국 편중 방지: 유럽(폴란드·헝가리 등), 동남아, UAE, 호주의 실제 투자 기사는 가산 (감점 항목이 붙은 기사는 제외)
+  if (d?.group === "global" && PRIORITY_REGION.test(d.country ?? "") && base >= 56 && !j?.completed && !j?.lowValueType) { base += 4; reasons.push(`우선 검토 지역 (${d.country})`); }
   const rel = r.relevance ?? 0;
   const score = Math.round(base + rel * 0.25 + (r.oppScore && d?.group !== "competitor" ? r.oppScore * 0.05 : 0));
   if (rel) reasons.push(`관련도 ${rel}`);
@@ -63,7 +67,7 @@ function rejectReason(r: WeeklyRow, why: "duplicate" | "balance" | "rank"): stri
 }
 
 /** v4: candidates are ranked even before Gemini verification (flagged 검증 전); verified ones rank first. Export / approval still warn. */
-export const CURATION_VERSION = "c4";
+export const CURATION_VERSION = "c5";
 
 export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
   const same = storyMatcher([...rows.map((r) => r.titleKo ?? r.title), ...o.previous.map((p) => p.title)]);

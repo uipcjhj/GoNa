@@ -641,3 +641,16 @@ describe("전체 기사 요약: 대상 선정·상태", () => {
     assert.equal(summaryStateOf(aiResult({ status: "failed" }), false), "failed");
   });
 });
+
+describe("추천 우선 지역", () => {
+  test("폴란드 신규 투자는 같은 조건의 미국 기사보다 높게, 이미 가동 중이면 가산 없음", async () => {
+    const { curationPriority } = await import("@/lib/weekly/curate");
+    const { row } = await import("./helpers");
+    const mk = (id: string, country: string) => row({ id, title: id, detail: { group: "global", country, sub: "제조물류 투자", label: "" } });
+    const pl = curationPriority(mk("pl", "폴란드")), us = curationPriority(mk("us", "미국"));
+    assert.ok(pl.score > us.score);
+    assert.ok(pl.reasons.some((x) => x.includes("우선 검토 지역")));
+    const done = curationPriority(row({ id: "d", title: "d", detail: { group: "global", country: "폴란드", sub: "제조물류 투자", label: "" }, judgment: { ...mk("x", "x").judgment!, completed: true } }));
+    assert.ok(!done.reasons.some((x) => x.includes("우선 검토 지역")));
+  });
+});

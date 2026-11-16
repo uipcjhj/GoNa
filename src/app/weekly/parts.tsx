@@ -313,7 +313,7 @@ export function ArticleDetail({ r, reasons, rejectReason, onRefresh }: { r: Week
           </span>
         </div>
         <ol className="space-y-1 rounded-lg bg-navy-900/60 p-3 text-sm leading-relaxed text-slate-800">
-          {(lines ?? []).length ? lines!.map((l, i) => <li key={i}>{l}</li>) : <li className="text-slate-500">Gemini 원문 검증 요약이 없습니다 (AI 분석 필요). 키워드로 만든 문장은 보고서에 쓰지 않습니다.</li>}
+          {(lines ?? []).length ? lines!.map((l, i) => <li key={i}>{l}{i === 3 && <span className="ml-1.5 rounded bg-slate-100 px-1.5 text-[11px] text-slate-500">AI 시사점(추론)</span>}</li>) : <li className="text-slate-500">Gemini 원문 검증 요약이 없습니다 (AI 분석 필요). 키워드로 만든 문장은 보고서에 쓰지 않습니다.</li>}
         </ol>
         {r.ai?.sourceLevel === "excerpt" && r.summary4.length > 0 && <p className="mt-1.5 text-xs text-amber-700">기사 본문을 읽지 못해 제목·발췌문으로 확인되는 내용만 요약했습니다 (검증 수준 낮음).</p>}
       </section>
