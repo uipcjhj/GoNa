@@ -21,6 +21,8 @@ import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
 import { analyzeArticle, aiConfigured } from "./analyze";
 import { analyzeForReport, needsAnalysis } from "@/lib/report/factcheck";
 import { bulkCandidates, isHaltingError } from "@/lib/report/bulk";
+import { analyzeBatch } from "@/lib/report/batch";
+import { mergeTimings, takeTimings, timed, timingLine } from "@/lib/util/timing";
 import { readArticleSource } from "@/lib/report/source";
 import { loadWeekly } from "@/lib/weekly/view";
 import { applyResume, flushHealth, getResume, isQuarantined, loadHealth, recordHealth, saveResume } from "@/lib/news/health";
@@ -396,6 +398,35 @@ async function buildAnalyzeQueue(job: Job, settings: Settings) {
 // ------------------------------------------------------------------ analysis
 
 
+/** 요약 재실행 정책: 이미 현재 기준으로 분석된 기사는 (다른 작업이 먼저 끝냈더라도) 다시 호출하지 않는다. */
+function retryPolicy(o: Job["options"]): { retryFailed: boolean; upgrade: boolean } {
+  const explicit = Boolean(o?.ids?.length) || o?.scope === "selected" || o?.scope === "auto";
+  return { retryFailed: o?.scope === "all" ? Boolean(o.retryFailed) : explicit ? o?.scope !== "auto" : Boolean(o?.retryFailed), upgrade: Boolean(o?.ids?.length) };
+}
+
+async function processReportChunk(job: Job, ids: string[], settings: Settings) {
+  const pol = retryPolicy(job.options);
+  const open = (a: Article) => !a.isDemo && a.status !== "duplicate" && (a.status === "analyzed" || job.options?.scope === "all" || Boolean(job.options?.ids?.length));
+  const arts = (await getArticles(ids)).filter((a) => open(a) && needsAnalysis(a, pol));
+  if (!arts.length) return;
+  const out = await analyzeBatch(arts, settings, { onStage: (st) => { job.step = `${st} — 전체 ${Math.min(job.analyzeIndex + ids.length, job.analyzeQueue.length)}/${job.analyzeQueue.length}`; } });
+  const saved: Article[] = [];
+  for (const a of arts) {
+    const r = out.results.get(a.id);
+    if (!r) continue; // 한도·인증 오류로 처리하지 못한 기사: 저장하지 않음 (미분석 상태 유지)
+    a.report = r;
+    saved.push(a);
+    if (r.status === "failed") { job.stats.errors++; log(job, "warn", `AI 분석 실패: ${a.title.slice(0, 60)} — ${r.error?.message ?? ""}`); }
+    else job.stats.analyzed++;
+  }
+  if (saved.length) await timed("db_save", () => saveArticles(saved));
+  const ok = saved.filter((a) => a.report!.status !== "failed").length;
+  const st = out.stats;
+  log(job, "info", `${arts.length}건 처리: 저장 ${saved.length}건(성공 ${ok}·실패 ${saved.length - ok}) · Gemini 호출 ${st.calls}회(배치 ${st.batchCalls}·개별 ${st.singles}) · 원문 ${(st.sourceMs / 1000).toFixed(1)}초 · Gemini ${(st.geminiMs / 1000).toFixed(1)}초`);
+  job.timings = mergeTimings(job.timings, takeTimings());
+  if (out.halt) job.haltReason = `${out.halt.message} — 나머지 기사는 분석하지 않고 저장 후 중단했습니다 (완료된 요약은 유지, '이어서 요약'으로 재개).`;
+}
+
 async function processArticle(job: Job, id: string, settings: Settings, ctx: { opps: Opportunity[]; articles: Article[] }) {
   const [article] = await getArticles([id]);
   if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly" || job.mode === "quick"))) return;
@@ -680,14 +711,17 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
     if (job.phase === "analyze") {
       const ctx = { opps: await listOpportunities(), articles: (await listArticles({ sinceDays: 400 })).filter((a) => a.opportunityId) };
       // Gemini free tier: one report analysis at a time (calls are also paced inside the client)
-      const CONCURRENCY = job.mode === "weekly-analyze" && geminiConfigured() ? 1 : quick ? 4 : 3;
+      // 보고서 분석(Gemini): 10건 단위 묶음 — 원문은 병렬로 읽고, Gemini는 기사 여러 건을 한 번에 요약 (src/lib/report/batch.ts)
+      const reportMode = job.mode === "weekly-analyze" && geminiConfigured();
+      const CONCURRENCY = reportMode ? Math.max(5, Math.min(20, Number(process.env.BULK_CHUNK) || 10)) : quick ? 4 : 3;
       const margin = quick ? 3_000 : 20_000;
       while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin && !job.haltReason) {
         const batch = job.analyzeQueue.slice(job.analyzeIndex, job.analyzeIndex + CONCURRENCY);
         job.step = `원문 확인·분석 중 (${Math.min(job.analyzeIndex + batch.length, job.analyzeQueue.length)}/${job.analyzeQueue.length})`;
         await saveJob(job);
         // sequential merge step inside processArticle keeps clustering consistent; fetch+AI run in parallel
-        await Promise.all(batch.map((id) => processArticle(job!, id, settings, ctx)));
+        if (reportMode) await processReportChunk(job, batch, settings);
+        else await Promise.all(batch.map((id) => processArticle(job!, id, settings, ctx)));
         job.analyzeIndex += batch.length;
         await beat();
       }
@@ -722,6 +756,7 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
     }
 
     if (job.phase === "done") {
+      if (job.timings) log(job, "info", `단계별 소요시간 — ${timingLine(job.timings)}`);
       job.status = job.stats.errors > 0 ? "completed_with_errors" : "completed";
       if (job.mode === "weekly-analyze" && job.range) {
         // new Gemini results → the saved recommendation is recomputed on the next page load

@@ -468,6 +468,7 @@ export interface Job {
   deadlineAt?: string | null; // overall time limit: on reaching it the job stops and keeps what it collected
   timeLimited?: boolean;
   step?: string; // human-readable current step (shown live in the UI)
+  timings?: Record<string, { n: number; ms: number; max: number }>; // 단계별 소요시간(평균·최대) 누적
   failedSources?: string[];
   quickPool?: QuickCandidate[]; // quick mode: candidates held until selection (only selected ones are stored)
   log: JobLog[];

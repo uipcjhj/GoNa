@@ -6,7 +6,7 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.LOCAL_DB_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "gor-bulk-"));
-process.env.GEMINI_API_KEY = "test-key"; process.env.GEMINI_BASE_URL = "https://gemini.test"; process.env.GEMINI_MIN_INTERVAL_MS = "0"; process.env.GEMINI_MODEL = "gemini-test-flash";
+process.env.GEMINI_API_KEY = "test-key"; process.env.GEMINI_BASE_URL = "https://gemini.test"; process.env.GEMINI_MIN_INTERVAL_MS = "0"; process.env.GEMINI_BATCH = "1"; /* 한도 도달 시점을 기사 단위로 검증 */ process.env.GEMINI_MODEL = "gemini-test-flash";
 
 const { article, aiResult } = await import("./helpers");
 delete process.env.GEMINI_NO_USAGE_TRACKING; // 이 테스트는 임시 DB에서 일일 사용량 한도를 검증한다

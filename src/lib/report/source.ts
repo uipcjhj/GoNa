@@ -7,6 +7,7 @@ import type { Article, BodyStatus, SourceTrace, SupportSource } from "@/lib/type
 import { verifyAndFetch, classifySource, type FetchedPage } from "@/lib/pipeline/verify";
 import { isGoogleNews, resolveGoogleNewsUrl, searchSameStory } from "@/lib/news/resolve";
 import { domainOf } from "@/lib/util/url";
+import { timed } from "@/lib/util/timing";
 
 export function bodyStatusOf(page: FetchedPage): { status: BodyStatus; note: string } {
   const v = page.verification;
@@ -17,16 +18,47 @@ export function bodyStatusOf(page: FetchedPage): { status: BodyStatus; note: str
   return { status: "no_text", note: "페이지는 열렸으나 기사 본문을 추출하지 못함 (스크립트 렌더링·특수 구조)" };
 }
 
+// ── 원문 요청 정책: 결과 캐시 · 같은 사이트 동시 요청 제한 · 느린/차단 사이트 단축 타임아웃 ──
+const OK_TTL = 30 * 60_000, FAIL_TTL = 10 * 60_000;
+const pageCache = new Map<string, { at: number; fail: boolean; page: FetchedPage }>();
+const domainFails = new Map<string, number>(); // 연속 접속 실패(타임아웃·차단) 횟수
+const domainQueue = new Map<string, Promise<unknown>>();
+const DOMAIN_GAP_MS = () => (process.env.FETCH_DOMAIN_GAP_MS !== undefined ? Number(process.env.FETCH_DOMAIN_GAP_MS) || 0 : 800);
+
+/** 같은 사이트는 한 번에 하나씩, 최소 간격을 두고 요청 (다른 사이트는 병렬). */
+function perDomain<T>(domain: string, fn: () => Promise<T>): Promise<T> {
+  const prev = domainQueue.get(domain) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, DOMAIN_GAP_MS())));
+  domainQueue.set(domain, tail);
+  tail.then(() => { if (domainQueue.get(domain) === tail) domainQueue.delete(domain); });
+  return run;
+}
+
+export function resetFetchPolicy() { pageCache.clear(); domainFails.clear(); domainQueue.clear(); }
+
 async function fetchTwice(url: string): Promise<FetchedPage> {
-  let last: FetchedPage | null = null;
-  for (const t of [15000, 30000]) {
-    try {
-      last = await verifyAndFetch(url, t);
-      if (last.text && last.text.length > 200) return last;
-      if (last.verification.httpStatus) return last; // page answered — retrying will not help
-    } catch { /* retry once */ }
-  }
-  return last ?? (await verifyAndFetch(url, 5000));
+  const hit = pageCache.get(url);
+  if (hit && Date.now() - hit.at < (hit.fail ? FAIL_TTL : OK_TTL)) return hit.page;
+  const domain = domainOf(url) || url;
+  const slow = (domainFails.get(domain) ?? 0) >= 2; // 두 번 연속 접속 실패한 사이트는 짧게 한 번만
+  const attempts = slow ? [6000] : [10000, 15000];
+  const page = await perDomain(domain, () => timed("fetch", async () => {
+    let last: FetchedPage | null = null;
+    for (const t of attempts) {
+      try {
+        last = await verifyAndFetch(url, t);
+        if (last.text && last.text.length > 200) return last;
+        if (last.verification.httpStatus) return last; // page answered — retrying will not help
+      } catch { /* retry once (normal sites only) */ }
+    }
+    return last ?? (await verifyAndFetch(url, 4000));
+  }));
+  const failed = page.verification.httpStatus == null;
+  domainFails.set(domain, failed ? (domainFails.get(domain) ?? 0) + 1 : 0);
+  if (pageCache.size > 500) pageCache.delete(pageCache.keys().next().value!);
+  pageCache.set(url, { at: Date.now(), fail: failed || !(page.text && page.text.length > 200), page });
+  return page;
 }
 
 export interface ReadResult { trace: SourceTrace; page: FetchedPage | null; body: string; supportText: string }
@@ -44,7 +76,7 @@ export async function readArticleSource(a: Article, opts: { searchAlternatives?:
   }
   let url = a.url;
   if (isGoogleNews(url)) {
-    const r = await resolveGoogleNewsUrl(url);
+    const r = await timed("url_resolve", () => resolveGoogleNewsUrl(url));
     if (r.url === null) {
       Object.assign(trace, { bodyStatus: r.reason === "google_blocked" ? "google_blocked" : r.reason === "network_error" ? "network_error" : "google_unresolved", note: r.note });
     } else {
@@ -69,7 +101,7 @@ export async function readArticleSource(a: Article, opts: { searchAlternatives?:
   }
   // article page unreadable → same story elsewhere (official press release / other outlet) as SUPPORT only
   if (!body && opts.searchAlternatives && !trace.support.some((s) => s.status === "ok")) {
-    for (const alt of await searchSameStory(a.title, { exclude: [a.sourceDomain], max: 2 })) {
+    for (const alt of await timed("alt_search", () => searchSameStory(a.title, { exclude: [a.sourceDomain], max: 2 }))) {
       const p = await fetchTwice(alt.url).catch(() => null);
       const st = p ? bodyStatusOf(p) : { status: "network_error" as BodyStatus, note: "" };
       trace.support.push({ url: alt.url, title: alt.title, kind: officialKind(alt.url, a), status: st.status, chars: p?.text?.length ?? 0, addedBy: "search", checkedAt: new Date().toISOString() });

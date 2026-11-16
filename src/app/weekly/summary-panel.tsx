@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Sparkles } from "lucide-react";
 import type { WeeklyView } from "@/lib/weekly/view";
 import type { Job } from "@/lib/types";
+import { timingLine } from "@/lib/util/timing";
 import { cn } from "@/lib/utils";
 import { postJson, useReadOnly } from "./parts";
 
@@ -18,6 +19,7 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
   const [budget, setBudget] = useState<Budget | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(0);
   const was = useRef(false);
   const s = view.summary;
   const b = view.breakdown;
@@ -28,6 +30,7 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
       const d = (await (await fetch("/api/jobs/latest", { cache: "no-store" })).json()) as { job: Job | null; active: boolean };
       const mine = d.job?.mode === "weekly-analyze" && d.job.options?.scope === "all" ? d.job : null;
       setJob(mine);
+      setNow(Date.now());
       const act = Boolean(mine && d.active);
       if (act) router.refresh(); // 요약이 쌓이는 동안 목록·진행률 갱신
       if (was.current && !act) fetch("/api/ai/status", { cache: "no-store" }).then((r) => r.json()).then(setBudget).catch(() => {});
@@ -52,10 +55,13 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
     } catch (e) { setMsg({ text: e instanceof Error ? e.message : String(e), error: true }); } finally { setBusy(false); }
   }
 
+  const runDone = job ? Math.min(job.analyzeIndex, job.analyzeQueue.length) : 0;
+  const mins = job ? Math.max(0.5, (now - new Date(job.startedAt).getTime()) / 60_000) : 0;
+  const rate = job ? (job.stats.analyzed + job.stats.errors) / mins : 0; // 이번 실행 처리 속도 (건/분)
+  const left = job && rate > 0 ? Math.ceil((job.analyzeQueue.length - runDone) / rate) : null;
   const failedN = s.failed + s.unavailable;
   const done = s.done + s.partial + s.review;
   const pct = s.targets ? Math.round((done / s.targets) * 100) : 0;
-  const runDone = job ? Math.min(job.analyzeIndex, job.analyzeQueue.length) : 0;
   const halted = job?.haltReason && job.status !== "running" ? job.haltReason : null;
   const rem = s.remaining;
   const noKey = !view.ai;
@@ -75,8 +81,10 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
         {" "}필터 제외 기사도 요약할 수 있으며, 추천·보고서 후보와는 별도로 표시됩니다.
       </p>
       {active && job && (
-        <p className="flex items-center gap-2 text-sm text-sky-800"><Loader2 className="h-4 w-4 animate-spin" />요약 중 — 이번 실행 {runDone}/{job.analyzeQueue.length}건 (성공 {job.stats.analyzed} · 실패 {job.stats.errors}) · {job.step}</p>
+        <p className="flex flex-wrap items-center gap-2 text-sm text-sky-800"><Loader2 className="h-4 w-4 animate-spin" />요약 중 — 이번 실행 {runDone}/{job.analyzeQueue.length}건 (성공 {job.stats.analyzed} · 실패 {job.stats.errors}) · <b>{rate.toFixed(1)}건/분</b>{left != null && ` · 남은 시간 약 ${left}분`} · {job.step}
+          <button onClick={() => fetch(`/api/jobs/${job.id}/cancel`, { method: "POST" }).then(poll)} className="ml-auto rounded-lg border border-line px-2.5 py-0.5 text-[13px] text-slate-700 hover:border-sky-200">중단</button></p>
       )}
+      {job?.timings && Object.keys(job.timings).length > 0 && <p className="text-[12px] leading-relaxed text-slate-500">단계별 소요시간: {timingLine(job.timings)}</p>}
       {halted && <p className="rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800">중단됨: {halted}</p>}
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-2">

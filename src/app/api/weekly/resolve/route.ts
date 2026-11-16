@@ -1,7 +1,7 @@
 // 원문 복원 (Gemini 호출 없음): Google News 링크 → 언론사 URL, 본문 재시도, 같은 기사 다른 출처 검색, 보조 근거 URL 추가.
 import { NextResponse } from "next/server";
 import { getArticles, saveArticles } from "@/lib/db/repo";
-import { addSupportUrl, readArticleSource } from "@/lib/report/source";
+import { addSupportUrl, readArticleSource, resetFetchPolicy } from "@/lib/report/source";
 import { publicHttpUrl } from "@/lib/report/images";
 import { requireAdmin } from "@/lib/session";
 
@@ -20,6 +20,7 @@ export async function POST(req: Request) {
   const out = [];
   for (const a of arts) {
     if (support) addSupportUrl(a, support);
+    resetFetchPolicy(); // 사용자가 직접 재시도: 캐시된 실패 결과를 쓰지 않는다
     const r = await readArticleSource(a, { searchAlternatives: true });
     out.push({ id: a.id, url: a.url, trace: r.trace });
   }

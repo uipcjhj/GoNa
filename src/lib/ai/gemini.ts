@@ -6,6 +6,7 @@
 // - The API key is sent only in the x-goog-api-key header; it is never logged, returned or put in a URL.
 import "server-only";
 import { getStore } from "@/lib/db/store";
+import { addTiming, timed } from "@/lib/util/timing";
 
 const BASE = () => (process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
 const key = () => (process.env.GEMINI_API_KEY ?? "").trim();
@@ -184,6 +185,19 @@ async function markDailyBlocked(msg: string): Promise<void> {
 }
 
 let nextSlot = 0;
+/** 분당 토큰(TPM) 보호: 최근 60초 동안 보낸 추정 토큰이 한도를 넘으면 오래된 호출이 빠질 때까지 대기. */
+const tokenLog: { at: number; n: number }[] = [];
+async function tpmGuard(est: number) {
+  const tpm = Math.max(10_000, Number(process.env.GEMINI_TPM) || 200_000);
+  for (;;) {
+    const now = Date.now();
+    while (tokenLog.length && tokenLog[0].at < now - 60_000) tokenLog.shift();
+    const used = tokenLog.reduce((s, x) => s + x.n, 0);
+    if (used + est <= tpm || !tokenLog.length) break;
+    await new Promise((r) => setTimeout(r, Math.min(5000, tokenLog[0].at + 60_000 - now + 50)));
+  }
+  tokenLog.push({ at: Date.now(), n: est });
+}
 async function pace() {
   const gap = Math.max(0, process.env.GEMINI_MIN_INTERVAL_MS !== undefined ? Number(process.env.GEMINI_MIN_INTERVAL_MS) || 0 : Math.ceil(60_000 / geminiLimits().rpm) + 300);
   const now = Date.now();
@@ -204,7 +218,7 @@ export async function generateJSON<T = unknown>(o: GenerateOptions): Promise<{ d
     });
     for (let attempt = 0; ; attempt++) {
       await reserveCall();
-      await pace();
+      await timed("gemini_wait", async () => { await tpmGuard(Math.ceil((o.system.length + o.user.length) / 3) + Math.min(o.maxOutputTokens ?? 8192, 4000)); await pace(); });
       const t0 = Date.now();
       try {
         const res = await call(`/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: "POST", body, timeoutMs: o.timeoutMs ?? 90_000 });
@@ -219,6 +233,7 @@ export async function generateJSON<T = unknown>(o: GenerateOptions): Promise<{ d
           throw new GeminiError("parse", 200, cand?.finishReason === "MAX_TOKENS" ? "응답이 길이 제한에서 잘림" : "JSON 아님");
         }
         const ms = Date.now() - t0;
+        addTiming("gemini_call", ms);
         const stats = state().stats;
         stats.ok++;
         stats.lastOk = { model, at: new Date().toISOString(), ms };

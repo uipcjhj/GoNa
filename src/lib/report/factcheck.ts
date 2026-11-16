@@ -15,7 +15,7 @@ export const REPORT_ANALYSIS_VERSION = "r3.1";
 /** Prompt / post-processing revision. Older results stay valid (no automatic overwrite) but can be re-run on request. */
 export const PROMPT_REV = "p3";
 
-const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동창고 AS/RS·셔틀·AGV/AMR·컨베이어·소터·WMS/WCS, 제조물류, 공항 수하물·화물 시스템) 주간 업계동향 보고서 담당 애널리스트입니다.
+export const SYSTEM = `당신은 현대무벡스(HYUNDAI MOVEX, 물류자동화: 자동창고 AS/RS·셔틀·AGV/AMR·컨베이어·소터·WMS/WCS, 제조물류, 공항 수하물·화물 시스템) 주간 업계동향 보고서 담당 애널리스트입니다.
 기사 1건을 [SOURCE]만 근거로 분석해 JSON으로 답합니다.
 
 절대 규칙
@@ -82,7 +82,7 @@ ${Object.entries(TAXONOMY).map(([k, v]) => `   - ${k}: ${v.subs.join(" | ")}`).j
 const PURPOSES = ["facility_capex", "funding_round", "conditional_loan", "equity", "valuation", "contract_value", "acquisition", "total_program", "other", "none"] as const;
 const S = { type: "STRING" } as const;
 const fact = { type: "OBJECT", properties: { value: S, evidence: S }, required: ["value", "evidence"] } as const;
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     report_type: { type: "STRING", enum: ["opportunity", "competitor", "trend", "exclude"] },
@@ -108,7 +108,7 @@ const RESPONSE_SCHEMA = {
   required: ["report_type", "exclude_reason", "title_ko", "company", "location", "facility", "stage", "investment", "schedule", "automation", "supplier", "construction_company", "order_potential", "category", "summary_status", "summary", "line_evidence", "confidence", "review_reasons"],
 };
 
-interface Raw {
+export interface Raw {
   report_type?: string; exclude_reason?: string; title_ko?: string;
   company?: { value?: string; evidence?: string };
   location?: { country?: string; country_ko?: string; city?: string; evidence?: string };
@@ -253,16 +253,30 @@ export function needsAnalysis(a: Article, opts: { retryFailed: boolean; upgrade?
 
 /** Full pipeline for one article. Updates the article's date from the page metadata when found. */
 export async function analyzeForReport(a: Article, settings: Settings): Promise<ReportAnalysis> {
-  void settings;
   if (!geminiConfigured()) return failedAnalysis(new GeminiError("not_configured", null, ""), null, null);
   const src = await readSource(a);
+  return analyzeSource(a, src, settings);
+}
+
+/** 원문 읽기와 분석을 분리: 이미 읽은 원문(src)으로 Gemini 1건 분석 (배치 요약의 개별 재시도에도 사용). */
+export async function analyzeSource(a: Article, src: SourceText, settings: Settings): Promise<ReportAnalysis> {
   if (src.publishedAt && !/^원문 메타데이터/.test(a.publishedAtBasis ?? "")) {
     a.publishedAt = src.publishedAt;
     a.publishedAtBasis = `원문 메타데이터 (${src.publishedAtBasis})`;
   }
   if (src.level === "title") return insufficientAnalysis(src);
+  const user = buildUser(a, src, settings);
+  try {
+    const r = await generateJSON<Raw>({ system: SYSTEM, user, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.1 });
+    return await rewriteIfNeeded(user, buildReportAnalysis(r.data, src, r.model), src);
+  } catch (e) {
+    return failedAnalysis(e, src, null);
+  }
+}
+
+export function buildUser(a: Article, src: SourceText, settings: Settings): string {
   const comps = settings.competitors.map((c) => c.name).join(", ");
-  const user = [
+  return [
     `발행 매체: ${a.sourceName} (${a.sourceDomain})`,
     `발행일(메타데이터): ${a.publishedAt ?? "미확인"}`,
     `원문 확보 수준: ${src.level === "body" ? "기사 본문" : "제목·발췌문만 (본문 미확보 — 발췌에 없는 사실은 쓰지 말 것)"}`,
@@ -276,24 +290,20 @@ export async function analyzeForReport(a: Article, settings: Settings): Promise<
     src.text,
     "[/SOURCE]",
   ].join("\n");
+}
+
+/** 요약 품질 문제가 있으면 구체적 문제를 알려 1회만 다시 작성 (실패하면 첫 결과를 검토용으로 유지). */
+export async function rewriteIfNeeded(user: string, first: ReportAnalysis, src: SourceText): Promise<ReportAnalysis> {
+  if (!shouldRewrite(first)) return first;
   try {
-    const r = await generateJSON<Raw>({ system: SYSTEM, user, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.1 });
-    const first = buildReportAnalysis(r.data, src, r.model);
-    if (!shouldRewrite(first)) return first;
-    // one rewrite with the concrete problems; if it still fails, the better result is kept as 사용자 검토 필요
-    try {
-      const fix = [
-        user, "", "[REVISE] 직전 답변의 4줄 요약이 기준에 미달했습니다. 같은 원문 사실만으로 JSON 전체를 다시 작성하세요.",
-        `직전 요약: ${first.summary.join(" / ") || "(비어 있음)"}`,
-        `문제: ${first.reviewReasons.join(" · ")}`,
-      ].join("\n");
-      const r2 = await generateJSON<Raw>({ system: SYSTEM, user: fix, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.2 });
-      const second = buildReportAnalysis(r2.data, src, r2.model);
-      return pickBetter(first, second);
-    } catch {
-      return first; // rewrite call failed (quota etc.) → keep the first result for review
-    }
-  } catch (e) {
-    return failedAnalysis(e, src, null);
+    const fix = [
+      user, "", "[REVISE] 직전 답변의 4줄 요약이 기준에 미달했습니다. 같은 원문 사실만으로 JSON 전체를 다시 작성하세요.",
+      `직전 요약: ${first.summary.join(" / ") || "(비어 있음)"}`,
+      `문제: ${first.reviewReasons.join(" · ")}`,
+    ].join("\n");
+    const r2 = await generateJSON<Raw>({ system: SYSTEM, user: fix, schema: RESPONSE_SCHEMA, maxOutputTokens: 6000, temperature: 0.2 });
+    return pickBetter(first, buildReportAnalysis(r2.data, src, r2.model));
+  } catch {
+    return first; // rewrite call failed (quota etc.) → keep the first result for review
   }
 }
