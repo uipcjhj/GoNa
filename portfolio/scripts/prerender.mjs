@@ -18,7 +18,7 @@ const { render, getMeta, getTheme, staticPaths, site, base, projects, archive } 
   const owners = [
     ...projects.map((p) => ({
       slug: p.slug,
-      list: [p.cover, ...(p.featured?.media ?? []), ...(p.featured?.items ?? []).map((i) => i.media), ...(p.process?.media ?? [])],
+      list: [p.cover, ...(p.featured?.media ?? []), ...(p.featured?.items ?? []).map((i) => i.media), ...(p.process?.media ?? []), ...(p.process?.groups ?? []).flatMap((g) => g.media ?? [])],
     })),
     { slug: 'archive', list: archive.flatMap((c) => c.items.map((i) => i.media)) },
   ];

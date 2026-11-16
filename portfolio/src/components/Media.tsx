@@ -23,13 +23,17 @@ const FILL = 'absolute inset-0 h-full w-full object-cover';
  */
 export function Media({ media, className = '', priority = false, zoom = false, ambient = false, onOpen }: Props) {
   const [playing, setPlaying] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
   if (!media.src) return null;
 
   const ratio = media.ratio ?? (media.kind === 'pdf' ? '4 / 3' : '16 / 10');
   const zoomClass = zoom
     ? 'transition-transform duration-700 ease-out-soft group-hover:scale-[1.05] group-focus-visible:scale-[1.05]'
     : '';
-  const poster = media.poster ? asset(media.poster) : undefined;
+  const poster = media.poster && !posterFailed ? asset(media.poster) : undefined;
+  const posterImg = poster && (
+    <img className={`${FILL} ${zoomClass}`} src={poster} alt="" loading="lazy" decoding="async" onError={() => setPosterFailed(true)} />
+  );
   let content;
 
   if (media.kind === 'image') {
@@ -73,16 +77,17 @@ export function Media({ media, className = '', priority = false, zoom = false, a
         aria-label={`${media.alt} 재생`}
         className="group absolute inset-0 flex cursor-pointer items-end justify-between gap-4 bg-ink p-4 text-left text-paper sm:p-6"
       >
-        {poster && <img className={`${FILL} ${zoomClass}`} src={poster} alt="" loading="lazy" decoding="async" />}
-        <span className="relative max-w-[70%] text-lg leading-snug font-semibold">{media.alt}</span>
-        <span className="meta relative shrink-0 bg-accent px-3 py-2 font-medium text-ink">Play</span>
+        {posterImg}
+        {/* 썸네일이 있으면 제목은 아래 설명(caption)에 맡긴다 */}
+        <span className={poster ? 'sr-only' : 'relative max-w-[70%] text-lg leading-snug font-semibold'}>{media.alt}</span>
+        <span className="meta relative ml-auto shrink-0 bg-accent px-3 py-2 font-medium text-ink transition-colors duration-300 group-hover:bg-paper">Play</span>
       </button>
     );
   } else {
     // PDF: 모바일 Safari 는 문서를 페이지 안에 띄우지 못하므로 새 창으로 연다
     const inner = (
       <>
-        {poster && <img className={`${FILL} ${zoomClass}`} src={poster} alt="" loading="lazy" decoding="async" />}
+        {posterImg}
         <span className={`relative max-w-[70%] text-lg leading-snug font-semibold ${poster ? 'bg-bg px-2 py-1' : ''}`}>{media.alt}</span>
         <span className="meta relative shrink-0 bg-accent px-3 py-2 font-medium text-ink">PDF</span>
       </>
