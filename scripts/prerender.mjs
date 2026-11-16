@@ -60,7 +60,7 @@ await writeFile(join(dist, '.nojekyll'), '');
 if (siteUrl) {
   const urls = staticPaths.map((p) => `  <url><loc>${siteUrl}${p}</loc></url>`).join('\n');
   await writeFile(join(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
-  await writeFile(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`);
+  await writeFile(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /admin/\nSitemap: ${siteUrl}/sitemap.xml\n`);
 }
 
 await rm(join(root, 'dist-ssr'), { recursive: true, force: true });

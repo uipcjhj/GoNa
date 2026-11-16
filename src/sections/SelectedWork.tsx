@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { Cover } from '../components/Cover';
+import { MetaLine } from '../components/MetaLine';
 import { ProjectCard } from '../components/ProjectCard';
 import { Reveal } from '../components/Reveal';
 import { moreWork, projects, selectedWork } from '../data/projects';
@@ -43,13 +44,7 @@ export function SelectedWork() {
                 className="group grid gap-x-10 gap-y-4 py-6 md:grid-cols-[1fr_16rem] md:items-center md:py-8"
               >
                 <div>
-                  <p className="meta text-muted">
-                    <span className="text-fg">{project.organization}</span>
-                    <span className="mx-2">|</span>
-                    {project.category}
-                    <span className="mx-2">|</span>
-                    {project.period}
-                  </p>
+                  <MetaLine items={[project.organization ?? project.type, project.category, project.period]} />
                   <h3 className="mt-2 text-title leading-[1.12] font-semibold tracking-[-0.03em]">
                     <span className="bg-[linear-gradient(#c8ff5f,#c8ff5f)] bg-[length:0%_100%] bg-no-repeat transition-[background-size,color] duration-500 ease-out-soft group-hover:bg-[length:100%_100%] group-hover:text-ink">
                       {project.title}

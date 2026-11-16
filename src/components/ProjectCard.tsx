@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import type { Project } from '../data/types';
 import { Cover } from './Cover';
+import { MetaLine } from './MetaLine';
 
 interface Props {
   project: Project;
@@ -27,13 +28,7 @@ export function ProjectCard({ project, priority = false, ratio }: Props) {
         </span>
       </h3>
       <p className="mt-2 text-[0.9375rem] text-muted">{project.summary}</p>
-      <p className="meta mt-3 text-muted">
-        <span className="text-fg">{project.organization ?? project.type}</span>
-        <span className="mx-2">|</span>
-        {project.category}
-        <span className="mx-2">|</span>
-        {project.period}
-      </p>
+      <MetaLine items={[project.organization ?? project.type, project.category, project.period]} className="mt-3" />
     </Link>
   );
 }
