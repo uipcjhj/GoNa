@@ -201,7 +201,7 @@ export default function ProjectDetail() {
                 {process.shift && <Shift shift={process.shift} />}
                 {process.approach && <Approach items={process.approach} />}
                 {process.flow && <Flow steps={process.flow} />}
-                {process.groups && <Groups groups={process.groups} />}
+                {process.groups && <Groups groups={process.groups} style={process.groupStyle} />}
                 {process.tags && <Tags tags={process.tags} />}
                 {process.note && <p className="max-w-[38rem] border-l-4 border-accent pl-4 text-[0.9375rem] text-muted">{process.note}</p>}
                 <Gallery items={process.media} label={`${project.title} 작업 과정`} />
