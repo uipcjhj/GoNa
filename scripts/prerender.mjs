@@ -7,20 +7,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-const { render, getMeta, getTheme, staticPaths, site, base, projects, archive } = await import(pathToFileURL(join(root, 'dist-ssr/entry-server.js')));
+const { render, getMeta, getTheme, staticPaths, site, base, projects, works } = await import(pathToFileURL(join(root, 'dist-ssr/entry-server.js')));
 
 // ── 미디어 검사: 자료는 자기 프로젝트 폴더(public/media/<slug>/)의 것만 쓸 수 있다 ──
 // 파일이 없거나, 다른 프로젝트의 자료를 가져다 쓰거나, 어디에도 쓰이지 않는 파일이 있으면 빌드를 멈춘다.
 {
   const problems = [];
   const used = new Set();
-  // 프로젝트 자료는 media/<slug>/, Creative Archive 자료는 media/archive/
+  // 프로젝트 자료는 media/<slug>/, Creative Archive 자료는 media/archive/<작업물 id>/
   const owners = [
     ...projects.map((p) => ({
       slug: p.slug,
       list: [p.cover, ...(p.featured?.media ?? []), ...(p.featured?.items ?? []).map((i) => i.media), ...(p.process?.media ?? []), ...(p.process?.groups ?? []).flatMap((g) => g.media ?? [])],
     })),
-    { slug: 'archive', list: archive.flatMap((c) => c.items.map((i) => i.media)) },
+    ...works.map((w) => ({ slug: `archive/${w.id}`, list: w.media ?? [] })),
   ];
   for (const p of owners) {
     for (const m of p.list) {
