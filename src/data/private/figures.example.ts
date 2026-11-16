@@ -31,6 +31,15 @@ const figures: PrivateFigures = {
       { title: 'MODEX 2026 전후', items: [{ label: 'YouTube', percent: 0 }, { label: 'Instagram', percent: 0 }, { label: 'LinkedIn', percent: 0 }] },
     ],
   },
+  // 집계 기간과 원본 자료를 확인한 수치만 적는다. 기준 시점이 다른 수치는 한 묶음에 섞지 않는다.
+  kdmesGrowth: {
+    publish: false,
+    note: '집계 기간: YYYY.MM – YYYY.MM',
+    sets: [
+      { title: 'YouTube', items: [{ label: '조회수', percent: 0 }, { label: '시청시간', percent: 0 }, { label: '구독자', percent: 0 }] },
+      { title: 'Instagram', items: [{ label: '팔로워', percent: 0 }, { label: '노출수', percent: 0 }] },
+    ],
+  },
 };
 
 export default figures;

@@ -11,7 +11,7 @@ export function getMeta(pathname: string): PageMeta {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return { title: `${site.name} — ${site.role}`, description: site.description };
   if (path === '/work') {
-    return { title: `Work — ${site.name}`, description: '디지털마케팅, 영상·전시 콘텐츠, 홈페이지·SEO, 시장정보 분석, AI Lab 프로젝트 전체 목록.' };
+    return { title: `Work — ${site.name}`, description: '현대무벡스와 극동MES에서 수행한 디지털마케팅·콘텐츠·브랜드 디자인 프로젝트와 AI Lab 개인 프로젝트 전체 목록.' };
   }
   const project = findProject(path.match(/^\/work\/([^/]+)$/)?.[1]);
   if (project) return { title: `${project.title} — ${site.name}`, description: project.summary };

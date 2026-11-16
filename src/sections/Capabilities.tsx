@@ -2,22 +2,23 @@ import { Link } from 'react-router';
 import { Reveal } from '../components/Reveal';
 import { capabilities, process } from '../data/about';
 
-/** 첫 화면 바로 아래: 핵심 업무 영역 여섯 가지. 누르면 해당 프로젝트로 간다. */
+/** 업무 영역 여덟 가지. 누르면 해당 프로젝트로 간다. */
 export function Capabilities() {
   return (
-    <section aria-labelledby="capabilities-title" className="shell pb-14 md:pb-24">
-      <h2 id="capabilities-title" className="sr-only">
-        핵심 업무 영역
+    <section aria-labelledby="capabilities-title" className="shell py-14 md:py-32">
+      <h2 id="capabilities-title" className="border-t border-fg pt-5 text-title leading-none font-bold tracking-[-0.04em]">
+        Capabilities
+        <span className="mt-2 block text-[0.9375rem] font-normal tracking-normal text-muted">업무 영역</span>
       </h2>
-      <ul className="grid border-t border-fg sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-8 grid border-t border-rule sm:grid-cols-2 md:mt-12 lg:grid-cols-4">
         {capabilities.map((c, i) => (
-          <li key={c.en} className="border-b border-rule sm:[&:nth-child(odd)]:border-r lg:border-r lg:[&:nth-child(3n)]:border-r-0">
+          <li key={c.en} className="border-b border-rule sm:max-lg:[&:nth-child(odd)]:border-r lg:border-r lg:[&:nth-child(4n)]:border-r-0">
             <Reveal delay={i * 0.04} className="h-full">
               <Link
                 to={c.to}
                 className="group flex h-full flex-col gap-3 px-0 py-5 transition-colors duration-300 hover:bg-accent hover:text-ink sm:px-5 sm:py-6 lg:gap-8"
               >
-                <span className="text-2xl leading-none font-bold tracking-[-0.04em] md:text-[1.75rem]">{c.en}</span>
+                <span className="text-2xl leading-[1.05] font-bold tracking-[-0.04em]">{c.en}</span>
                 <span className="text-[0.9375rem] leading-snug text-muted transition-colors duration-300 group-hover:text-ink">{c.ko}</span>
               </Link>
             </Reveal>

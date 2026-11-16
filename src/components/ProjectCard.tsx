@@ -28,6 +28,8 @@ export function ProjectCard({ project, priority = false, ratio }: Props) {
       </h3>
       <p className="mt-2 text-[0.9375rem] text-muted">{project.summary}</p>
       <p className="meta mt-3 text-muted">
+        <span className="text-fg">{project.organization ?? project.type}</span>
+        <span className="mx-2">|</span>
         {project.category}
         <span className="mx-2">|</span>
         {project.period}

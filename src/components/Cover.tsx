@@ -59,6 +59,15 @@ function Motif({ kind, tone }: { kind: NonNullable<TypeCover['motif']>; tone: Ty
           })}
         </svg>
       );
+    case 'play': // 영상 진행 막대
+      return (
+        <svg viewBox="0 0 200 60" className={box} {...common}>
+          <path d="M4 16v28l22-14z" fill={signal} stroke="none" />
+          <path d="M42 30h156" />
+          <path d="M42 30h70" stroke={signal} strokeWidth="6" />
+          <circle cx="112" cy="30" r="7" fill={signal} stroke="none" />
+        </svg>
+      );
     case 'radar':
       return (
         <svg viewBox="0 0 120 120" className="absolute top-[6%] right-[4%] w-[22%]" {...common}>
