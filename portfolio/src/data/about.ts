@@ -1,24 +1,35 @@
 /** About 영역 데이터. placeholder: true 항목은 화면에 "임시" 표시가 붙는다. */
 
-export const capabilities = [
-  { en: 'Digital Marketing', ko: '디지털마케팅', note: '담당한 채널과 업무 범위를 적어 주세요.', placeholder: true },
-  { en: 'Content Planning', ko: '콘텐츠 기획', note: '기획한 콘텐츠 유형과 방식을 적어 주세요.', placeholder: true },
-  { en: 'Branding', ko: '브랜딩', note: '브랜드 관련 작업 경험을 적어 주세요.', placeholder: true },
-  { en: 'Video Production', ko: '영상 제작', note: '기획·촬영·편집 중 직접 맡는 범위를 적어 주세요.', placeholder: true },
-  { en: 'AI Development', ko: 'AI 자동화 · 웹서비스 개발', note: '만든 도구와 사용한 방식을 적어 주세요.', placeholder: true },
+export interface Capability {
+  en: string;
+  ko: string;
+  /** 보충 설명 (선택) */
+  note?: string;
+  placeholder?: boolean;
+}
+
+// 현재 직무의 주요 업무 영역
+export const capabilities: Capability[] = [
+  { en: 'Global Social Media', ko: '글로벌 SNS 채널 운영 및 성장 전략' },
+  { en: 'Video Production', ko: '제품·레퍼런스 영상 기획 및 제작 관리' },
+  { en: 'B2B Brand Content', ko: 'B2B 브랜드 콘텐츠 및 전시 홍보' },
+  { en: 'Web, SEO & Newsletter', ko: '홈페이지·SEO·뉴스레터·디지털 콘텐츠' },
+  { en: 'Market Intelligence', ko: '시장·경쟁사 동향 분석' },
+  { en: 'AI Marketing Automation', ko: 'AI 기반 마케팅 업무 자동화 도구 기획 및 구현' },
 ];
 
 export interface Career {
-  period: string;
+  /** 근무 기간. 모르면 비워 둔다 */
+  period?: string;
   company: string;
   role: string;
-  note: string;
+  note?: string;
   placeholder?: boolean;
 }
 
 export const careers: Career[] = [
-  { period: '0000 — 현재', company: '회사명', role: '직무 · 직책', note: '주요 업무를 한두 문장으로 적어 주세요.', placeholder: true },
-  { period: '0000 — 0000', company: '회사명', role: '직무 · 직책', note: '주요 업무를 한두 문장으로 적어 주세요.', placeholder: true },
+  // 입사 연도를 알려 주시면 period 를 '2000 — 현재' 형태로 바꾼다
+  { period: '현재', company: '현대무벡스', role: '전략기획팀 · 디지털마케팅' },
 ];
 
 export const toolGroups = [

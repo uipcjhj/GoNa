@@ -42,7 +42,7 @@ export function Lab() {
                 to={`/work/${project.slug}/`}
                 className="group grid grid-cols-[1fr_5.5rem] items-center gap-x-4 gap-y-1 py-5 md:grid-cols-[10rem_1fr_11rem] md:gap-x-10 md:py-7"
               >
-                <p className="meta col-span-2 text-muted md:col-span-1">{project.kind}</p>
+                <p className="meta col-span-2 text-muted md:col-span-1">{project.kind ?? "Project"}</p>
                 <div>
                   <h3 className="text-title leading-[1.15] font-semibold tracking-[-0.03em]">
                     <span className="bg-[linear-gradient(#c8ff5f,#c8ff5f)] bg-[length:0%_100%] bg-no-repeat transition-[background-size,color] duration-500 ease-out-soft group-hover:bg-[length:100%_100%] group-hover:text-ink">
