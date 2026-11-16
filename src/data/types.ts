@@ -25,6 +25,11 @@ export interface TypeCover {
   caption: string;
   tone: 'ink' | 'wash' | 'signal';
   motif?: 'frames' | 'search' | 'grid' | 'radar' | 'play';
+  /**
+   * 커버 위에 올리는 실제 이미지 주소 (예: 공식 YouTube 영상의 썸네일).
+   * 불러오지 못하면 타이포그래피 커버가 그대로 보인다.
+   */
+  backdrop?: { src: string; alt: string };
 }
 export type Cover = Media | TypeCover;
 
@@ -61,6 +66,8 @@ export interface Group {
   title: string;
   status?: string;
   items: string[];
+  /** 이 묶음의 실제 작업물. groupStyle 이 'gallery' 일 때 크게 보여 준다. */
+  media?: Media[];
 }
 
 /** 대표 결과물 한 개 (제목 + 선택적으로 상태·링크·자료) */
@@ -105,6 +112,8 @@ export interface Project {
     items?: FeaturedItem[];
     /** 완성 영상, 게시물 캡처, PDF 등. 등록되면 이 영역 맨 위에 나온다. */
     media?: Media[];
+    /** 자료의 출처와 담당 범위 안내 */
+    note?: string;
   };
 
   // ── Process: 어떻게 풀었는지 ──
@@ -117,8 +126,8 @@ export interface Project {
     /** 순서가 있는 흐름 */
     flow?: string[];
     groups?: Group[];
-    /** columns: 나란한 열(기본) / events: 이름을 크게 쓰는 가로 블록 */
-    groupStyle?: 'columns' | 'events';
+    /** columns: 나란한 열(기본) / events: 이름을 크게 쓰는 가로 블록 / gallery: 분류별 작업물 갤러리(자료가 없는 분류는 한 줄로) */
+    groupStyle?: 'columns' | 'events' | 'gallery';
     tags?: { title: string; items: string[] }[];
     note?: string;
     /** 스토리보드, 시안, 검수 화면 등 작업 과정 자료 */

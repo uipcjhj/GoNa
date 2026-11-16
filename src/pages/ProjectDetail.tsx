@@ -176,6 +176,7 @@ export default function ProjectDetail() {
               <SectionTitle {...order('featured-results')} en="Featured Results" ko="대표 결과물" />
               <div className="space-y-10">
                 <Gallery items={featured.media} label={`${project.title} 대표 결과물`} />
+                {featured.note && <p className="max-w-[40rem] border-l-4 border-accent pl-4 text-[0.9375rem] text-muted">{featured.note}</p>}
                 {featured.milestone && (
                   <Reveal>
                     <Milestone milestone={featured.milestone} />

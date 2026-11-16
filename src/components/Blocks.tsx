@@ -1,4 +1,5 @@
 import type { FeaturedItem, Group, Project } from '../data/types';
+import { Gallery } from './Gallery';
 import { Media } from './Media';
 import { TextLink } from './TextLink';
 
@@ -63,7 +64,30 @@ export function Approach({ items }: { items: string[] }) {
   );
 }
 
-export function Groups({ groups, style = 'columns' }: { groups: Group[]; style?: 'columns' | 'events' }) {
+export function Groups({ groups, style = 'columns' }: { groups: Group[]; style?: 'columns' | 'events' | 'gallery' }) {
+  if (style === 'gallery') {
+    // 분류별 작업물. 자료가 있는 분류는 갤러리를 크게, 없는 분류는 한 줄 목록으로만 보여 준다.
+    return (
+      <div className="border-b border-rule">
+        {groups.map((group) => {
+          const hasMedia = group.media?.some((m) => m.src);
+          return (
+            <div key={group.title} className="border-t border-rule py-4 first:border-fg">
+              <div className="grid gap-x-8 gap-y-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:items-baseline">
+                <h3 className={`leading-snug font-semibold tracking-[-0.02em] ${hasMedia ? 'text-2xl' : 'text-lg'}`}>{group.title}</h3>
+                <p className="text-[0.9375rem] text-muted">{group.items.join(' · ')}</p>
+              </div>
+              {hasMedia && (
+                <div className="mt-5 pb-3">
+                  <Gallery items={group.media} label={`${group.title} 작업물`} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
   if (style === 'events') {
     return (
       <div>

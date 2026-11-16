@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Cover as CoverData, TypeCover } from '../data/types';
 import { Media } from './Media';
 
@@ -90,17 +91,29 @@ export function Cover({ cover, ratio, priority, zoom, className = '' }: Props) {
   if (cover.kind !== 'type') {
     return <Media media={ratio ? { ...cover, ratio } : cover} priority={priority} zoom={zoom} ambient={zoom} className={className} />;
   }
+  return <TypeCoverView cover={cover} ratio={ratio} priority={priority} zoom={zoom} className={className} />;
+}
+
+function TypeCoverView({ cover, ratio, priority, zoom, className = '' }: Omit<Props, 'cover'> & { cover: TypeCover }) {
+  // 실제 이미지(backdrop)를 불러오지 못하면 타이포그래피 커버만 남긴다
+  const [failed, setFailed] = useState(false);
+  const img = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    if (img.current?.complete && img.current.naturalWidth === 0) setFailed(true);
+  }, []);
+  const backdrop = failed ? undefined : cover.backdrop;
   const long = Math.max(...cover.headline.map((l) => l.length));
   // 가장 긴 줄이 너비 안에, 모든 줄이 높이 안에 들어가도록 글자 크기를 정한다 (cqw = 상자 너비의 1%)
   const [w, h] = (ratio ?? '16 / 10').split('/').map(Number);
-  const roomY = (100 * h) / w - 22; // 상자 높이에서 여백과 캡션 자리를 뺀 값
+  // 상자 높이에서 여백과 캡션 자리를 뺀 값. 세로로 긴 상자에 이미지가 있으면 위쪽 16:9 자리도 뺀다.
+  const roomY = (100 * h) / w - (backdrop && h > w ? 56.25 + 12 : 22);
   const size = Math.min(26, 150 / long, roomY / (cover.headline.length * 0.92));
 
   return (
     <div
       role="img"
-      aria-label={`${cover.headline.join(' ')}. ${cover.caption}`}
-      className={`relative overflow-hidden [container-type:inline-size] ${className}`}
+      aria-label={backdrop ? backdrop.alt : `${cover.headline.join(' ')}. ${cover.caption}`}
+      className={`relative overflow-hidden [container-type:size] ${className}`}
       style={{ aspectRatio: ratio ?? '16 / 10' }}
     >
       <div
@@ -108,7 +121,7 @@ export function Cover({ cover, ratio, priority, zoom, className = '' }: Props) {
           zoom ? 'transition-transform duration-700 ease-out-soft group-hover:scale-[1.05] group-focus-visible:scale-[1.05]' : ''
         }`}
       >
-        {cover.motif && <Motif kind={cover.motif} tone={cover.tone} />}
+        {cover.motif && !backdrop && <Motif kind={cover.motif} tone={cover.tone} />}
         <p className="meta max-w-[46%] opacity-80">{cover.caption}</p>
         <p className="leading-[0.92] font-bold tracking-[-0.05em] whitespace-nowrap" style={{ fontSize: `${size}cqw` }}>
           {cover.headline.map((line) => (
@@ -117,6 +130,18 @@ export function Cover({ cover, ratio, priority, zoom, className = '' }: Props) {
             </span>
           ))}
         </p>
+        {/* 가로로 넓은 상자: 이미지가 전체를 덮는다 / 세로로 긴 상자: 이미지는 위쪽 16:9, 아래에 제목 */}
+        {backdrop && (
+          <img
+            ref={img}
+            src={backdrop.src}
+            alt=""
+            loading={priority ? 'eager' : 'lazy'}
+            decoding="async"
+            onError={() => setFailed(true)}
+            className="absolute inset-x-0 top-0 aspect-video w-full object-cover [@container(min-aspect-ratio:1/1)]:aspect-auto [@container(min-aspect-ratio:1/1)]:h-full"
+          />
+        )}
       </div>
     </div>
   );

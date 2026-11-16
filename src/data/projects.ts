@@ -1,5 +1,14 @@
 import { channelKpi, exhibitionChanges, kdmesGrowth } from './figures';
-import type { Project } from './types';
+import type { Media, Project } from './types';
+
+const thumb = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+/**
+ * 공식 YouTube 채널에 공개된 영상 한 개. id 와 제목은 채널에서 직접 확인한 것만 적는다 (2026-11-16 확인).
+ * 썸네일은 저장소에 복사하지 않고 YouTube 에서 불러온다.
+ */
+const yt = (id: string, title: string): Media => ({ kind: 'youtube', src: id, alt: title, caption: title, poster: thumb(id), ratio: '16 / 9' });
+
+const MOVEX_NOTE = '현대무벡스 공식 YouTube 채널에 공개된 영상입니다. 담당 범위는 위 My role에 적은 것과 같으며, 단독 제작물이 아닙니다.';
 
 /**
  * 프로젝트 데이터. 화면 컴포넌트는 이 파일만 읽는다.
@@ -33,6 +42,9 @@ export const projects: Project[] = [
       { label: '제작·최적화', items: ['제목, 설명, 썸네일 및 SEO 최적화', '롱폼·숏폼 콘텐츠 재가공'] },
       { label: '분석·보고', items: ['KPI 관리 및 성과 보고'] },
     ],
+    featured: {
+      items: [{ title: 'HYUNDAI MOVEX YouTube', status: '공식 채널', link: { label: '채널 열기', href: 'https://www.youtube.com/@hyundaimovex' } }],
+    },
     process: {
       challenge: '세 개의 채널에 흩어진 콘텐츠를 하나의 전략 아래 체계화하고, 운영 결과를 데이터로 확인하고 보고할 수 있는 구조가 필요했습니다.',
       approach: [
@@ -54,7 +66,7 @@ export const projects: Project[] = [
     period: '2026',
     organization: 'HYUNDAI MOVEX',
     summary: '복잡한 물류자동화 기술을 고객이 이해하기 쉬운 시각적 콘텐츠로 전환했습니다.',
-    cover: { kind: 'type', headline: ['4WS', '& MGF'], caption: 'Product film / 3D / Shorts', tone: 'wash', motif: 'frames' },
+    cover: { kind: 'type', headline: ['4WS', '& MGF'], caption: 'Product film / 3D / Shorts', tone: 'wash', motif: 'frames', backdrop: { src: thumb('0zRlcTGMZv0'), alt: '현대무벡스 4-Way Shuttle System 영상 썸네일' } },
     header: 'split',
     placement: 'selected',
     scope: [
@@ -63,6 +75,14 @@ export const projects: Project[] = [
       { label: '제작 협업', items: ['MGF 3D 및 Shorts 콘텐츠 제작 협업'] },
       { label: '제작', items: ['제품 기술 형상에 맞는 썸네일 재제작', '국·영문 설명 및 홍보 문구 제작'] },
     ],
+    featured: {
+      media: [
+        yt('0zRlcTGMZv0', '4-Way Shuttle System | High-Density Storage & Flexible Automation'),
+        yt('zMKEpCbbuII', '4-Way Shuttle | High-Density Storage & 4-Directional Automation'),
+        yt('NF14cKYpgN4', 'Mechanical Gap Filler (MGF) | Safer & More Accessible Rail Platforms'),
+      ],
+      note: MOVEX_NOTE,
+    },
     process: {
       challenge: '정확한 기술정보와 이해하기 쉬운 시각적 메시지 사이의 균형을 잡아야 했습니다.',
       shift: { from: '기능 중심 설명', to: '고객 가치 중심 스토리텔링' },
@@ -81,7 +101,7 @@ export const projects: Project[] = [
     period: '2022–2025',
     organization: '극동MES',
     summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 성장시켰습니다.',
-    cover: { kind: 'type', headline: ['YouTube', '& Social'], caption: 'Plan, shoot, edit, publish', tone: 'ink', motif: 'play' },
+    cover: { kind: 'type', headline: ['YouTube', '& Social'], caption: 'Plan, shoot, edit, publish', tone: 'ink', motif: 'play', backdrop: { src: thumb('1kQew3POth4'), alt: '바다로요트 YouTube 영상 썸네일' } },
     placement: 'selected',
     scope: [
       { label: '기획', items: ['YouTube 영상 콘텐츠 기획', 'Instagram 카드뉴스·숏폼·브랜드 콘텐츠 기획'] },
@@ -89,6 +109,21 @@ export const projects: Project[] = [
       { label: '운영', items: ['YouTube·Instagram 공식 채널 운영', '월 2회 YouTube 영상 정기 발행'] },
       { label: '분석·보고', items: ['채널별 성장 지표 분석', '월별 성과 분석 및 콘텐츠 운영 성과 보고'] },
     ],
+    featured: {
+      media: [
+        yt('1kQew3POth4', '★한국 상륙!★ 피이 보트 발뻗고 누워봤습니다. 라이노490 PE 레저 보트 공간 미쳤다'),
+        yt('wuuJOpOl6tw', '요즘 카약은 이렇게 나온다고? 1인용·2인용 변신! | 하이보 분할형 카약 언박싱'),
+        yt('fzs8aDx7BwI', '물 아무리 넣어도, 쏠려도 안침몰함.. 요즘 PE 불침선 미쳤다 | HDPE보트'),
+        yt('zJycMdcqGMY', '한국 출시해도 될까..? 중국 박람회에서 ‘가성비 미쳤다’는 PE보트 발견함 | HDPE보트'),
+        yt('kf8Pj010BW8', '요트회사가 만든 인산철 배터리, 정말 다를까?'),
+        yt('pDNXL-XOIbY', '내 보트가 이렇게 편해질 줄이야.. 롤바부터 핸드레일까지 액세서리 총집합!'),
+      ],
+      note: '극동MES 재직 기간에 바다로요트 공식 YouTube 채널에 게시된 영상 중 일부입니다. 채널 콘텐츠의 기획·촬영·편집·업로드를 담당했으며, 영상별 담당 범위는 다를 수 있습니다.',
+      items: [
+        { title: '바다로요트 YouTube', status: '공식 채널', link: { label: '채널 열기', href: 'https://www.youtube.com/@BadaroYacht' } },
+        { title: '바다로요트 Shorts', status: '공식 채널', link: { label: 'Shorts 열기', href: 'https://www.youtube.com/@BadaroYacht/shorts' } },
+      ],
+    },
     process: {
       challenge: '브랜드가 제공하는 제품과 서비스를 고객에게 알리고, 지속적인 콘텐츠 발행을 통해 브랜드 인지도와 관심을 확대해야 했습니다.',
       approach: [
@@ -114,7 +149,7 @@ export const projects: Project[] = [
     period: '2026',
     organization: 'HYUNDAI MOVEX',
     summary: '글로벌 전시회의 사전 홍보부터 현장 콘텐츠, 사후 디지털 커뮤니케이션까지 연결했습니다.',
-    cover: { kind: 'type', headline: ['AW', 'MODEX', 'WAC'], caption: 'Global exhibitions 2026', tone: 'signal' },
+    cover: { kind: 'type', headline: ['AW', 'MODEX', 'WAC'], caption: 'Global exhibitions 2026', tone: 'signal', backdrop: { src: thumb('-Runjlka8m0'), alt: '현대무벡스 MODEX 2026 현장스케치 영상 썸네일' } },
     placement: 'selected',
     scope: [
       { label: '홍보', items: ['국·영문 전시 사전 홍보 (AW)', '국·영문 초청장, 글로벌 SNS 홍보, 미국법인 홍보 메시지 (MODEX)'] },
@@ -130,6 +165,13 @@ export const projects: Project[] = [
       { label: '검수·보고', items: ['영업부서 검수를 거쳐 경영진 보고 (WAC)'] },
       { label: '분석', items: ['SNS 전후 성과 분석 (AW)'] },
     ],
+    featured: {
+      media: [
+        yt('yV7Oj2s7YzA', 'AW2026 On-site Highlights | AW2026 전시회 현장스케치'),
+        yt('-Runjlka8m0', 'MODEX 2026 On-site Highlights | MODEX 2026 전시회 현장스케치'),
+      ],
+      note: MOVEX_NOTE,
+    },
     process: {
       flow: ['사전 홍보', '현장 콘텐츠', '사후 디지털 커뮤니케이션'],
       tags: [{ title: 'Featured events', items: ['AW 2026', 'MODEX 2026', 'WAC 2026'] }],
@@ -158,11 +200,14 @@ export const projects: Project[] = [
       { label: '홍보', items: ['보도자료 및 언론홍보 콘텐츠'] },
     ],
     process: {
+      groupStyle: 'gallery',
       groups: [
-        { title: 'Digital', items: ['카드뉴스', 'GIF·모션그래픽', '웹디자인·아이콘'] },
-        { title: 'Print & Ad', items: ['잡지 광고', '현수막', '가격표'] },
-        { title: 'Commerce', items: ['상품 상세페이지', '온라인 프로모션·이벤트'] },
-        { title: 'PR', items: ['보도자료', '언론홍보 콘텐츠'] },
+        // 분류별 작업물 이미지는 public/media/brand-content-design/ 에 넣고 각 분류의 media 에 적는다
+        { title: 'Branding & Advertising', items: ['잡지 광고', '온라인 프로모션·이벤트'] },
+        { title: 'Social Media Design', items: ['카드뉴스'] },
+        { title: 'Web & Commerce', items: ['상품 상세페이지', '웹디자인·아이콘'] },
+        { title: 'Print & Editorial', items: ['현수막·가격표 등 인쇄물', '보도자료·언론홍보 콘텐츠'] },
+        { title: 'Motion & Video', items: ['GIF·모션그래픽'] },
       ],
     },
     outcome: {
@@ -201,6 +246,7 @@ export const projects: Project[] = [
     ],
     featured: {
       milestone: { date: '2026.08.20', label: 'SEO 블로그 메뉴 오픈' },
+      items: [{ title: 'HYUNDAI MOVEX Blog', status: '오픈', link: { label: '블로그 열기', href: 'https://www.hyundaimovex.com/company/blog.php' } }],
     },
     process: {
       groups: [
