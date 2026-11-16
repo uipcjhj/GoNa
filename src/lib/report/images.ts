@@ -39,7 +39,7 @@ function kindOf(pageUrl: string): ImageSourceKind {
   return "article";
 }
 
-async function fetchLimited(url: string, accept: string, maxBytes: number, timeoutMs = 15000): Promise<{ buf: Buffer; type: string; finalUrl: string } | null> {
+export async function fetchLimited(url: string, accept: string, maxBytes: number, timeoutMs = 15000): Promise<{ buf: Buffer; type: string; finalUrl: string } | null> {
   if (!publicHttpUrl(url)) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);

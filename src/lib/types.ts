@@ -547,3 +547,31 @@ export interface Settings {
   rotation: number;
   lastScheduledRunAt: string | null;
 }
+
+/** 보고서 이미지 자료실 (기사별 이미지 후보 + 한 줄 캡션). 기사 선정·요약·PPT 이미지와 독립적으로 저장된다. */
+export type LibImageType = "article" | "logo" | "facility";
+export interface LibImage {
+  id: string;
+  type: LibImageType;
+  imageUrl: string;
+  pageUrl: string;
+  sourceSite: string;
+  sourceNote: string; // 출처 설명 (공식 홈페이지 / Wikimedia Commons / 기사 원문 / 기업 공식 보도자료 …)
+  mime: string;
+  width: number | null;
+  height: number | null;
+  alt: string; // 출처가 제공한 설명(alt·figcaption) 원문
+  caption: string; // AI·규칙으로 만든 한 줄 캡션 ('' = 설명 확인 필요)
+  captionBasis: "source" | "ai" | "fixed" | "none";
+  captionEdited: string | null; // 사용자가 직접 수정한 캡션 — 재분석·재검색으로 덮어쓰지 않는다
+  check: string | null; // '확인 필요' 사유
+}
+export interface LibEntry {
+  id: string; // imglib:<articleId>
+  articleId: string;
+  foundAt: string | null;
+  images: LibImage[];
+  primary: string | null; // 대표 이미지 id (사용자 선택)
+  notes: string[]; // 유형별 검색 결과 안내 (이미지 없음 / 확인 필요 사유)
+  searched: Partial<Record<LibImageType, string>>; // 유형별 마지막 검색 시각
+}

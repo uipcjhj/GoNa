@@ -2,7 +2,7 @@
 // 주간 업계동향 — curation workflow: 뉴스 수집 → AI 추천 → 사용자 검토 → 최종 선정 → Excel 출력
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Download, FileSpreadsheet, Files, Loader2, MoreHorizontal, Newspaper, Presentation, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Files, Image as ImageIcon, Loader2, MoreHorizontal, Newspaper, Presentation, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import type { Period } from "@/lib/weekly/period";
 import type { WeeklyView, WeeklyRow } from "@/lib/weekly/view";
 import type { ReportStatus } from "@/lib/types";
@@ -13,6 +13,7 @@ import { AllTab } from "./all-tab";
 import { RejectsTab } from "./rejects-tab";
 import { EditorTab } from "./editor-tab";
 import { ExportTab } from "./export-tab";
+import { LibraryModal } from "./library-modal";
 import { SummaryPanel } from "./summary-panel";
 import { revOf } from "@/lib/weekly/effective";
 
@@ -33,6 +34,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [menu, setMenu] = useState<"collect" | "more" | "export" | null>(null);
+  const [library, setLibrary] = useState(false);
   const [custom, setCustom] = useState({ open: period.key === "custom", start: period.startDate, end: period.endDate });
 
   const rows: WeeklyRow[] = useMemo(() => view.rows.map((r) => (overrides[r.id] ? { ...r, reportStatus: overrides[r.id] } : r)), [view.rows, overrides]);
@@ -178,25 +180,25 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
           <button onClick={() => regenerate()} disabled={!!busy} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-300 bg-surface-2 px-3.5 text-sm text-slate-800 hover:border-sky-200 disabled:opacity-50">
             {busy === "curate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}AI 추천 다시 생성
           </button>
-          <div className="relative">
-            <button onClick={() => setMenu(menu === "export" ? null : "export")} disabled={!!busy || !selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-brand-ink disabled:opacity-40">
-              {busy === "excel" || busy === "pptx" || busy === "both" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}보고서 내보내기<ChevronDown className="h-3.5 w-3.5" />
+          {/* 보고서 출력: 세 기능을 독립 버튼으로 노출 (좁은 화면에서는 줄바꿈) */}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="보고서 출력">
+            <button onClick={() => download("excel")} disabled={!!busy || !selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-brand-ink disabled:opacity-40">
+              {busy === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}엑셀 다운로드
             </button>
-            {menu === "export" && (
-              <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
-                <div className="px-2.5 pb-1 pt-1.5 text-[13px] text-slate-500">보고서 선정 기사 <b className="text-sky-700">{selected}</b>건 · 회사 원본 양식</div>
-                <MenuItem icon={<FileSpreadsheet className="h-4 w-4" />} title="Excel 다운로드" desc="업계동향리스트 원본 양식 (선정 기사 + 후보 탈락 리스트)" onClick={() => download("excel")} />
-                <MenuItem icon={<Presentation className="h-4 w-4" />} title="PowerPoint 다운로드" desc="업계동향 PPT 원본 디자인 (표지·전체 기사 List·기사 본문)" onClick={() => download("pptx")} />
-                <MenuItem icon={<Files className="h-4 w-4" />} title="두 파일 모두 다운로드" desc="같은 선정 기사·순서·편집 문구로 Excel과 PPT를 함께 생성" onClick={() => download("both")} />
-                <MenuItem icon={<FileSpreadsheet className="h-4 w-4" />} title="분석용 Excel (3시트)" desc="주간 업계동향 · 후보 탈락 · 잠재 수주기회 시트 (기존 형식)" onClick={() => download("analysis")} />
-                <MenuItem title="PPT 미리보기·이미지 확인" desc="표지·목록·본문을 확인하고 이미지·Vol.·날짜를 조정" onClick={() => { setMenu(null); setTab("export"); }} />
-              </div>
-            )}
+            <button onClick={() => setLibrary(true)} disabled={!selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-brand/60 bg-surface-2 px-3.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-40">
+              <ImageIcon className="h-4 w-4" />보고서 이미지 자료실
+            </button>
+            <button onClick={() => download("pptx")} disabled={!!busy || !selected} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-brand-ink disabled:opacity-40">
+              {busy === "pptx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Presentation className="h-4 w-4" />}PPT 내보내기
+            </button>
           </div>
           <div className="relative">
             <button onClick={() => setMenu(menu === "more" ? null : "more")} aria-label="더보기" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-surface-2 text-slate-600 hover:border-sky-200"><MoreHorizontal className="h-4 w-4" /></button>
             {menu === "more" && (
               <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
+                <MenuItem icon={<Files className="h-4 w-4" />} title="Excel·PPT 두 파일 모두 다운로드" desc="같은 선정 기사·순서·편집 문구로 Excel과 PPT를 함께 생성" onClick={() => { setMenu(null); download("both"); }} />
+                <MenuItem icon={<FileSpreadsheet className="h-4 w-4" />} title="분석용 Excel (3시트)" desc="주간 업계동향 · 후보 탈락 · 잠재 수주기회 시트 (기존 형식)" onClick={() => { setMenu(null); download("analysis"); }} />
+                <MenuItem title="PPT 미리보기·이미지 확인" desc="표지·목록·본문을 확인하고 이미지·Vol.·날짜를 조정" onClick={() => { setMenu(null); setTab("export"); }} />
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="분류 다시 적용 (무료)" desc="새 분류체계·판단 규칙을 저장된 기사에 적용합니다. 원문 링크·발행일·선정 상태는 그대로 유지되며 AI를 호출하지 않습니다." onClick={() => regenerate()} />
                 <MenuItem icon={<Sparkles className="h-4 w-4" />} title="추천 후보 Gemini 검증 (자동 선정)" desc="보고서 선정 기사 + 우선순위 상위 후보를 원문 기준으로 분석합니다. 완료된 기사는 다시 호출하지 않습니다." onClick={() => analyze({ scope: "auto" }, "추천 후보 원문 검증")} />
                 <MenuItem icon={<Sparkles className="h-4 w-4" />} title="Gemini 원문 검증 분석 (관련도 순)" desc="선정 기사·관련도 상위 후보의 원문을 읽고 사실·근거·4줄 요약을 만듭니다. 이미 분석된 기사는 재사용해 무료 사용량을 아낍니다." onClick={() => startJob("analyze", "/api/weekly/analyze", {}, "Gemini 원문 검증 분석")} />
@@ -224,6 +226,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
         ))}
       </section>
 
+      {library && !readOnly && <LibraryModal pq={pq} onClose={() => setLibrary(false)} />}
       <SummaryPanel view={view} pq={pq} />
 
       {/* tabs */}
