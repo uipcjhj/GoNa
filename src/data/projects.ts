@@ -50,6 +50,8 @@ export const projects: Project[] = [
   draftProject('project-d', '프로젝트 제목 D', 'Digital Marketing', '16 / 10'),
 
   // ── AI Lab ────────────────────────────────────────────────
+  // 이름만 확정. 소개·이미지·링크를 채운 뒤 placeholder 를 지운다
+  draftProject('global-opportunity-radar', 'Global Opportunity Radar', 'AI Lab', '16 / 10', false),
   {
     slug: 'gona-food-adventure',
     title: 'GONA’s Food Adventure',
@@ -80,8 +82,9 @@ export const projects: Project[] = [
       reflection: { body: [guide.reflection], placeholder: true },
     },
   },
-  { ...draftProject('ai-automation-tool', 'AI 자동화 도구', 'AI Lab', '16 / 10', false), kind: 'Automation' },
-  { ...draftProject('web-service', '웹서비스', 'AI Lab', '16 / 10', false), kind: 'Web Service' },
+  // 아래 두 프로젝트도 이름만 확정
+  { ...draftProject('gona-game-paradise', 'GONA Game Paradise', 'AI Lab', '16 / 10', false), kind: 'Game' },
+  { ...draftProject('gona-sky-adventure', 'GONA’s Sky Adventure', 'AI Lab', '16 / 10', false), kind: 'Game' },
 ];
 
 export const selectedWork = projects.filter((p) => p.featured && p.category !== 'AI Lab').slice(0, 4);

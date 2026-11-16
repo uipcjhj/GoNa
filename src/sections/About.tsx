@@ -23,7 +23,7 @@ export function About() {
       </h2>
 
       <div className="mt-12 md:mt-20">
-        <Block label="Capabilities" ko="핵심 역량">
+        <Block label="Capabilities" ko="주요 업무 영역">
           <ul>
             {capabilities.map((c, i) => (
               <li key={c.en} className="border-b border-rule py-4 first:pt-0 last:border-b-0 last:pb-0">
@@ -45,7 +45,7 @@ export function About() {
               <li key={i} className="border-b border-rule py-4 first:pt-0 last:border-b-0 last:pb-0">
                 <Reveal className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
                   <div>
-                    <p className="meta text-muted">{c.period}</p>
+                    {c.period && <p className="meta text-muted">{c.period}</p>}
                     <p className="text-xl leading-snug font-semibold tracking-[-0.02em] sm:text-2xl">
                       {c.company} {c.placeholder && <DraftTag className="text-muted" />}
                     </p>

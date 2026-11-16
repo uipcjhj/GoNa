@@ -5,7 +5,7 @@
 export const site = {
   name: 'HJ. PORTFOLIO',
   wordmark: 'HJ.',
-  role: 'Digital Marketer',
+  role: 'Digital Marketing × Creative × AI',
   /** 배포 주소(예: 'https://example.github.io/portfolio'). 채우면 canonical·sitemap 이 생성된다. */
   url: '',
   /** true 인 동안 화면 맨 위에 초안 안내 띠가 보인다 */
@@ -15,11 +15,11 @@ export const site = {
     ko: '아이디어를 기획에서 끝내지 않고 실제 결과물로 구현하는 디지털마케터.',
   },
   intro: {
-    text: '자기소개가 들어갈 자리입니다. 어떤 분야에서 어떤 일을 해 왔는지, 무엇을 잘하는지 두세 문장으로 적어 주세요.',
-    placeholder: true,
+    text: '현대무벡스 전략기획팀에서 디지털마케팅을 담당합니다. 글로벌 SNS 채널, 제품·레퍼런스 영상, B2B 브랜드 콘텐츠를 맡고 있고, 마케팅 업무를 자동화하는 AI 도구를 직접 기획하고 구현합니다.',
+    placeholder: false,
   },
   description:
-    '아이디어를 기획에서 끝내지 않고 실제 결과물로 구현하는 디지털마케터 HJ의 포트폴리오. 디지털마케팅, 브랜드 콘텐츠, 영상 제작, AI 프로젝트.',
+    '아이디어를 기획에서 끝내지 않고 실제 결과물로 구현하는 디지털마케터 HJ의 포트폴리오. 글로벌 SNS, B2B 브랜드 콘텐츠, 영상 제작, AI 기반 마케팅 자동화.',
   contact: {
     email: { value: 'your.email@example.com', placeholder: true },
     /** href 가 비어 있으면 "준비 중"으로 표시되고 눌리지 않는다 */
