@@ -1,0 +1,104 @@
+{
+  "title": "Website & SEO Enhancement",
+  "address": "website-seo",
+  "category": "Website / SEO / Digital Experience",
+  "filter": "Web & Research",
+  "period": "2026",
+  "organization": "HYUNDAI MOVEX",
+  "summary": "기업 홈페이지를 제품 정보 탐색과 검색 유입을 위한 디지털 접점으로 확장했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "SEO",
+      "Blog"
+    ],
+    "caption": "2026.08.20 메뉴 오픈",
+    "tone": "wash",
+    "motif": "search"
+  },
+  "header": "split",
+  "placement": "more",
+  "scope": [
+    {
+      "label": "기획",
+      "items": [
+        "SEO Blog 신설 및 콘텐츠 구조 설계",
+        "구조화 데이터·태그·시리즈 체계 기획",
+        "물류자동화 및 WMS/WCS 콘텐츠 기획",
+        "3D Digital Mockup 페이지 기획"
+      ]
+    },
+    {
+      "label": "검수",
+      "items": [
+        "홈페이지 개편 및 콘텐츠 검수"
+      ]
+    },
+    {
+      "label": "협업",
+      "items": [
+        "제품·솔루션별 3D 자료 협업"
+      ]
+    },
+    {
+      "label": "개선",
+      "items": [
+        "국·영문 홈페이지 개선"
+      ]
+    }
+  ],
+  "featured": {
+    "milestone": {
+      "date": "2026.08.20",
+      "label": "SEO 블로그 메뉴 오픈"
+    },
+    "items": [
+      {
+        "title": "HYUNDAI MOVEX Blog",
+        "status": "오픈",
+        "link": {
+          "label": "블로그 열기",
+          "href": "https://www.hyundaimovex.com/company/blog.php"
+        }
+      }
+    ]
+  },
+  "process": {
+    "groups": [
+      {
+        "title": "Homepage",
+        "items": [
+          "개편 및 콘텐츠 검수",
+          "국·영문 개선"
+        ]
+      },
+      {
+        "title": "SEO Blog",
+        "status": "오픈",
+        "items": [
+          "콘텐츠 구조",
+          "구조화 데이터·태그·시리즈 체계",
+          "물류자동화 및 WMS/WCS 콘텐츠"
+        ]
+      },
+      {
+        "title": "3D Digital Mockup",
+        "status": "기획·개발 협업",
+        "items": [
+          "페이지 기획",
+          "제품·솔루션별 3D 자료"
+        ]
+      }
+    ]
+  },
+  "outcome": {
+    "done": [
+      "SEO 블로그 메뉴 오픈 (2026.08.20)"
+    ],
+    "ongoing": [
+      "3D Digital Mockup 페이지: 기획·개발 협업 단계"
+    ]
+  },
+  "order": 6,
+  "published": true
+}

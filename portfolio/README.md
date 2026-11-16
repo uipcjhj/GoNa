@@ -19,28 +19,45 @@ npm run preview  # 빌드 결과 미리보기
 | 주소 | 내용 |
 | --- | --- |
 | `/` | Hero → Career Highlights(3) → Selected Work(4) → More Work(4) → AI Lab(2, 다크 전환) → Creative Archive → About·Experience → Capabilities → How I Work → Contact |
+| `/admin/` | 관리자 현황판과 편집기 (검색엔진 색인 제외) |
 | `/archive/` | Creative Archive 갤러리: 유형 필터(`?category=Video`), 작업물 상세 창(`?work=<id>`) |
 | `/work/` | 전체 프로젝트 10개 + 카테고리 필터 (`?category=Growth` 처럼 주소에 남음) |
 | `/work/<slug>/` | 상세: Hero → Key Information → Featured Results → Process → Outcome (내용이 있는 영역만) |
 | 그 외 | 404 안내 |
 
-## 내용 고치기 — `src/data/` 만 수정하면 됩니다
+## 내용 고치기 — 관리자 화면 또는 `content/` 의 JSON
 
-| 파일 | 내용 |
+모든 글과 목록은 `content/` 폴더의 JSON 파일에 있고, 사이트는 빌드할 때 이 파일을 읽습니다.
+
+| 폴더 | 내용 |
 | --- | --- |
-| `site.ts` | 이름, 직무, 핵심 메시지, 소개, 연락처(이메일·LinkedIn·GitHub·이력서) |
-| `projects.ts` | 프로젝트 10개(현대무벡스 6, 극동MES 2, AI Lab 2). 배열 순서가 프로젝트 번호: 역할 범위(scope), 대표 결과물(featured), 과정(process), 결과(outcome) |
-| `about.ts` | Career Highlights, About 문단, 경력 타임라인(career), Capabilities, How I Work |
-| `works.ts` | Creative Archive 작업물(한 건이 데이터 한 개). `public/media/archive/<id>/` 폴더에 이미지를 넣으면 그 작업물의 갤러리가 자동으로 구성된다 |
-| `videos.ts` | 확인된 공식 YouTube 영상 데이터 (프로젝트와 아카이브가 함께 사용) |
-| `figures.ts` + `private/` | 회사 수치 (아래 설명) |
+| `content/projects/<주소 이름>.json` | 대표 프로젝트. `order` 순서로 나오고 `published: false` 면 빌드에서 빠집니다 |
+| `content/works/<id>.json` | Creative Archive 작업물. `publicationStatus: "hidden"` 이면 빌드에서 빠집니다 |
+| `content/settings/*.json` | 사이트 정보·연락처, 자기소개, 경력, 역량·도구, How I Work |
+| `public/media/uploads/` | 관리자 화면에서 올린 파일 |
 
-- **없는 것은 화면에 나오지 않습니다.** 연락처는 값이 비어 있으면 숨겨지고, 상세 페이지 영역은 내용이 있는 것만 보입니다.
-- **역할 범위(scope)**: 기획·제작·검수·운영처럼 성격별로 나눠 적습니다. 직접 한 일과 협업·지원한 일을 섞지 않습니다.
-- **결과(outcome)**: 끝난 것은 `done`, 진행 중이거나 기획 단계인 것은 `ongoing` 에 적습니다.
-- **경력(career)**: 확인된 날짜만 적습니다. 현대무벡스는 입사일만 확정이라 종료·재직 여부를 적지 않았습니다.
-- **공모전 작품**: `works.ts` 에는 제목만 있습니다. 수상 등급·주최·연도는 증빙을 확인한 뒤 `description` 에 적습니다.
-- **이메일·LinkedIn·이력서**: `site.ts` 의 `contact` 에 값을 넣으면 Contact 영역에 나타납니다.
+- **없는 것은 화면에 나오지 않습니다.** 비워 둔 항목, 빈 목록, 값이 없는 연락처는 자동으로 숨겨집니다.
+- **YouTube** 는 주소를 그대로 붙여 넣으면 됩니다. 영상 ID 와 썸네일은 자동으로 만들어집니다.
+- **역할**: 직접 한 일과 협업·지원한 일을 섞지 않습니다. **결과**: 끝난 것과 진행 중인 것을 나눠 적습니다.
+- **경력**: 확인된 날짜만 적습니다. **수상 정보**: 증빙이 확인된 것만 적습니다.
+
+### 관리자 화면 (`/admin/`)
+
+`npm run dev` 또는 빌드 결과의 `/admin/` 에서 엽니다. 현황판(`/admin/`)과 편집기(`/admin/cms/`, [Sveltia CMS](https://sveltiacms.app/en/))로 이뤄져 있고, 설정은 `scripts/admin.mjs` 한 파일에 있습니다.
+
+| 연결 방식 | 저장되는 곳 | 필요한 것 |
+| --- | --- | --- |
+| 연습용 (기본) | 브라우저 안. 실제 사이트는 바뀌지 않음 | 없음 |
+| 내 컴퓨터의 저장소 | 컴퓨터에 받아 둔 저장소 폴더의 파일 | Chrome/Edge, `CMS_REPO` 설정, 저장 후 git push |
+| GitHub 저장소 | 저장소에 바로 커밋 → GitHub Actions 가 다시 빌드·배포 | `CMS_REPO` 설정, 로그인용 액세스 토큰 |
+
+- GitHub 에 연결하려면 빌드할 때 `CMS_REPO=계정/저장소 CMS_BRANCH=main` 을 줍니다. `.github/workflows/pages.yml` 은 이 값을 자동으로 넣습니다.
+- 로그인은 GitHub **fine-grained personal access token** 을 편집기 로그인 화면에 붙여 넣는 방식입니다(이 저장소 하나에 Contents 읽기/쓰기 권한만). 토큰은 그 브라우저에만 저장되며 코드나 저장소에는 들어가지 않습니다. 인증 서버가 필요 없습니다.
+- 토큰이 없는 사람은 `/admin/` 을 열어도 아무것도 저장할 수 없습니다.
+- 주의: 저장소가 공개라면 "숨김" 콘텐츠도 저장소의 파일로는 보입니다. 숨김은 사이트 빌드에서만 빠집니다. 공개하면 안 되는 내용은 저장하지 않습니다.
+- 편집기는 화면 번역과 아이콘 글꼴을 외부 CDN(unpkg, jsDelivr)에서 받습니다.
+- 올린 사진은 WebP(긴 변 2400px 이하)로 바뀌어 저장됩니다. 큰 영상은 YouTube 에 올리고 주소를 등록합니다.
+- 배포가 잘못되면 GitHub 의 커밋 기록에서 해당 커밋을 되돌리면(Revert) 이전 내용으로 다시 배포됩니다.
 
 ### 회사 수치 — 저장소에 올리지 않습니다
 
@@ -56,31 +73,9 @@ npm run preview  # 빌드 결과 미리보기
 
 ### 이미지·영상·PDF 넣기
 
-공식 YouTube 영상은 `projects.ts` 의 `yt('영상ID', '제목')` 으로 연결합니다. 채널에서 직접 확인한 영상만 적고, 썸네일은 저장소에 복사하지 않고 YouTube 에서 불러옵니다(불러오지 못하면 타이포그래피 커버·제목만 보입니다).
-
-파일을 `public/media/<프로젝트 slug>/` 에 넣고 `projects.ts` 에 적습니다. `src` 가 비어 있는 자료와 빈 묶음은 화면에 나오지 않습니다.
-
-```ts
-// 메인 비주얼: 카드와 상세 첫 화면. 타이포그래피 커버를 대신한다.
-cover: { kind: 'image', src: 'media/product-storytelling/main.webp', alt: '4WS 홍보영상 장면' },
-
-featured: {
-  // 대표 결과물: Featured Results 맨 위에 나온다
-  media: [
-    { kind: 'youtube', src: '유튜브영상ID', alt: '4WS 홍보영상', poster: 'media/product-storytelling/thumb.webp' },
-    { kind: 'video', src: 'media/product-storytelling/shorts.mp4', alt: 'Shorts' },
-    { kind: 'pdf', src: 'media/product-storytelling/brochure.pdf', alt: '제품 소개서' },
-  ],
-},
-process: {
-  // 작업 과정 자료: Process 아래에 나온다
-  media: [{ kind: 'image', src: 'media/product-storytelling/storyboard.webp', alt: '스토리보드', caption: '스토리보드' }],
-},
-```
-
-- 이미지는 누르면 크게 열립니다. YouTube 는 누르기 전까지 외부 요청을 보내지 않습니다. PDF 는 새 창으로 열립니다.
-- **빌드할 때 미디어를 검사합니다.** 파일이 없거나, 다른 프로젝트 폴더의 자료를 쓰거나, 어디에도 쓰이지 않는 파일이 있으면 빌드가 멈춥니다.
-- 회사 자료는 외부 공개 가능 여부를 확인한 뒤 올립니다.
+관리자 화면의 "이미지·영상" 에서 유형을 골라 추가합니다(이미지, YouTube, 짧은 MP4, PDF). 맨 위 자료가 대표 이미지가 되고, 끌어서 순서를 바꿉니다.
+직접 파일로 넣을 때는 `public/media/archive/<작업물 id>/` 폴더에 넣으면 그 작업물의 갤러리에 자동으로 붙습니다.
+YouTube 썸네일은 저장소에 복사하지 않고 YouTube 에서 불러옵니다(불러오지 못하면 글자 카드·제목만 보입니다).
 
 ## 디자인 토큰 — `src/styles/index.css`
 

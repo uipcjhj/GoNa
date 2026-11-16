@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 관리자 현황판의 '최근 수정' 날짜에 필요
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -30,6 +32,10 @@ jobs:
       - run: npm ci
       # 저장소 이름이 <계정>.github.io 이면 루트(/), 아니면 /<저장소 이름>/ 아래로 빌드한다
       - name: Build
+        env:
+          # 관리자 편집기가 이 저장소의 이 브랜치에 저장하도록 한다
+          CMS_REPO: ${{ github.repository }}
+          CMS_BRANCH: ${{ github.ref_name }}
         run: |
           REPO="${{ github.event.repository.name }}"
           if [[ "$REPO" == *.github.io ]]; then export BASE_PATH=/; else export BASE_PATH="/$REPO/"; fi

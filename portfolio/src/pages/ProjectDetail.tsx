@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
+import { Body } from '../components/Body';
 import { Approach, FeaturedItems, Flow, Groups, Milestone, Shift, Tags } from '../components/Blocks';
 import { Cover } from '../components/Cover';
 import { Gallery, Lightbox } from '../components/Gallery';
@@ -24,6 +25,7 @@ function sectionsOf(p: Project) {
     { id: 'featured-results', en: 'Featured Results', ko: '대표 결과물', show: featured },
     { id: 'process', en: 'Process', ko: '과정', show: Boolean(p.process) },
     { id: 'outcome', en: 'Outcome', ko: '결과', show: Boolean(p.outcome) },
+    { id: 'notes', en: 'Notes', ko: '본문', show: Boolean(p.body?.length) },
   ].filter((s) => s.show);
 }
 
@@ -258,6 +260,14 @@ export default function ProjectDetail() {
                 )}
                 {outcome.note && <p className="max-w-[38rem] border-l-4 border-accent pl-4 text-[0.9375rem] text-muted">{outcome.note}</p>}
               </Reveal>
+            </section>
+          )}
+
+          {/* ── 자유 본문 (관리자 화면에서 추가한 블록) ── */}
+          {project.body && project.body.length > 0 && (
+            <section id="notes" aria-labelledby="notes-title" className={SECTION}>
+              <SectionTitle {...order('notes')} en="Notes" ko="본문" />
+              <Body blocks={project.body} label={project.title} />
             </section>
           )}
         </div>

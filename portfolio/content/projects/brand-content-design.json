@@ -1,0 +1,101 @@
+{
+  "title": "Brand Content & Design Production",
+  "address": "brand-content-design",
+  "category": "Branding / Graphic Design / Creative Production",
+  "filter": "Content",
+  "period": "2022–2025",
+  "organization": "극동MES",
+  "summary": "온라인 영상부터 광고, 상세페이지, 인쇄물, 이벤트까지 다양한 고객 접점을 위한 브랜드 콘텐츠를 제작했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "Brand",
+      "& Design"
+    ],
+    "caption": "Ad, print, web, commerce",
+    "tone": "signal"
+  },
+  "placement": "more",
+  "scope": [
+    {
+      "label": "디자인",
+      "items": [
+        "잡지 광고 디자인",
+        "현수막·가격표 등 인쇄물 디자인",
+        "웹디자인·아이콘 디자인"
+      ]
+    },
+    {
+      "label": "제작",
+      "items": [
+        "카드뉴스 제작",
+        "상품 상세페이지 제작",
+        "GIF·모션그래픽 등 디지털 콘텐츠"
+      ]
+    },
+    {
+      "label": "프로모션",
+      "items": [
+        "온라인 프로모션 및 이벤트 콘텐츠",
+        "오픈마켓 상품 운영 관련 콘텐츠"
+      ]
+    },
+    {
+      "label": "홍보",
+      "items": [
+        "보도자료 및 언론홍보 콘텐츠"
+      ]
+    }
+  ],
+  "process": {
+    "groupStyle": "gallery",
+    "groups": [
+      {
+        "title": "Branding & Advertising",
+        "items": [
+          "잡지 광고",
+          "온라인 프로모션·이벤트"
+        ]
+      },
+      {
+        "title": "Social Media Design",
+        "items": [
+          "카드뉴스"
+        ]
+      },
+      {
+        "title": "Web & Commerce",
+        "items": [
+          "상품 상세페이지",
+          "웹디자인·아이콘"
+        ]
+      },
+      {
+        "title": "Print & Editorial",
+        "items": [
+          "현수막·가격표 등 인쇄물",
+          "보도자료·언론홍보 콘텐츠"
+        ]
+      },
+      {
+        "title": "Motion & Video",
+        "items": [
+          "GIF·모션그래픽"
+        ]
+      }
+    ]
+  },
+  "outcome": {
+    "next": {
+      "text": [
+        "이 시기의 개별 작업물은 Creative Archive에 분야별로 정리했습니다."
+      ],
+      "link": {
+        "label": "Creative Archive 보기",
+        "to": "/archive/"
+      }
+    }
+  },
+  "order": 5,
+  "published": true
+}

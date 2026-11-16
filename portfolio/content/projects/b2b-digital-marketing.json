@@ -1,0 +1,76 @@
+{
+  "title": "B2B Digital Marketing & Growth",
+  "address": "b2b-digital-marketing",
+  "category": "Digital Strategy / Growth",
+  "filter": "Growth",
+  "period": "2025–2026",
+  "organization": "HYUNDAI MOVEX",
+  "summary": "글로벌 디지털 채널의 콘텐츠 전략을 체계화하고, 데이터 기반 운영을 통해 브랜드의 디지털 접점을 확장했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "YouTube",
+      "LinkedIn",
+      "Instagram"
+    ],
+    "caption": "Global channels, 2025–2026",
+    "tone": "ink"
+  },
+  "header": "split",
+  "placement": "selected",
+  "scope": [
+    {
+      "label": "운영",
+      "items": [
+        "YouTube, LinkedIn, Instagram 공식 채널 운영",
+        "영문 LinkedIn 콘텐츠 운영"
+      ]
+    },
+    {
+      "label": "전략·기획",
+      "items": [
+        "글로벌 디지털 콘텐츠 전략 및 실행",
+        "유튜브 콘텐츠 재생목록 체계화"
+      ]
+    },
+    {
+      "label": "제작·최적화",
+      "items": [
+        "제목, 설명, 썸네일 및 SEO 최적화",
+        "롱폼·숏폼 콘텐츠 재가공"
+      ]
+    },
+    {
+      "label": "분석·보고",
+      "items": [
+        "KPI 관리 및 성과 보고"
+      ]
+    }
+  ],
+  "featured": {
+    "items": [
+      {
+        "title": "HYUNDAI MOVEX YouTube",
+        "status": "공식 채널",
+        "link": {
+          "label": "채널 열기",
+          "href": "https://www.youtube.com/@hyundaimovex"
+        }
+      }
+    ]
+  },
+  "process": {
+    "challenge": "세 개의 채널에 흩어진 콘텐츠를 하나의 전략 아래 체계화하고, 운영 결과를 데이터로 확인하고 보고할 수 있는 구조가 필요했습니다.",
+    "approach": [
+      "유튜브 재생목록을 체계화해 콘텐츠를 찾기 쉽게 정리",
+      "제목, 설명, 썸네일을 검색에 맞춰 최적화",
+      "롱폼 콘텐츠를 숏폼으로 재가공해 하나의 소재를 여러 접점에서 활용",
+      "영문 LinkedIn 콘텐츠로 글로벌 고객과의 접점 확보"
+    ]
+  },
+  "outcome": {
+    "note": "채널 KPI 수치는 공개 범위를 확인한 뒤 게시합니다."
+  },
+  "order": 1,
+  "published": true
+}

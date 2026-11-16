@@ -1,0 +1,56 @@
+{
+  "title": "Global Opportunity Radar",
+  "address": "global-opportunity-radar",
+  "category": "AI Automation / Market Intelligence",
+  "filter": "AI Lab",
+  "period": "2026",
+  "type": "Personal AI Project",
+  "status": "MVP 개발 및 기능 고도화",
+  "summary": "반복적인 시장조사 업무를 AI 기반 산업정보 수집·분류 및 잠재 수주기회 탐색 시스템으로 구현한 프로젝트.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "Opportunity",
+      "Radar"
+    ],
+    "caption": "AI market intelligence, MVP",
+    "tone": "signal",
+    "motif": "radar"
+  },
+  "placement": "lab",
+  "theme": "dark",
+  "scope": [
+    {
+      "label": "기획·개발·테스트",
+      "items": [
+        "Claude Code 등 AI 개발 도구를 활용해 직접 진행"
+      ]
+    }
+  ],
+  "related": {
+    "text": "시장정보 분석 업무에서 반복하던 과정에서 출발했습니다.",
+    "link": {
+      "label": "Market Intelligence 프로젝트 보기",
+      "to": "/work/market-intelligence/"
+    }
+  },
+  "process": {
+    "challenge": "수많은 글로벌 산업 뉴스에서 실제 사업과 관련성이 높은 정보를 찾고, 중복을 제거하고, 분석 보고서를 작성하는 일이 반복됐습니다.",
+    "flow": [
+      "국내외 산업 뉴스 수집",
+      "중복 기사 제거",
+      "지역·산업·투자·경쟁사 카테고리 분류",
+      "AI 기사 요약 및 관련성 검토",
+      "잠재 수주기회 추천",
+      "주간 업계동향 보고서 구성",
+      "Excel 출력 연동"
+    ]
+  },
+  "outcome": {
+    "ongoing": [
+      "MVP 개발 및 기능 고도화"
+    ]
+  },
+  "order": 9,
+  "published": true
+}

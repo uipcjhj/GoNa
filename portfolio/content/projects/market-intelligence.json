@@ -1,0 +1,93 @@
+{
+  "title": "Market Intelligence & Opportunity Discovery",
+  "address": "market-intelligence",
+  "category": "Market Research / Strategic Intelligence",
+  "filter": "Web & Research",
+  "period": "2025–2026",
+  "organization": "HYUNDAI MOVEX",
+  "summary": "글로벌 산업정보를 분석해 시장 변화와 잠재 사업기회를 발굴하는 업무를 수행했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "Market",
+      "Intelligence"
+    ],
+    "caption": "5 markets × 6 industries",
+    "tone": "ink",
+    "motif": "grid"
+  },
+  "placement": "more",
+  "scope": [
+    {
+      "label": "조사",
+      "items": [
+        "국내외 물류자동화 산업 뉴스 조사",
+        "글로벌 공장 신설·증설·투자 동향"
+      ]
+    },
+    {
+      "label": "선별·분류",
+      "items": [
+        "잠재 수주기회 관련 뉴스 선별",
+        "지역별·산업별 기사 분류"
+      ]
+    },
+    {
+      "label": "분석",
+      "items": [
+        "경쟁사 전략 및 기술 벤치마킹",
+        "글로벌 SI 산업 리포트 검토"
+      ]
+    },
+    {
+      "label": "보고",
+      "items": [
+        "주간 업계동향 보고"
+      ]
+    }
+  ],
+  "process": {
+    "flow": [
+      "산업 뉴스 조사",
+      "수주기회 관련 뉴스 선별",
+      "지역별·산업별 분류",
+      "주간 업계동향 보고"
+    ],
+    "tags": [
+      {
+        "title": "Markets",
+        "items": [
+          "미국",
+          "유럽",
+          "동남아시아",
+          "UAE",
+          "호주"
+        ]
+      },
+      {
+        "title": "Industries",
+        "items": [
+          "물류자동화",
+          "배터리",
+          "타이어",
+          "콜드체인",
+          "석유화학",
+          "로보틱스"
+        ]
+      }
+    ]
+  },
+  "outcome": {
+    "next": {
+      "text": [
+        "이 업무 경험이 같은 과정을 AI로 구현한 개인 프로젝트 Global Opportunity Radar를 기획한 출발점이 됐습니다."
+      ],
+      "link": {
+        "label": "Global Opportunity Radar 보기",
+        "to": "/work/global-opportunity-radar/"
+      }
+    }
+  },
+  "order": 7,
+  "published": true
+}
