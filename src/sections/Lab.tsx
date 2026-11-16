@@ -1,8 +1,7 @@
 import { useInView } from 'motion/react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
-import { DraftTag } from '../components/DraftTag';
-import { Media } from '../components/Media';
+import { Cover } from '../components/Cover';
 import { Reveal } from '../components/Reveal';
 import { labProjects } from '../data/projects';
 
@@ -24,35 +23,34 @@ export function Lab() {
   }, [centered]);
 
   return (
-    <section id="ai-lab" ref={ref} aria-labelledby="lab-title" className="shell py-24 md:py-40">
+    <section id="ai-lab" ref={ref} aria-labelledby="lab-title" className="shell py-16 md:py-40">
       <div className="grid gap-6 border-t border-fg pt-5 md:grid-cols-12 md:gap-10">
         <h2 id="lab-title" className="text-display leading-none font-bold tracking-[-0.05em] md:col-span-7">
           AI Lab
         </h2>
         <p className="text-lead leading-[1.45] font-semibold tracking-[-0.02em] md:col-span-5 md:self-end">
-          AI를 활용해 직접 만든 자동화 도구, 웹서비스, 게임을 모았습니다.
+          AI를 활용해 반복 업무를 개선하는 도구와 웹게임을 직접 기획하고 구현합니다.
         </p>
       </div>
 
-      <ul className="mt-12 md:mt-20">
+      <ul className="mt-12 grid gap-x-10 gap-y-16 md:mt-20 md:grid-cols-2">
         {labProjects.map((project, i) => (
-          <li key={project.slug} className="border-b border-rule first:border-t">
-            <Reveal delay={i * 0.05}>
-              <Link
-                to={`/work/${project.slug}/`}
-                className="group grid grid-cols-[1fr_5.5rem] items-center gap-x-4 gap-y-1 py-5 md:grid-cols-[10rem_1fr_11rem] md:gap-x-10 md:py-7"
-              >
-                <p className="meta col-span-2 text-muted md:col-span-1">{project.kind ?? "Project"}</p>
-                <div>
-                  <h3 className="text-title leading-[1.15] font-semibold tracking-[-0.03em]">
-                    <span className="bg-[linear-gradient(#c8ff5f,#c8ff5f)] bg-[length:0%_100%] bg-no-repeat transition-[background-size,color] duration-500 ease-out-soft group-hover:bg-[length:100%_100%] group-hover:text-ink">
-                      {project.title}
-                    </span>
-                    {project.placeholder && <DraftTag className="ml-3 text-muted" />}
-                  </h3>
-                  <p className="mt-2 max-w-[38rem] text-[0.9375rem] text-muted">{project.summary}</p>
-                </div>
-                <Media media={{ ...project.cover, ratio: '4 / 3' }} zoom />
+          <li key={project.slug}>
+            <Reveal delay={i * 0.06}>
+              <Link to={`/work/${project.slug}/`} className="group block focus-visible:outline-offset-8">
+                <Cover cover={project.cover} ratio="16 / 10" zoom />
+                <p className="meta mt-5 flex flex-wrap gap-x-2 text-muted">
+                  <span>{project.type}</span>
+                  <span>|</span>
+                  <span>{project.category}</span>
+                </p>
+                <h3 className="mt-2 text-title leading-[1.12] font-semibold tracking-[-0.03em]">
+                  <span className="bg-[linear-gradient(#c8ff5f,#c8ff5f)] bg-[length:0%_100%] bg-no-repeat transition-[background-size,color] duration-500 ease-out-soft group-hover:bg-[length:100%_100%] group-hover:text-ink">
+                    {project.title}
+                  </span>
+                </h3>
+                <p className="mt-3 max-w-[36rem] text-[0.9375rem] text-muted">{project.summary}</p>
+                {project.status && <p className="meta mt-4 inline-block border border-rule px-2 py-1">{project.status}</p>}
               </Link>
             </Reveal>
           </li>

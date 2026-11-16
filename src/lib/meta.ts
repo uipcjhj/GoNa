@@ -11,7 +11,7 @@ export function getMeta(pathname: string): PageMeta {
   const path = pathname.replace(/\/+$/, '') || '/';
   if (path === '/') return { title: `${site.name} — ${site.role}`, description: site.description };
   if (path === '/work') {
-    return { title: `Work — ${site.name}`, description: '디지털마케팅, 브랜드 콘텐츠, 영상, AI Lab 프로젝트 전체 목록.' };
+    return { title: `Work — ${site.name}`, description: '디지털마케팅, 영상·전시 콘텐츠, 홈페이지·SEO, 시장정보 분석, AI Lab 프로젝트 전체 목록.' };
   }
   const project = findProject(path.match(/^\/work\/([^/]+)$/)?.[1]);
   if (project) return { title: `${project.title} — ${site.name}`, description: project.summary };
@@ -20,3 +20,8 @@ export function getMeta(pathname: string): PageMeta {
 
 /** 정적 HTML 로 미리 만들어 둘 경로 목록 */
 export const staticPaths = ['/', '/work/', ...projects.map((p) => `/work/${p.slug}/`)];
+
+/** 미리 만드는 HTML 의 초기 테마 (다크 상세 페이지가 밝게 깜빡이지 않도록) */
+export function getTheme(pathname: string): 'dark' | undefined {
+  return findProject(pathname.replace(/\/+$/, '').match(/^\/work\/([^/]+)$/)?.[1])?.theme;
+}

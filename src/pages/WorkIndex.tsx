@@ -8,7 +8,7 @@ import { usePage } from '../lib/usePage';
 
 type Filter = 'All' | Category;
 const FILTERS: Filter[] = ['All', ...CATEGORIES];
-const count = (f: Filter) => (f === 'All' ? projects.length : projects.filter((p) => p.category === f).length);
+const count = (f: Filter) => (f === 'All' ? projects.length : projects.filter((p) => p.filter === f).length);
 
 export default function WorkIndex() {
   usePage();
@@ -26,13 +26,13 @@ export default function WorkIndex() {
     setParams(f === 'All' ? {} : { category: f }, { replace: true, preventScrollReset: true });
   };
 
-  const list = filter === 'All' ? projects : projects.filter((p) => p.category === filter);
+  const list = filter === 'All' ? projects : projects.filter((p) => p.filter === filter);
 
   return (
     <div className="shell pt-14 pb-24 md:pt-24 md:pb-32">
       <h1 className="text-display leading-none font-bold tracking-[-0.05em]">Work</h1>
       <p className="mt-5 max-w-[34rem] text-muted">
-        디지털마케팅, 브랜드 콘텐츠, 영상, AI Lab 프로젝트 전체 목록입니다.
+        회사에서 수행한 프로젝트 6개와 AI Lab 개인 프로젝트 2개입니다.
       </p>
 
       <div role="group" aria-label="카테고리 필터" className="mt-10 flex flex-wrap gap-2 border-t border-fg pt-5 md:mt-14">
@@ -67,7 +67,7 @@ export default function WorkIndex() {
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.4, ease: [0.2, 0.7, 0.2, 1] }}
             >
-              <ProjectCard project={project} ratio="4 / 3" />
+              <ProjectCard project={project} ratio="16 / 10" />
             </motion.li>
           ))}
         </AnimatePresence>

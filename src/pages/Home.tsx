@@ -2,7 +2,8 @@ import { useContext } from 'react';
 import { NAV } from '../components/Header';
 import { ActiveSectionContext, useSectionSpy } from '../lib/sections';
 import { usePage } from '../lib/usePage';
-import { About } from '../sections/About';
+import { AboutPreview } from '../sections/AboutPreview';
+import { Capabilities, HowIWork } from '../sections/Capabilities';
 import { Contact } from '../sections/Contact';
 import { Hero } from '../sections/Hero';
 import { Lab } from '../sections/Lab';
@@ -16,9 +17,11 @@ export default function Home() {
   return (
     <>
       <Hero />
+      <Capabilities />
       <SelectedWork />
       <Lab />
-      <About />
+      <AboutPreview />
+      <HowIWork />
       <Contact />
     </>
   );

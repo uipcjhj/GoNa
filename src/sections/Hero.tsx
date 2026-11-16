@@ -1,7 +1,6 @@
 import { animate, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
-import { DraftTag } from '../components/DraftTag';
 import { site } from '../data/site';
 
 /**
@@ -42,7 +41,7 @@ export function Hero() {
   );
 
   return (
-    <section className="shell flex flex-col overflow-x-clip pt-14 pb-12 md:min-h-[calc(100svh-4rem)] md:justify-end md:pt-16 md:pb-14">
+    <section className="shell flex flex-col overflow-x-clip pt-14 pb-12 md:min-h-[calc(100svh-11rem)] md:justify-end md:pt-16 md:pb-12">
       <p className="meta mb-6 flex flex-wrap gap-x-6 text-muted md:mb-8">
         <span>{site.name}</span>
         <span>{site.role}</span>
@@ -71,12 +70,10 @@ export function Hero() {
         </motion.span>
       </h1>
 
-      <div className="mt-10 grid gap-8 md:mt-14 md:grid-cols-12 md:gap-10">
-        <p className="text-lead leading-[1.45] font-semibold tracking-[-0.02em] md:col-span-7">{site.concept.ko}</p>
+      <div className="mt-8 grid gap-6 md:mt-14 md:grid-cols-12 md:gap-10">
+        <p className="text-[clamp(1.625rem,1rem+2.6vw,3.25rem)] leading-[1.25] font-bold tracking-[-0.035em] md:col-span-7">{site.concept.ko}</p>
         <div className="md:col-span-5 lg:col-span-4 lg:col-start-9">
-          <p className="text-muted">
-            {site.intro.text} {site.intro.placeholder && <DraftTag />}
-          </p>
+          <p className="text-muted">{site.intro}</p>
           <div className="mt-6 flex flex-wrap gap-3 text-[0.9375rem] font-semibold">
             <Link
               to={{ pathname: '/', hash: '#work' }}

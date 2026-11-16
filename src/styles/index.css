@@ -118,13 +118,6 @@ html[data-theme='dark'] {
     }
   }
 
-  /* 이미지가 아직 없는 자리 */
-  .placeholder-media {
-    background:
-      repeating-linear-gradient(135deg, transparent 0 13px, var(--rule) 13px 14px),
-      var(--wash);
-  }
-
   /* 밑줄 링크 */
   .link {
     text-decoration: underline;
