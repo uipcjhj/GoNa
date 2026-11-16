@@ -10,8 +10,8 @@ import { ArticleDetail, CategoryText, Markers, STATUS_LABEL, SourceButton, Statu
 
 const PAGE = 25;
 const SUMMARY_LABEL: Record<WeeklyRow["summaryState"], string> = { none: "요약 전", outdated: "재요약 필요", done: "요약 완료", partial: "부분 검증", review: "검토 필요", unavailable: "요약 불가", failed: "요약 실패" };
-const FILTERS: { key: "all" | WeeklyCategory | "review" | "selected" | "unverified" | "nosummary" | "unavailable" | "filteredout"; label: string }[] = [
-  { key: "all", label: "전체" }, { key: "nosummary", label: "요약 전" }, { key: "unavailable", label: "요약 불가·실패" }, { key: "filteredout", label: "필터 제외" }, { key: "selected", label: "보고서 선정" }, { key: "review", label: "확인 필요" }, { key: "unverified", label: "AI 미검증" },
+const FILTERS: { key: "all" | WeeklyCategory | "review" | "selected" | "unverified" | "nosummary" | "unavailable" | "filteredout" | "st_analyzed" | "st_queued" | "st_error" | "st_duplicate"; label: string }[] = [
+  { key: "all", label: "전체" }, { key: "st_analyzed", label: "분석 완료" }, { key: "st_queued", label: "분석 대기" }, { key: "filteredout", label: "필터 제외" }, { key: "st_error", label: "오류" }, { key: "st_duplicate", label: "중복" }, { key: "nosummary", label: "요약 전" }, { key: "unavailable", label: "요약 불가·실패" }, { key: "selected", label: "보고서 선정" }, { key: "review", label: "확인 필요" }, { key: "unverified", label: "AI 미검증" },
   { key: "domestic", label: "국내" }, { key: "global", label: "글로벌" }, { key: "competitor", label: "경쟁사" },
   { key: "policy", label: "정책" }, { key: "tech", label: "기술·시장" }, { key: "opportunity", label: "수주기회" },
 ];
@@ -51,9 +51,11 @@ export function DetailPanel({ r, curation, onClose, onSet, onRefresh }: { r: Wee
   );
 }
 
-export function AllTab({ rows: listRows, extraRows = [], curation, onSet, onRefresh, onAnalyze, initialFilter = "all" }: { rows: WeeklyRow[]; extraRows?: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyze?: (ids: string[]) => void; initialFilter?: string }) {
+export function AllTab({ rows: listRows, extraRows = [], dupRows = [], curation, onSet, onRefresh, onAnalyze, initialFilter = "all" }: { rows: WeeklyRow[]; extraRows?: WeeklyRow[]; dupRows?: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyze?: (ids: string[]) => void; initialFilter?: string }) {
   const readOnly = useReadOnly();
-  const rows = useMemo(() => (extraRows.length ? [...listRows, ...extraRows] : listRows), [listRows, extraRows]);
+  // 수집 기사 = 목록 + 필터 제외·오류 (중복은 '중복' 필터에서만 열람, 수집 기사 수에 포함하지 않음)
+  const collectedRows = useMemo(() => (extraRows.length ? [...listRows, ...extraRows] : listRows), [listRows, extraRows]);
+  const rows = useMemo(() => (dupRows.length ? [...collectedRows, ...dupRows] : collectedRows), [collectedRows, dupRows]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [f, setF] = useState<(typeof FILTERS)[number]["key"]>(FILTERS.some((x) => x.key === initialFilter) ? (initialFilter as (typeof FILTERS)[number]["key"]) : "all");
@@ -64,8 +66,9 @@ export function AllTab({ rows: listRows, extraRows = [], curation, onSet, onRefr
   const [openId, setOpenId] = useState<string | null>(null);
   const review = useMemo(() => new Set(curation.needsCheck.map((x) => x.articleId)), [curation]);
 
-  const matches = (r: WeeklyRow, key: (typeof FILTERS)[number]["key"]) =>
-    key === "all" ? true : key === "nosummary" ? r.summaryState === "none" || r.summaryState === "outdated" : key === "unavailable" ? r.summaryState === "unavailable" || r.summaryState === "failed" : key === "filteredout" ? r.articleStatus === "filtered" || r.articleStatus === "error" : key === "selected" ? r.reportStatus === "selected" : key === "unverified" ? !r.isDemo && r.analysis !== "pending" && r.aiStatus !== "done"
+  const matches = (r: WeeklyRow, key: (typeof FILTERS)[number]["key"]) => (key === "st_duplicate" || r.articleStatus !== "duplicate") && matchesRaw(r, key);
+  const matchesRaw = (r: WeeklyRow, key: (typeof FILTERS)[number]["key"]) =>
+    key === "all" ? r.articleStatus !== "duplicate" : key === "st_analyzed" ? r.articleStatus === "analyzed" : key === "st_queued" ? r.articleStatus === "queued" : key === "st_error" ? r.articleStatus === "error" : key === "st_duplicate" ? r.articleStatus === "duplicate" : key === "nosummary" ? r.summaryState === "none" || r.summaryState === "outdated" : key === "unavailable" ? r.summaryState === "unavailable" || r.summaryState === "failed" : key === "filteredout" ? r.articleStatus === "filtered" : key === "selected" ? r.reportStatus === "selected" : key === "unverified" ? !r.isDemo && r.analysis !== "pending" && r.aiStatus !== "done"
       : key === "review" ? review.has(r.id) || r.detail?.group === "review" || (r.analysis === "pending" && r.articleStatus === "queued") : r.categories.includes(key) || r.category === key;
 
   const filtered = useMemo(() => {
@@ -150,7 +153,7 @@ export function AllTab({ rows: listRows, extraRows = [], curation, onSet, onRefr
                       </>
                     ) : <span className={cn(r.summaryState === "unavailable" || r.summaryState === "failed" ? "text-amber-700" : "text-slate-400")}>{SUMMARY_LABEL[r.summaryState]}{r.summaryState === "unavailable" ? " — 원문·근거 부족으로 신뢰할 수 있는 4줄을 만들 수 없음" : ""}</span>}
                     {r.summaryState === "partial" && <span className="shrink-0 rounded bg-amber-50 px-1.5 text-[11px] text-amber-800">부분 검증</span>}
-                    {(r.articleStatus === "filtered" || r.articleStatus === "error") && <span className="shrink-0 rounded bg-slate-100 px-1.5 text-[11px] text-slate-600">필터 제외</span>}
+                    {r.articleStatus !== "analyzed" && <span className="shrink-0 rounded bg-slate-100 px-1.5 text-[11px] text-slate-600">{({ filtered: "필터 제외", queued: "분석 대기", error: "오류", duplicate: "중복" } as Record<string, string>)[r.articleStatus] ?? r.articleStatus}</span>}
                   </div>
                 </td>
                 <td className="truncate px-3 py-3 text-slate-600">{r.sourceName}</td>

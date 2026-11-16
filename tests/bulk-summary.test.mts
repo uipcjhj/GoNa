@@ -111,4 +111,23 @@ describe("전체 기사 AI 요약", () => {
     await run({ scope: "all" });
     assert.equal(calls, before_);
   });
+  test("수집 기사 수 = 목록 + 필터 제외 (중복 별도), 필터 제외 기사 선정 시 보고서 목록으로 이동", async () => {
+    const { setItem } = await import("@/lib/weekly/report");
+    let v = await loadWeekly(period);
+    assert.equal(v.counts.collected, v.rows.length + v.extraRows.length);
+    assert.equal(v.dupRows.length, 1);
+    assert.equal(v.extraRows.map((r) => r.id).join(), "filtr001");
+    await setItem(period, "filtr001", { status: "selected" });
+    v = await loadWeekly(period);
+    assert.equal(v.counts.collected, v.rows.length + v.extraRows.length, "선정 후에도 합계 유지");
+    assert.ok(v.rows.some((r) => r.id === "filtr001" && r.reportStatus === "selected"));
+    assert.equal(v.extraRows.length, 0);
+  });
+  test("필터 제외 기사도 ids 지정 시 Gemini 요약 요청 가능", async () => {
+    await saveArticles([mk("filtr002", "filtered")]);
+    const before_ = calls;
+    await run({ ids: ["filtr002"] });
+    assert.equal(calls - before_, 1);
+    assert.equal((await getArticle("filtr002"))!.report?.status, "done");
+  });
 });

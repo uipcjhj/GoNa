@@ -627,6 +627,8 @@ describe("전체 기사 요약: 대상 선정·상태", () => {
     assert.deepEqual(r.targets.map((x) => x.id).sort(), ["done", "f", "q"]);
     assert.deepEqual(r.pending.map((x) => x.id).sort(), ["f", "q"]);
     assert.equal(bulkCandidates(arts, range, { retryFailed: false, limit: 1 }).pending.length, 1);
+    const order = bulkCandidates([...arts, a("q2", "queued", { preScore: 0 })], range, { retryFailed: false }).pending.map((x) => x.id);
+    assert.equal(order[order.length - 1], "f", "필터 제외 기사는 후순위");
     assert.equal(isHaltingError("quota_daily"), true);
     assert.equal(isHaltingError("bad_response"), false);
   });

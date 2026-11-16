@@ -10,7 +10,8 @@ export function bulkCandidates(articles: Article[], range: { start: string; end:
   // every article of the week except duplicates / demo data (filtered and queued articles are summarised too)
   const targets = articles.filter((a) => !a.isDemo && a.status !== "duplicate" && when(a) >= range.start && when(a) < range.end);
   const order = new Map((o.priorityIds ?? []).map((id, i) => [id, i]));
-  const rank = (a: Article) => (o.selectedIds?.has(a.id) ? -1 : order.get(a.id) ?? 1_000_000);
+  // 유효 기사 우선, 사전 필터 제외·오류 기사는 후순위
+  const rank = (a: Article) => (o.selectedIds?.has(a.id) ? -1 : order.get(a.id) ?? 1_000_000) + (a.status === "filtered" || a.status === "error" ? 10_000_000 : 0);
   const pending = targets
     .filter((a) => needsAnalysis(a, { retryFailed: o.retryFailed }))
     .sort((a, b) => rank(a) - rank(b) || (b.preScore ?? 0) - (a.preScore ?? 0) || when(b).localeCompare(when(a)));

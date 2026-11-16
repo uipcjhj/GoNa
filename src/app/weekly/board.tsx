@@ -36,6 +36,9 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
   const [custom, setCustom] = useState({ open: period.key === "custom", start: period.startDate, end: period.endDate });
 
   const rows: WeeklyRow[] = useMemo(() => view.rows.map((r) => (overrides[r.id] ? { ...r, reportStatus: overrides[r.id] } : r)), [view.rows, overrides]);
+  const withOv = (list: WeeklyRow[]) => list.map((r) => (overrides[r.id] ? { ...r, reportStatus: overrides[r.id] } : r));
+  const extraRows = useMemo(() => withOv(view.extraRows), [view.extraRows, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dupRows = useMemo(() => withOv(view.dupRows), [view.dupRows, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const selected = rows.filter((r) => r.reportStatus === "selected").length;
   const refresh = () => { setOverrides({}); router.refresh(); };
@@ -64,7 +67,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
     setOverrides((o) => ({ ...o, ...Object.fromEntries(ids.map((id) => [id, s])) }));
     try {
       await postJson("/api/weekly/item", { ...pq, ids, status: s });
-      if (tab === "edit") router.refresh();
+      if (tab === "edit" || ids.some((id) => extraRows.some((r) => r.id === id) || dupRows.some((r) => r.id === id))) router.refresh(); // 필터 제외·중복 기사를 선정하면 보고서 목록으로 이동
     } catch (e) {
       setMsg({ text: `상태 저장 실패: ${e instanceof Error ? e.message : e}`, error: true });
     }
@@ -234,7 +237,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
 
       {/* visited tabs stay mounted (hidden) so switching back is instant and keeps filters / pages / loaded data */}
       {visited.has("rec") && <div hidden={tab !== "rec"}><RecommendTab rows={byId} curation={view.curation} target={view.target} busy={!!busy} onSet={setStatus} onSelectAll={selectAll} onRegenerate={(inc) => regenerate(inc)} onRefresh={refresh} /></div>}
-      {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} extraRows={view.extraRows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
+      {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} extraRows={extraRows} dupRows={dupRows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
       {visited.has("rejects") && <div hidden={tab !== "rejects"}><RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} /></div>}
       {visited.has("edit") && !readOnly && <div hidden={tab !== "edit"}><EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} onAnalyzeSelected={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} /></div>}
       {visited.has("export") && !readOnly && <div hidden={tab !== "export"}><ExportTab pq={pq} selected={selected} rev={revOf(rows)} onDownload={download} busy={busy} /></div>}

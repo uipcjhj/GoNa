@@ -137,7 +137,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     const bulkList = bulk ? bulkCandidates(inRange, { start: range.start, end: range.end }, { retryFailed: Boolean(options?.retryFailed), limit: options?.limit, priorityIds: await autoCandidates(range, settings, selected).catch(() => []), selectedIds: selected }) : null;
     const aiCands = !geminiConfigured() ? []
       : bulkList ? bulkList.pending
-      : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: options?.scope !== "auto", upgrade: Boolean(options?.ids?.length) })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      : explicit ? (await getArticles(explicit)).filter((a) => (a.status === "analyzed" || (options?.ids?.length && a.status !== "duplicate")) && !a.isDemo && needsAnalysis(a, { retryFailed: options?.scope !== "auto", upgrade: Boolean(options?.ids?.length) })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
       : inRange
           .filter((a) => a.status === "analyzed" && needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) }) && (selected.has(a.id) || (a.weekly?.relevance ?? 0) >= 35))
           .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || Number(verifiedDate(b)) - Number(verifiedDate(a)) || (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0))
@@ -400,7 +400,7 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
   const [article] = await getArticles([id]);
   if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly" || job.mode === "quick"))) return;
   try {
-    if (job.mode === "weekly-analyze" && (article.status === "analyzed" || job.options?.scope === "all") && article.status !== "duplicate" && geminiConfigured()) {
+    if (job.mode === "weekly-analyze" && (article.status === "analyzed" || job.options?.scope === "all" || Boolean(job.options?.ids?.length)) && article.status !== "duplicate" && geminiConfigured()) {
       if (job.haltReason) return;
       const r = await analyzeForReport(article, settings);
       const label = article.title.slice(0, 60);
