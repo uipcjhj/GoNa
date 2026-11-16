@@ -63,7 +63,28 @@ export function Approach({ items }: { items: string[] }) {
   );
 }
 
-export function Groups({ groups }: { groups: Group[] }) {
+export function Groups({ groups, style = 'columns' }: { groups: Group[]; style?: 'columns' | 'events' }) {
+  if (style === 'events') {
+    return (
+      <div>
+        {groups.map((group) => (
+          <section key={group.title} className="grid gap-x-8 gap-y-4 border-t border-fg py-7 last:pb-0 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+            <div>
+              <h3 className="text-[clamp(1.75rem,1.2rem+2.4vw,3rem)] leading-[1.05] font-bold tracking-[-0.04em]">{group.title}</h3>
+              {group.status && <p className="meta mt-3 inline-block bg-accent px-2 py-1 font-medium text-ink">{group.status}</p>}
+            </div>
+            <ul className="self-start border-b border-rule">
+              {group.items.map((item) => (
+                <li key={item} className="border-t border-rule py-2.5 first:border-t-0 first:pt-0">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
       {groups.map((group) => (
