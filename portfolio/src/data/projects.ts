@@ -356,6 +356,7 @@ export const projects: Project[] = [
       ],
     },
     process: {
+      groupStyle: 'events',
       groups: [
         {
           title: 'GONA’s Food Adventure',
