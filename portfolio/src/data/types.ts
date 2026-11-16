@@ -24,7 +24,7 @@ export interface TypeCover {
   headline: string[];
   caption: string;
   tone: 'ink' | 'wash' | 'signal';
-  motif?: 'frames' | 'search' | 'grid' | 'radar';
+  motif?: 'frames' | 'search' | 'grid' | 'radar' | 'play';
 }
 export type Cover = Media | TypeCover;
 

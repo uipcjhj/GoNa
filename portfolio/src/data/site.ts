@@ -5,16 +5,16 @@
 export const site = {
   name: 'HJ. PORTFOLIO',
   wordmark: 'HJ.',
-  role: 'B2B Digital Marketer & Creative Builder',
+  role: 'Digital Marketer & Creative Builder',
   /** 배포 주소(예: 'https://example.github.io/portfolio'). 채우면 canonical·sitemap 이 생성된다. */
   url: '',
   concept: {
     en: ['Beyond Ideas.', 'Into Reality.'],
-    ko: '생각을 전략으로. 전략을 현실로.',
+    ko: '콘텐츠를 만들고, 브랜드를 성장시키고, 새로운 도구를 구현합니다.',
   },
-  intro: '시장을 읽고, 브랜드의 메시지를 설계하고, 콘텐츠와 기술로 아이디어를 구현합니다.',
+  intro: '콘텐츠 기획·촬영·편집부터 글로벌 B2B 디지털마케팅, 데이터 기반 성과 관리, AI 기반 서비스 기획과 구현까지.',
   description:
-    'B2B 디지털마케터 HJ의 포트폴리오. 글로벌 디지털마케팅, 제품·솔루션 영상, 전시 홍보, 홈페이지·SEO, 시장정보 분석, AI 기반 자동화 프로젝트.',
+    '디지털마케터 HJ의 포트폴리오. 콘텐츠 기획·촬영·편집, 브랜드 디자인, 글로벌 B2B 디지털마케팅, 전시 홍보, 홈페이지·SEO, 시장정보 분석, AI 기반 프로젝트.',
   contact: {
     email: '',
     linkedin: '',

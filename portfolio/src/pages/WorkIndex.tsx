@@ -32,7 +32,7 @@ export default function WorkIndex() {
     <div className="shell pt-14 pb-24 md:pt-24 md:pb-32">
       <h1 className="text-display leading-none font-bold tracking-[-0.05em]">Work</h1>
       <p className="mt-5 max-w-[34rem] text-muted">
-        회사에서 수행한 프로젝트 6개와 AI Lab 개인 프로젝트 2개입니다.
+        현대무벡스와 극동MES에서 수행한 프로젝트 8개와 AI Lab 개인 프로젝트 2개입니다.
       </p>
 
       <div role="group" aria-label="카테고리 필터" className="mt-10 flex flex-wrap gap-2 border-t border-fg pt-5 md:mt-14">

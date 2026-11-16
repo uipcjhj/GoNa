@@ -1,4 +1,4 @@
-import { channelKpi, exhibitionChanges } from './figures';
+import { channelKpi, exhibitionChanges, kdmesGrowth } from './figures';
 import type { Project } from './types';
 
 /**
@@ -9,7 +9,8 @@ import type { Project } from './types';
  *   내용이 없는 영역은 화면에 나오지 않는다.
  * - scope 는 맡은 일을 성격별로 나눈 것. 직접 한 일과 협업·지원한 일을 섞지 않는다.
  * - outcome.done 에는 끝난 결과만, 진행 중이거나 기획 단계인 것은 outcome.ongoing 에 적는다.
- * - 회사 수치(KPI, 전시 전후 변화율)는 이 파일에 적지 않는다. data/figures.ts 설명 참고.
+ * - 배열 순서가 곧 사이트의 프로젝트 번호(01~10)다.
+ * - 회사 수치(KPI, 전시 전후 변화율, 채널 성장률)는 이 파일에 적지 않는다. data/figures.ts 설명 참고.
  * - 자료: public/media/<slug>/ 에 넣고 cover / featured.media / process.media 에 적는다.
  *   회사 자료는 외부 공개 가능 여부를 확인한 뒤에 올린다.
  */
@@ -71,7 +72,40 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 03 ────────────────────────────────────────────────────
+  // ── 03 · 극동MES ──────────────────────────────────────────
+  {
+    slug: 'youtube-social-growth',
+    title: 'YouTube & Social Growth',
+    category: 'Content Marketing / Social Media',
+    filter: 'Content',
+    period: '2022–2025',
+    organization: '극동MES',
+    summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 운영했습니다.',
+    cover: { kind: 'type', headline: ['YouTube', '& Social'], caption: 'Plan, shoot, edit, publish', tone: 'ink', motif: 'play' },
+    placement: 'selected',
+    scope: [
+      { label: '기획', items: ['YouTube 영상 콘텐츠 기획', 'Instagram 카드뉴스·숏폼·브랜드 콘텐츠 기획'] },
+      { label: '제작', items: ['영상 촬영·편집·업로드', '카드뉴스·Shorts·Reels 제작', 'Badaro Yacht 관련 콘텐츠 제작'] },
+      { label: '운영', items: ['YouTube·Instagram 공식 채널 운영', '월 2회 YouTube 영상 정기 발행'] },
+      { label: '분석·보고', items: ['채널별 성장 지표 분석', '월별 성과 분석 및 콘텐츠 운영 성과 보고'] },
+    ],
+    process: {
+      challenge: '브랜드가 제공하는 제품과 서비스를 고객에게 알리고, 지속적인 콘텐츠 발행을 통해 브랜드 인지도와 관심을 확대해야 했습니다.',
+      approach: [
+        '정기적인 콘텐츠 발행 체계',
+        '고객이 관심을 가질 만한 주제 기획',
+        '영상과 카드뉴스의 멀티채널 활용',
+        '월별 성과 분석 및 콘텐츠 개선',
+      ],
+      flow: ['기획', '촬영', '편집', '발행', '성과 분석'],
+    },
+    outcome: {
+      done: ['정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행'],
+      ...(kdmesGrowth ? { changes: kdmesGrowth } : { note: '채널 성장 수치는 집계 기간과 증빙을 확인한 뒤 게시합니다.' }),
+    },
+  },
+
+  // ── 04 ────────────────────────────────────────────────────
   {
     slug: 'global-exhibition-marketing',
     title: 'Global Exhibition Marketing',
@@ -106,7 +140,40 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 04 ────────────────────────────────────────────────────
+  // ── 05 · 극동MES ──────────────────────────────────────────
+  {
+    slug: 'brand-content-design',
+    title: 'Brand Content & Design Production',
+    category: 'Branding / Graphic Design / Creative Production',
+    filter: 'Content',
+    period: '2022–2025',
+    organization: '극동MES',
+    summary: '온라인 영상부터 광고, 상세페이지, 인쇄물, 이벤트까지 다양한 고객 접점을 위한 브랜드 콘텐츠를 제작했습니다.',
+    cover: { kind: 'type', headline: ['Brand', '& Design'], caption: 'Ad, print, web, commerce', tone: 'signal' },
+    placement: 'more',
+    scope: [
+      { label: '디자인', items: ['잡지 광고 디자인', '현수막·가격표 등 인쇄물 디자인', '웹디자인·아이콘 디자인'] },
+      { label: '제작', items: ['카드뉴스 제작', '상품 상세페이지 제작', 'GIF·모션그래픽 등 디지털 콘텐츠'] },
+      { label: '프로모션', items: ['온라인 프로모션 및 이벤트 콘텐츠', '오픈마켓 상품 운영 관련 콘텐츠'] },
+      { label: '홍보', items: ['보도자료 및 언론홍보 콘텐츠'] },
+    ],
+    process: {
+      groups: [
+        { title: 'Digital', items: ['카드뉴스', 'GIF·모션그래픽', '웹디자인·아이콘'] },
+        { title: 'Print & Ad', items: ['잡지 광고', '현수막', '가격표'] },
+        { title: 'Commerce', items: ['상품 상세페이지', '온라인 프로모션·이벤트'] },
+        { title: 'PR', items: ['보도자료', '언론홍보 콘텐츠'] },
+      ],
+    },
+    outcome: {
+      next: {
+        text: ['이 시기의 개별 작업물은 Creative Archive에 분야별로 정리했습니다.'],
+        link: { label: 'Creative Archive 보기', to: '/#archive' },
+      },
+    },
+  },
+
+  // ── 06 ────────────────────────────────────────────────────
   {
     slug: 'website-seo',
     title: 'Website & SEO Enhancement',
@@ -117,7 +184,7 @@ export const projects: Project[] = [
     summary: '기업 홈페이지를 제품 정보 탐색과 검색 유입을 위한 디지털 접점으로 확장했습니다.',
     cover: { kind: 'type', headline: ['SEO', 'Blog'], caption: '2026.08.20 메뉴 오픈', tone: 'wash', motif: 'search' },
     header: 'split',
-    placement: 'selected',
+    placement: 'more',
     scope: [
       {
         label: '기획',
@@ -148,7 +215,7 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 05 ────────────────────────────────────────────────────
+  // ── 07 ────────────────────────────────────────────────────
   {
     slug: 'market-intelligence',
     title: 'Market Intelligence & Opportunity Discovery',
@@ -180,7 +247,7 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 06 ────────────────────────────────────────────────────
+  // ── 08 ────────────────────────────────────────────────────
   {
     slug: 'lead-generation-framework',
     title: 'B2B Lead Generation Framework',
@@ -208,7 +275,7 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 07 · AI Lab ───────────────────────────────────────────
+  // ── 09 · AI Lab ───────────────────────────────────────────
   {
     slug: 'global-opportunity-radar',
     title: 'Global Opportunity Radar',
@@ -243,7 +310,7 @@ export const projects: Project[] = [
     },
   },
 
-  // ── 08 · AI Lab ───────────────────────────────────────────
+  // ── 10 · AI Lab ───────────────────────────────────────────
   {
     slug: 'gona-game-universe',
     title: 'GONA Game Universe',

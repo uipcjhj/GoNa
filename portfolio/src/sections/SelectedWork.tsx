@@ -44,6 +44,8 @@ export function SelectedWork() {
               >
                 <div>
                   <p className="meta text-muted">
+                    <span className="text-fg">{project.organization}</span>
+                    <span className="mx-2">|</span>
                     {project.category}
                     <span className="mx-2">|</span>
                     {project.period}
