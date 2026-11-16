@@ -14,6 +14,16 @@ import { REPORT_ANALYSIS_VERSION } from "@/lib/report/factcheck";
 import { getResume } from "@/lib/news/health";
 import { labelOf } from "./taxonomy";
 
+export type SummaryState = "none" | "done" | "partial" | "review" | "unavailable" | "failed" | "outdated";
+export interface SummaryProgress { targets: number; done: number; partial: number; review: number; unavailable: number; failed: number; remaining: number }
+/** 기사별 요약 상태: 완료 / 부분 검증(발췌·보조 근거) / 검토 필요 / 요약 불가 / 실패 / 미분석 (이전 버전 결과는 미분석으로 취급) */
+export function summaryStateOf(r: ReportAnalysis | null | undefined, hasOld: boolean): SummaryState {
+  if (!r) return hasOld ? "outdated" : "none";
+  if (r.status === "failed") return "failed";
+  if (r.status === "insufficient_source" || r.verification === "none" || r.summary.length !== 4) return "unavailable";
+  if (r.status === "needs_review") return "review";
+  return r.verification === "partial" || r.sourceLevel !== "body" ? "partial" : "done";
+}
 export interface WeeklyRow {
   id: string; url: string; title: string; titleKo: string | null; sourceName: string; sourceType: SourceType;
   publishedAt: string | null; dateStatus: DateStatus; dateBasis: string; kstDate: string | null; inPeriod: boolean; eventDate: string | null; reReport: boolean;
@@ -32,6 +42,8 @@ export interface WeeklyRow {
   /** Gemini report analysis (null = not analysed with the current version) */
   ai: ReportAnalysis | null;
   aiStatus: ReportAIStatus | "none" | "outdated";
+  articleStatus: Article["status"];
+  summaryState: SummaryState;
   /** report gates — all must pass (or the user approves) before an article goes into Excel/PPT without a warning */
   gate: { aiDone: boolean; dateVerified: boolean; sourceLevel: SourceLevel | null; linkDirect: boolean; approved: boolean; problems: string[] };
   approvedAt: string | null;
@@ -50,6 +62,10 @@ export interface WeeklyView {
   target: number;
   /** 수집 기사 수의 구성: DB 전체 → 기간 내 → (중복·관련성 필터·대기/오류 제외) → 화면 목록 */
   breakdown: { period: number; duplicate: number; filtered: number; pending: number; listed: number };
+  /** 필터 제외·오류 기사 (추천·KPI·보고서와 분리, 전체 목록에서만 표시) — 요약은 가능 */
+  extraRows: WeeklyRow[];
+  /** 전체 기사 AI 요약 진행 현황 (요약 대상 = 기간 내 중복 제외 전체) */
+  summary: SummaryProgress;
   /** 이어하기 정보: 지난 수집에서 끝내지 못했거나 실패한 검색 수 */
   resume: { pending: number; failed: number; done: number; at: string } | null;
 }
@@ -67,8 +83,9 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
 
   const settingsKey = hashOf(JSON.stringify(settings));
   const rows: WeeklyRow[] = [];
+  const extraRows: WeeklyRow[] = [];
   for (const a of arts) {
-    if (a.status === "duplicate" || a.status === "filtered" || a.status === "error") continue;
+    if (a.status === "duplicate") continue;
     const opp = a.opportunityId ? oppById.get(a.opportunityId) ?? null : null;
     // AI results are stored; rule-based classification is cheap and deterministic, so it is recomputed on read
     // (older records and rule improvements apply immediately, no network / API cost)
@@ -83,7 +100,8 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     const aiDetail = ai && ai.status !== "failed" && ai.category.group !== "review" ? { group: ai.category.group, country: ai.category.group === "global" ? ai.category.countryKo || null : null, sub: ai.category.sub } as Omit<DetailCategory, "label"> : null;
     const ds = dateStatus(a);
     const others = a.altSourceIds?.length ? "found" : a.altSearchedAt ? "none" : a.verification.access === "paywall" ? "not_searched" : null;
-    rows.push({
+    (a.status === "filtered" || a.status === "error" ? extraRows : rows).push({
+      articleStatus: a.status, summaryState: summaryStateOf(ai, Boolean(a.report)),
       id: a.id, url: a.url, title: a.title, titleKo: ai?.titleKo || w?.titleKo || null, sourceName: a.sourceName, sourceType: a.sourceType,
       publishedAt: a.publishedAt, dateStatus: ds, dateBasis: a.publishedAtBasis, kstDate: a.publishedAt ? localDateStr(a.publishedAt, tz) : null,
       inPeriod: inP(a.publishedAt), eventDate: w?.eventDate ?? a.analysis?.eventDate ?? null, reReport: Boolean(a.analysis?.flags.reReport),
@@ -172,6 +190,9 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     await saveReport(report);
   }
   const resumeRow = await getResume(p).catch(() => null);
+  const sumStates = [...rows, ...extraRows].map((r) => r.summaryState);
+  const n = (k: SummaryState) => sumStates.filter((x) => x === k).length;
+  const summary: SummaryProgress = { targets: sumStates.length, done: n("done"), partial: n("partial"), review: n("review"), unavailable: n("unavailable"), failed: n("failed"), remaining: n("none") + n("outdated") };
   const breakdown = {
     period: arts.length,
     duplicate: arts.filter((a) => a.status === "duplicate").length,
@@ -179,7 +200,7 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     pending: arts.filter((a) => a.status === "queued" || a.status === "error").length,
     listed: rows.length,
   };
-  return { rows, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch, curation: curation ?? emptyCuration(target), target, breakdown, resume: resumeRow && (resumeRow.failed.length || resumeRow.pending.length) ? { pending: resumeRow.pending.length, failed: resumeRow.failed.length, done: resumeRow.done.length, at: resumeRow.updatedAt } : null };
+  return { rows, extraRows, summary, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch, curation: curation ?? emptyCuration(target), target, breakdown, resume: resumeRow && (resumeRow.failed.length || resumeRow.pending.length) ? { pending: resumeRow.pending.length, failed: resumeRow.failed.length, done: resumeRow.done.length, at: resumeRow.updatedAt } : null };
 }
 
 export function emptyCuration(target: number): Curation {

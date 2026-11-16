@@ -1,5 +1,6 @@
 // Test fixtures. Titles of the reported cases are reconstructed from the user's report (Kia, KNAPP, Pfizer and
 // Toyota titles are real stored headlines; Haviland, Zed Black and Zipline are representative reconstructions).
+process.env.GEMINI_NO_USAGE_TRACKING = "1"; // tests never write the app DB
 import type { Article, ReportAnalysis } from "@/lib/types";
 import type { WeeklyRow } from "@/lib/weekly/view";
 import { DEFAULT_SETTINGS } from "@/lib/config/defaults";
@@ -61,7 +62,7 @@ export function row(p: Partial<WeeklyRow> & { id: string; title: string }): Week
     detail: { group: "global", country: "미국", sub: "제조물류 투자", label: "글로벌시장(미국) / 제조물류 투자" },
     judgment: { winPotential: "high", isNewProject: true, completed: false, supplierStatus: "order_unconfirmed", supplierNote: "", orderRoom: "yes", directRelevance: "high", competitorValue: "none", lowValueType: null, basis: "body", automationMentioned: false },
     summary4: ["OO, 미국 공장 신설 추진", "5억 달러 투자 계획", "생산라인 확충", "공정물류 수요 주목"], summary4Basis: "ai", order: null, edits: null, image: null, sourceDomain: "news.example.com", publishedAtBasis: "원문 메타데이터", competitorChecks: [],
-    detailBasis: "ai", aiStatus: ai ? ai.status : "none",
+    detailBasis: "ai", aiStatus: ai ? ai.status : "none", articleStatus: "analyzed", summaryState: ai ? "done" : "none",
     gate: { aiDone: ai?.status === "done", dateVerified: (p.dateStatus ?? "verified") === "verified", sourceLevel: ai?.sourceLevel ?? null, linkDirect: true, approved: false, problems: [] },
     approvedAt: null, sourceTrace: null,
     ...p,

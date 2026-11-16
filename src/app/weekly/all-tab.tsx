@@ -2,15 +2,16 @@
 // 전체 수집 기사: compact 7-column table, 25 per page; everything else lives in the side panel.
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, ExternalLink, Search, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search, X } from "lucide-react";
 import type { WeeklyRow } from "@/lib/weekly/view";
 import type { Curation, ReportStatus, WeeklyCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ArticleDetail, CategoryText, Markers, STATUS_LABEL, SourceButton, StatusButtons, useReadOnly } from "./parts";
 
 const PAGE = 25;
-const FILTERS: { key: "all" | WeeklyCategory | "review" | "selected" | "unverified"; label: string }[] = [
-  { key: "all", label: "전체" }, { key: "selected", label: "보고서 선정" }, { key: "review", label: "확인 필요" }, { key: "unverified", label: "AI 미검증" },
+const SUMMARY_LABEL: Record<WeeklyRow["summaryState"], string> = { none: "요약 전", outdated: "재요약 필요", done: "요약 완료", partial: "부분 검증", review: "검토 필요", unavailable: "요약 불가", failed: "요약 실패" };
+const FILTERS: { key: "all" | WeeklyCategory | "review" | "selected" | "unverified" | "nosummary" | "unavailable" | "filteredout"; label: string }[] = [
+  { key: "all", label: "전체" }, { key: "nosummary", label: "요약 전" }, { key: "unavailable", label: "요약 불가·실패" }, { key: "filteredout", label: "필터 제외" }, { key: "selected", label: "보고서 선정" }, { key: "review", label: "확인 필요" }, { key: "unverified", label: "AI 미검증" },
   { key: "domestic", label: "국내" }, { key: "global", label: "글로벌" }, { key: "competitor", label: "경쟁사" },
   { key: "policy", label: "정책" }, { key: "tech", label: "기술·시장" }, { key: "opportunity", label: "수주기회" },
 ];
@@ -50,8 +51,10 @@ export function DetailPanel({ r, curation, onClose, onSet, onRefresh }: { r: Wee
   );
 }
 
-export function AllTab({ rows, curation, onSet, onRefresh, onAnalyze, initialFilter = "all" }: { rows: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyze?: (ids: string[]) => void; initialFilter?: string }) {
+export function AllTab({ rows: listRows, extraRows = [], curation, onSet, onRefresh, onAnalyze, initialFilter = "all" }: { rows: WeeklyRow[]; extraRows?: WeeklyRow[]; curation: Curation; onSet: (ids: string[], s: ReportStatus) => void; onRefresh: () => void; onAnalyze?: (ids: string[]) => void; initialFilter?: string }) {
   const readOnly = useReadOnly();
+  const rows = useMemo(() => (extraRows.length ? [...listRows, ...extraRows] : listRows), [listRows, extraRows]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [f, setF] = useState<(typeof FILTERS)[number]["key"]>(FILTERS.some((x) => x.key === initialFilter) ? (initialFilter as (typeof FILTERS)[number]["key"]) : "all");
   const [status, setStatus] = useState("");
@@ -62,8 +65,8 @@ export function AllTab({ rows, curation, onSet, onRefresh, onAnalyze, initialFil
   const review = useMemo(() => new Set(curation.needsCheck.map((x) => x.articleId)), [curation]);
 
   const matches = (r: WeeklyRow, key: (typeof FILTERS)[number]["key"]) =>
-    key === "all" ? true : key === "selected" ? r.reportStatus === "selected" : key === "unverified" ? !r.isDemo && r.analysis !== "pending" && r.aiStatus !== "done"
-      : key === "review" ? review.has(r.id) || r.detail?.group === "review" || r.analysis === "pending" : r.categories.includes(key) || r.category === key;
+    key === "all" ? true : key === "nosummary" ? r.summaryState === "none" || r.summaryState === "outdated" : key === "unavailable" ? r.summaryState === "unavailable" || r.summaryState === "failed" : key === "filteredout" ? r.articleStatus === "filtered" || r.articleStatus === "error" : key === "selected" ? r.reportStatus === "selected" : key === "unverified" ? !r.isDemo && r.analysis !== "pending" && r.aiStatus !== "done"
+      : key === "review" ? review.has(r.id) || r.detail?.group === "review" || (r.analysis === "pending" && r.articleStatus === "queued") : r.categories.includes(key) || r.category === key;
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -137,6 +140,17 @@ export function AllTab({ rows, curation, onSet, onRefresh, onAnalyze, initialFil
                   <div className="flex items-start gap-2">
                     <span className="line-clamp-2 font-medium text-slate-900">{r.edits?.titleKo || r.titleKo || r.title}</span>
                     <a href={r.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label="원문 열기" className="mt-0.5 shrink-0 text-slate-400 hover:text-sky-700"><ExternalLink className="h-4 w-4" /></a>
+                  </div>
+                  {/* 기본: 요약 첫 줄 · 펼치면 4줄 전체 */}
+                  <div className="mt-1 flex items-start gap-1.5 text-[13px]" onClick={(e) => e.stopPropagation()}>
+                    {r.summary4.length === 4 ? (
+                      <>
+                        <button aria-expanded={expanded.has(r.id)} aria-label="요약 4줄 펼치기" onClick={() => setExpanded((x) => { const n = new Set(x); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="mt-0.5 shrink-0 text-slate-400 hover:text-sky-700"><ChevronDown className={cn("h-4 w-4 transition-transform", expanded.has(r.id) && "rotate-180")} /></button>
+                        {expanded.has(r.id) ? <ol className="list-decimal space-y-0.5 pl-4 text-slate-700">{r.summary4.map((l, i) => <li key={i}>{l}</li>)}</ol> : <span className="line-clamp-1 text-slate-600">{r.summary4[0]}</span>}
+                      </>
+                    ) : <span className={cn(r.summaryState === "unavailable" || r.summaryState === "failed" ? "text-amber-700" : "text-slate-400")}>{SUMMARY_LABEL[r.summaryState]}{r.summaryState === "unavailable" ? " — 원문·근거 부족으로 신뢰할 수 있는 4줄을 만들 수 없음" : ""}</span>}
+                    {r.summaryState === "partial" && <span className="shrink-0 rounded bg-amber-50 px-1.5 text-[11px] text-amber-800">부분 검증</span>}
+                    {(r.articleStatus === "filtered" || r.articleStatus === "error") && <span className="shrink-0 rounded bg-slate-100 px-1.5 text-[11px] text-slate-600">필터 제외</span>}
                   </div>
                 </td>
                 <td className="truncate px-3 py-3 text-slate-600">{r.sourceName}</td>

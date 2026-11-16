@@ -20,6 +20,7 @@ import { classifySource, verifyAndFetch } from "./verify";
 import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
 import { analyzeArticle, aiConfigured } from "./analyze";
 import { analyzeForReport, needsAnalysis } from "@/lib/report/factcheck";
+import { bulkCandidates, isHaltingError } from "@/lib/report/bulk";
 import { readArticleSource } from "@/lib/report/source";
 import { loadWeekly } from "@/lib/weekly/view";
 import { applyResume, flushHealth, getResume, isQuarantined, loadHealth, recordHealth, saveResume } from "@/lib/news/health";
@@ -84,7 +85,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     range,
     status: "running",
     phase: mode === "collect" || mode === "quick" || mode === "weekly" ? "discover" : "analyze",
-    deadlineAt: new Date(Date.now() + (mode === "quick" ? QUICK.totalSeconds * 1000 : Math.max(5, settings.maxJobMinutes || 20) * 60_000)).toISOString(),
+    deadlineAt: new Date(Date.now() + (mode === "quick" ? QUICK.totalSeconds * 1000 : (options?.scope === "all" ? 90 : Math.max(5, settings.maxJobMinutes || 20)) * 60_000)).toISOString(),
     timeLimited: false,
     step: "작업 준비 중",
     failedSources: [],
@@ -129,20 +130,25 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     const verifiedDate = (a: Article) => /^(원문 메타데이터|발행 매체 RSS|RSS pubDate)/.test(a.publishedAtBasis ?? "") && Boolean(a.publishedAt);
     // explicit request (checked articles / 보고서 선정 전체): only those articles; failed ones are retried, completed ones reused
     // scope "auto": selected articles + the top-ranked recommendation candidates (run automatically after collection / 추천 생성)
-    const explicit = options?.ids?.length ? options.ids : options?.scope === "selected" ? [...selected] : options?.scope === "auto" ? await autoCandidates(range, settings, selected) : null;
+    const bulk = options?.scope === "all" && geminiConfigured();
+    const explicit = bulk ? [] : options?.ids?.length ? options.ids : options?.scope === "selected" ? [...selected] : options?.scope === "auto" ? await autoCandidates(range, settings, selected) : null;
     const order = new Map((explicit ?? []).map((id, i) => [id, i]));
+    // scope "all": 전체 기사 AI 요약 — 주간 내 모든 기사(중복 제외, 필터 제외 포함)가 대상. 추천·선정·원문 검증과 무관하며, 이미 분석된 기사는 재사용
+    const bulkList = bulk ? bulkCandidates(inRange, { start: range.start, end: range.end }, { retryFailed: Boolean(options?.retryFailed), limit: options?.limit, priorityIds: await autoCandidates(range, settings, selected).catch(() => []), selectedIds: selected }) : null;
     const aiCands = !geminiConfigured() ? []
+      : bulkList ? bulkList.pending
       : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: options?.scope !== "auto", upgrade: Boolean(options?.ids?.length) })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
       : inRange
           .filter((a) => a.status === "analyzed" && needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) }) && (selected.has(a.id) || (a.weekly?.relevance ?? 0) >= 35))
           .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || Number(verifiedDate(b)) - Number(verifiedDate(a)) || (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0))
           .slice(0, Math.max(5, settings.weekly.aiPerRun ?? 30));
-    const need = [...(explicit ? [] : queued.slice(0, settings.weekly.maxAnalyzePerRun)), ...aiCands];
+    const need = [...(explicit || bulk ? [] : queued.slice(0, settings.weekly.maxAnalyzePerRun)), ...aiCands];
     job.analyzeQueue = need.map((a) => a.id);
     job.stats.queued = job.analyzeQueue.length;
     const reused = inRange.filter((a) => a.report && !needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) })).length;
     log(job, geminiConfigured() ? "info" : "error", geminiConfigured()
-      ? `Gemini 원문 검증 분석 대상 ${aiCands.length}건 (이미 분석된 ${reused}건은 재사용 — 무료 사용량 절약)${queued.length ? `, 미분류 ${Math.min(queued.length, settings.weekly.maxAnalyzePerRun)}건 분류` : ""}`
+      ? bulkList ? `전체 기사 AI 요약 — 주간 수집 ${bulkList.targets.length}건 중 요약 대상 ${aiCands.length}건${options?.limit ? ` (이번 실행 최대 ${options.limit}건)` : ""} (완료된 ${reused}건은 재사용, 하루 사용량 한도 도달·429 시 저장 후 중단)`
+      : `Gemini 원문 검증 분석 대상 ${aiCands.length}건 (이미 분석된 ${reused}건은 재사용 — 무료 사용량 절약)${queued.length ? `, 미분류 ${Math.min(queued.length, settings.weekly.maxAnalyzePerRun)}건 분류` : ""}`
       : "GEMINI_API_KEY가 없어 보고서용 AI 분석을 할 수 없습니다. 규칙 기반 문장은 보고서 요약으로 쓰지 않습니다 (.env.local에 GEMINI_API_KEY 설정 필요).");
   }
   await saveJob(job);
@@ -394,18 +400,21 @@ async function processArticle(job: Job, id: string, settings: Settings, ctx: { o
   const [article] = await getArticles([id]);
   if (!article || (article.status !== "queued" && (job.mode === "collect" || job.mode === "weekly" || job.mode === "quick"))) return;
   try {
-    if (job.mode === "weekly-analyze" && article.status === "analyzed" && geminiConfigured()) {
+    if (job.mode === "weekly-analyze" && (article.status === "analyzed" || job.options?.scope === "all") && article.status !== "duplicate" && geminiConfigured()) {
       if (job.haltReason) return;
       const r = await analyzeForReport(article, settings);
+      const label = article.title.slice(0, 60);
+      if (r.status === "failed" && isHaltingError(r.error?.kind)) {
+        // 한도·인증 오류: 실패로 기록하지 않고(미분석 상태 유지) 작업만 중단 → 다음 실행에서 이어서 처리
+        job.haltReason = `${r.error?.message ?? "Gemini 오류"} — 나머지 기사는 분석하지 않고 저장 후 중단했습니다 (완료된 요약은 유지, '이어서 요약'으로 재개).`;
+        log(job, "warn", `중단: ${label}`);
+        return;
+      }
       article.report = r;
       await saveArticles([article]);
-      const label = article.title.slice(0, 60);
       if (r.status === "failed") {
         job.stats.errors++;
         log(job, "warn", `AI 분석 실패: ${label} — ${r.error?.message ?? ""}`);
-        if (r.error && ["not_configured", "auth", "permission", "model_not_found", "quota_daily", "rate_limit"].includes(r.error.kind)) {
-          job.haltReason = `${r.error.message} — 나머지 기사는 분석하지 않고 중단했습니다 (다음 실행에서 이어서 처리).`;
-        }
       } else {
         job.stats.analyzed++;
         log(job, "info", `${r.status === "done" ? "분석 완료" : r.status === "needs_review" ? "검토 필요" : "원문 부족"} [${r.sourceLevel === "body" ? "본문" : r.sourceLevel === "excerpt" ? "발췌" : "제목"}]: ${label}${r.reviewReasons.length ? ` — ${r.reviewReasons.slice(0, 2).join("; ")}` : ""}`);

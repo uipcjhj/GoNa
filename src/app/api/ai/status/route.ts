@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { configuredModel, currentModelName, geminiConfigured, geminiHealth, geminiStats } from "@/lib/ai/gemini";
+import { configuredModel, currentModelName, geminiConfigured, geminiHealth, geminiLimits, geminiStats, geminiUsage } from "@/lib/ai/gemini";
 import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const deny = await requireAdmin();
   if (deny) return deny;
-  return NextResponse.json({ configured: geminiConfigured(), configuredModel: configuredModel(), model: currentModelName(), stats: geminiStats() });
+  return NextResponse.json({ configured: geminiConfigured(), configuredModel: configuredModel(), model: currentModelName(), stats: geminiStats(), usage: await geminiUsage(), limits: geminiLimits() });
 }
 
 /** Live check: list models (verifies the key + model name) and make one tiny generation call. */

@@ -14,7 +14,9 @@ export async function POST(req: Request) {
   const { job, created, resumed } = await startJob("manual", "weekly-analyze", { start: period.start, end: period.end, startDate: period.startDate, endDate: period.endDate }, {
     retryFailed: body.retryFailed === true,
     ids: Array.isArray(body.ids) ? (body.ids as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 30) : undefined,
-    scope: body.scope === "selected" ? "selected" : body.scope === "auto" ? "auto" : undefined,
+    scope: body.scope === "selected" ? "selected" : body.scope === "auto" ? "auto" : body.scope === "all" ? "all" : undefined,
+    // 전체 기사 AI 요약: 한 번에 처리할 건수 (시험 요약 5건 / 배치 10~20건), 최대 300
+    limit: body.scope === "all" && Number(body.limit) > 0 ? Math.min(300, Math.floor(Number(body.limit))) : undefined,
   });
   if (created || resumed) after(() => driveJob(job.id, new URL(req.url).origin));
   return NextResponse.json({ job, created, resumed, busy: !created && !resumed });

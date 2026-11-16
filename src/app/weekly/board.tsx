@@ -13,6 +13,7 @@ import { AllTab } from "./all-tab";
 import { RejectsTab } from "./rejects-tab";
 import { EditorTab } from "./editor-tab";
 import { ExportTab } from "./export-tab";
+import { SummaryPanel } from "./summary-panel";
 import { revOf } from "@/lib/weekly/effective";
 
 export type Tab = "rec" | "all" | "rejects" | "edit" | "export";
@@ -106,7 +107,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
   // KPI cards double as filters: click → matching list (tab + filter kept in sync)
   const kpis: { label: string; value: number; sub: string; accent?: boolean; warn?: boolean; tab: Tab; filter?: string }[] = [
     // 수집 = 기간 내 저장된 기사(중복 제외). 목록(전체 수집 기사 탭)은 관련성 필터·분석 대기·오류를 뺀 분석 완료 기사
-    { label: "수집 기사", value: view.counts.collected, sub: `목록 ${rows.length}(분석 ${rows.filter((r) => r.analysis !== "pending").length}${rows.some((r) => r.analysis === "pending") ? ` · 대기 ${rows.filter((r) => r.analysis === "pending").length}` : ""}) · 필터 제외 ${view.breakdown.filtered}`, tab: "all", filter: "all" },
+    { label: "수집 기사", value: view.counts.collected, sub: `기간 내 ${view.breakdown.period} − 중복 ${view.breakdown.duplicate} · 요약 완료 ${view.summary.done + view.summary.partial + view.summary.review}/${view.summary.targets}`, tab: "all", filter: "all" },
     { label: "AI 추천", value: view.curation.picks.length, sub: (view.curation.shortfall ?? 0) > 0 ? `기준 ${view.target}건 · ${view.curation.shortfall}건 부족` : `기준 ${view.target}건`, accent: true, tab: "rec" },
     { label: "보고서 선정", value: selected, sub: selected === view.target ? "기준 충족" : `기준 ${view.target}건`, tab: readOnly ? "all" : "edit", filter: readOnly ? "selected" : undefined },
     { label: "후보 탈락", value: view.curation.rejects.length, sub: "참고 기사", tab: "rejects" },
@@ -118,7 +119,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
   const analyze = (body: object, label: string) => startJob("analyze", "/api/weekly/analyze", body, label);
   const tabs: { key: Tab; label: string; n?: number }[] = [
     { key: "rec", label: "AI 추천 기사", n: view.curation.picks.length },
-    { key: "all", label: "전체 수집 기사", n: rows.length },
+    { key: "all", label: "전체 수집 기사", n: rows.length + view.extraRows.length },
     { key: "rejects", label: "후보 탈락", n: view.curation.rejects.length },
     { key: "edit", label: "보고서 편집", n: selected },
     { key: "export", label: "내보내기·PPT 미리보기" },
@@ -220,6 +221,8 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
         ))}
       </section>
 
+      <SummaryPanel view={view} pq={pq} />
+
       {/* tabs */}
       <nav className="flex gap-1 overflow-x-auto border-b border-line" role="tablist" aria-label="주간 업계동향 단계">
         {tabs.map((t) => (
@@ -231,7 +234,7 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
 
       {/* visited tabs stay mounted (hidden) so switching back is instant and keeps filters / pages / loaded data */}
       {visited.has("rec") && <div hidden={tab !== "rec"}><RecommendTab rows={byId} curation={view.curation} target={view.target} busy={!!busy} onSet={setStatus} onSelectAll={selectAll} onRegenerate={(inc) => regenerate(inc)} onRefresh={refresh} /></div>}
-      {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
+      {visited.has("all") && <div hidden={tab !== "all"}><AllTab key={allFilter.n} initialFilter={allFilter.key} rows={rows} extraRows={view.extraRows} curation={view.curation} onSet={setStatus} onRefresh={refresh} onAnalyze={(ids) => analyze({ ids }, `선택 기사 ${ids.length}건 원문 검증`)} /></div>}
       {visited.has("rejects") && <div hidden={tab !== "rejects"}><RejectsTab rows={byId} curation={view.curation} onSet={setStatus} onRefresh={refresh} /></div>}
       {visited.has("edit") && !readOnly && <div hidden={tab !== "edit"}><EditorTab rows={rows} target={view.target} pq={pq} onSet={setStatus} onRefresh={refresh} onAnalyzeSelected={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} /></div>}
       {visited.has("export") && !readOnly && <div hidden={tab !== "export"}><ExportTab pq={pq} selected={selected} rev={revOf(rows)} onDownload={download} busy={busy} /></div>}

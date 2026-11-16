@@ -615,3 +615,27 @@ describe("추천 후보 선별", () => {
     assert.equal(c.ranked?.length, 1, "KNAPP 3건 → 대표 1건");
   });
 });
+
+describe("전체 기사 요약: 대상 선정·상태", () => {
+  const range = { start: "2026-11-01T15:00:00.000Z", end: "2026-11-08T15:00:00.000Z" };
+  test("중복·범위 밖 기사는 제외하고, 필터 제외·대기 기사는 포함하며 완료 요약은 재사용", async () => {
+    const { bulkCandidates, isHaltingError } = await import("@/lib/report/bulk");
+    const a = (id: string, st: string, extra: Record<string, unknown> = {}) => article({ id, title: id, status: st as "analyzed", publishedAt: "2026-11-04T02:00:00Z", ...extra });
+    const done = a("done", "analyzed"); done.report = aiResult();
+    const arts = [done, a("q", "queued"), a("f", "filtered"), a("dup", "duplicate"), a("old", "analyzed", { publishedAt: "2026-10-01T00:00:00Z" })];
+    const r = bulkCandidates(arts, range, { retryFailed: false });
+    assert.deepEqual(r.targets.map((x) => x.id).sort(), ["done", "f", "q"]);
+    assert.deepEqual(r.pending.map((x) => x.id).sort(), ["f", "q"]);
+    assert.equal(bulkCandidates(arts, range, { retryFailed: false, limit: 1 }).pending.length, 1);
+    assert.equal(isHaltingError("quota_daily"), true);
+    assert.equal(isHaltingError("bad_response"), false);
+  });
+  test("summaryStateOf: 부분 검증 / 요약 불가 / 실패", async () => {
+    const { summaryStateOf } = await import("@/lib/weekly/view");
+    assert.equal(summaryStateOf(null, false), "none");
+    assert.equal(summaryStateOf(aiResult(), false), "done");
+    assert.equal(summaryStateOf(aiResult({ sourceLevel: "excerpt", verification: "partial" }), false), "partial");
+    assert.equal(summaryStateOf(aiResult({ status: "insufficient_source", summary: [], verification: "none" }), false), "unavailable");
+    assert.equal(summaryStateOf(aiResult({ status: "failed" }), false), "failed");
+  });
+});

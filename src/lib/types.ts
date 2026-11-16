@@ -262,6 +262,7 @@ export interface ReportAnalysis {
   summary: string[]; // 4 lines (empty when the source cannot support a reliable summary)
   lineEvidence: string[]; // verbatim quote supporting each summary line ("" for the implication line)
   confidence: "high" | "medium" | "low";
+  verification?: "full" | "partial" | "none"; // 원문 본문 기반(전체 검증) / 발췌·보조 근거만(부분 검증) / 요약 불가
   promptRev?: string; // prompt revision used (older results are kept, re-run only on request)
   autoFixes?: string[]; // deterministic corrections applied (e.g. 금액 단위 환산)
 }
@@ -472,7 +473,7 @@ export interface Job {
   log: JobLog[];
   error: string | null;
   slices: number;
-  options?: { retryFailed?: boolean; ids?: string[]; scope?: "selected" | "auto"; resume?: "continue" | "failed" }; // weekly-analyze: explicit articles / 보고서 선정 전체 // weekly-analyze: also re-run failed / 원문 부족 articles
+  options?: { retryFailed?: boolean; ids?: string[]; scope?: "selected" | "auto" | "all"; resume?: "continue" | "failed"; limit?: number }; // weekly-analyze: explicit articles / 보고서 선정 전체 // weekly-analyze: also re-run failed / 원문 부족 articles
   haltReason?: string | null; // stopped early (e.g. Gemini key / quota error) — remaining articles untouched
 }
 

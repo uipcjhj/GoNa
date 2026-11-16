@@ -204,6 +204,7 @@ export function buildReportAnalysis(raw: Raw, src: SourceText, model: string | n
   if (r.supplier.status === "decided" && !r.supplier.evidence) { r.supplier = { status: "unknown", name: "", evidence: "" }; reasons.push("공급사 확정 근거 없음 → 확인 불가로 변경"); }
   if (r.automation.mentioned && !r.automation.evidence) { r.automation = { mentioned: false, items: [], evidence: "" }; reasons.push("자동화 언급 근거 없음 → 미언급으로 변경"); }
   r.reviewReasons = [...new Set(reasons)];
+  r.verification = !summary.length ? "none" : src.level === "body" && !src.viaSupport ? "full" : "partial";
   r.autoFixes = [...scale.fixes, ...(src.viaSupport ? ["기사 페이지 본문 대신 보조 근거(공식 보도자료·다른 매체) 본문으로 확인 — 보고서 표기 URL·언론사·발행일은 원 기사 기준"] : [])];
   r.promptRev = PROMPT_REV;
   r.status = !summary.length && !refused ? "insufficient_source" : r.reviewReasons.length ? "needs_review" : "done";
@@ -236,7 +237,7 @@ export function failedAnalysis(e: unknown, src: SourceText | null, model: string
 }
 
 export function insufficientAnalysis(src: SourceText): ReportAnalysis {
-  return { ...failedAnalysis(new Error("원문 부족"), src, null), status: "insufficient_source", error: null, reviewReasons: [`원문 본문·발췌를 확보하지 못함${src.bodyNote ? ` (${src.bodyNote})` : ""} — 원문 재시도, 보조 근거 URL 추가 또는 본문 직접 입력`] };
+  return { ...failedAnalysis(new Error("원문 부족"), src, null), status: "insufficient_source", error: null, verification: "none", reviewReasons: [`원문 본문·발췌를 확보하지 못함${src.bodyNote ? ` (${src.bodyNote})` : ""} — 원문 재시도, 보조 근거 URL 추가 또는 본문 직접 입력`] };
 }
 
 /** Reuse policy (protects the free quota): current-version results are kept; failed / insufficient / old ones may be re-run. */

@@ -5,6 +5,7 @@
 //   silently replaced by rule-based text.
 // - The API key is sent only in the x-goog-api-key header; it is never logged, returned or put in a URL.
 import "server-only";
+import { getStore } from "@/lib/db/store";
 
 const BASE = () => (process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
 const key = () => (process.env.GEMINI_API_KEY ?? "").trim();
@@ -43,6 +44,7 @@ const state = () => (g.__gemini ??= { stats: { ok: 0, failed: {}, lastOk: null, 
 export const geminiStats = () => { const st = state().stats; return { ...st, failed: { ...st.failed } }; };
 
 function recordError(e: GeminiError) {
+  if (e.kind === "quota_daily" && e.status === 429) void markDailyBlocked(e.message).catch(() => {});
   const stats = state().stats;
   stats.failed[e.kind] = (stats.failed[e.kind] ?? 0) + 1;
   stats.lastError = { kind: e.kind, status: e.status, message: redact(e.message), at: new Date().toISOString() };
@@ -138,9 +140,52 @@ export async function resolveModel(): Promise<string> {
 
 // ---------------------------------------------------------------- generation
 // Free tier allows only a few requests per minute: space generateContent calls (GEMINI_MIN_INTERVAL_MS, default 6.5 s).
+//
+// 무료 한도(RPM·TPM·RPD)는 모델·프로젝트마다 다르고 API가 조회해 주지 않는다 → 실제 한도는 Google AI Studio 'Rate limit' 화면에서 확인하고
+// GEMINI_RPM(분당 요청, 기본 9) · GEMINI_RPD(일일 요청, 기본 200)로 설정한다. 이 앱은 그 값 이하로만 호출한다:
+//  - RPM: 호출 간격 = 60초 / RPM (GEMINI_MIN_INTERVAL_MS로 직접 지정 가능)
+//  - RPD: 호출 수를 DB에 저장(미국 태평양시 날짜 기준 — 무료 일일 한도가 초기화되는 시각), 한도 도달 시 호출 전에 중단
+//  - TPM: 기사 1건 ≈ 입력 5~7천 토큰 → 분당 9회에서도 TPM(보통 25만) 이내. 429가 오면 즉시 중단(무한 재시도 없음)
+export const geminiLimits = () => ({
+  rpm: Math.max(1, Number(process.env.GEMINI_RPM) || 9),
+  rpd: Math.max(1, Number(process.env.GEMINI_RPD) || 200),
+});
+const trackUsage = () => !process.env.GEMINI_NO_USAGE_TRACKING;
+const ptDay = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+
+interface UsageRow { id: string; day: string; count: number; blocked: boolean; lastError: string | null; updatedAt: string }
+const USAGE_ID = "gemini:usage";
+async function readUsage(): Promise<UsageRow> {
+  const row = await getStore().get<UsageRow>("settings", USAGE_ID);
+  const today = ptDay();
+  return row && row.day === today ? row : { id: USAGE_ID, day: today, count: 0, blocked: false, lastError: null, updatedAt: new Date().toISOString() };
+}
+export async function geminiUsage(): Promise<{ day: string; used: number; limit: number; remaining: number; blocked: boolean; rpm: number }> {
+  const u = trackUsage() ? await readUsage() : { day: ptDay(), count: 0, blocked: false };
+  const { rpd, rpm } = geminiLimits();
+  return { day: u.day, used: u.count, limit: rpd, remaining: Math.max(0, rpd - u.count), blocked: u.blocked, rpm };
+}
+/** Count one request before it is sent; refuses (no network call) once the configured daily budget is used or Google reported the daily quota. */
+async function reserveCall(): Promise<void> {
+  if (!trackUsage()) return;
+  const u = await readUsage();
+  const { rpd } = geminiLimits();
+  if (u.blocked || u.count >= rpd) throw new GeminiError("quota_daily", null, u.blocked ? "Google이 일일 한도 도달을 알려 오늘은 중단 (내일 이어서)" : `앱에 설정된 일일 한도 ${rpd}회 사용 완료 (GEMINI_RPD)`);
+  u.count++;
+  u.updatedAt = new Date().toISOString();
+  await getStore().upsert("settings", [u]);
+}
+async function markDailyBlocked(msg: string): Promise<void> {
+  if (!trackUsage()) return;
+  const u = await readUsage();
+  u.blocked = true;
+  u.lastError = msg.slice(0, 160);
+  await getStore().upsert("settings", [u]);
+}
+
 let nextSlot = 0;
 async function pace() {
-  const gap = Math.max(0, Number(process.env.GEMINI_MIN_INTERVAL_MS ?? 6500) || 0);
+  const gap = Math.max(0, process.env.GEMINI_MIN_INTERVAL_MS !== undefined ? Number(process.env.GEMINI_MIN_INTERVAL_MS) || 0 : Math.ceil(60_000 / geminiLimits().rpm) + 300);
   const now = Date.now();
   const wait = Math.max(0, nextSlot - now);
   nextSlot = Math.max(now, nextSlot) + gap;
@@ -158,6 +203,7 @@ export async function generateJSON<T = unknown>(o: GenerateOptions): Promise<{ d
       generationConfig: { responseMimeType: "application/json", ...(o.schema ? { responseSchema: o.schema } : {}), maxOutputTokens: o.maxOutputTokens ?? 8192, temperature: o.temperature ?? 0.1 },
     });
     for (let attempt = 0; ; attempt++) {
+      await reserveCall();
       await pace();
       const t0 = Date.now();
       try {
