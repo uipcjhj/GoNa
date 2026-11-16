@@ -117,6 +117,8 @@ export interface Project {
     /** 순서가 있는 흐름 */
     flow?: string[];
     groups?: Group[];
+    /** columns: 나란한 열(기본) / events: 이름을 크게 쓰는 가로 블록 */
+    groupStyle?: 'columns' | 'events';
     tags?: { title: string; items: string[] }[];
     note?: string;
     /** 스토리보드, 시안, 검수 화면 등 작업 과정 자료 */
