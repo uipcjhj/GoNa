@@ -19,7 +19,7 @@ export const projects: Project[] = [
   {
     slug: 'b2b-digital-marketing',
     title: 'B2B Digital Marketing & Growth',
-    category: 'Digital Strategy / Social Media / Analytics',
+    category: 'Digital Strategy / Growth',
     filter: 'Growth',
     period: '2025–2026',
     organization: 'HYUNDAI MOVEX',
@@ -49,7 +49,7 @@ export const projects: Project[] = [
   {
     slug: 'product-storytelling',
     title: 'Product Storytelling — 4WS & MGF',
-    category: 'Video Production / Product Communication',
+    category: 'Product Content / Video Production',
     filter: 'Content',
     period: '2026',
     organization: 'HYUNDAI MOVEX',
@@ -80,7 +80,7 @@ export const projects: Project[] = [
     filter: 'Content',
     period: '2022–2025',
     organization: '극동MES',
-    summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 운영했습니다.',
+    summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 성장시켰습니다.',
     cover: { kind: 'type', headline: ['YouTube', '& Social'], caption: 'Plan, shoot, edit, publish', tone: 'ink', motif: 'play' },
     placement: 'selected',
     scope: [
@@ -100,7 +100,7 @@ export const projects: Project[] = [
       flow: ['기획', '촬영', '편집', '발행', '성과 분석'],
     },
     outcome: {
-      done: ['정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행'],
+      done: ['정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행', '채널 성장 성과 확보'],
       ...(kdmesGrowth ? { changes: kdmesGrowth } : { note: '채널 성장 수치는 집계 기간과 증빙을 확인한 뒤 게시합니다.' }),
     },
   },
@@ -282,7 +282,7 @@ export const projects: Project[] = [
     category: 'AI Automation / Market Intelligence',
     filter: 'AI Lab',
     period: '2026',
-    type: 'Personal Project',
+    type: 'Personal AI Project',
     status: 'MVP 개발 및 기능 고도화',
     summary: '반복적인 시장조사 업무를 AI 기반 산업정보 수집·분류 및 잠재 수주기회 탐색 시스템으로 구현한 프로젝트.',
     cover: { kind: 'type', headline: ['Opportunity', 'Radar'], caption: 'AI market intelligence, MVP', tone: 'signal', motif: 'radar' },
@@ -317,7 +317,7 @@ export const projects: Project[] = [
     category: 'Creative Coding / Game Design',
     filter: 'AI Lab',
     period: '2026',
-    type: 'Personal Project',
+    type: 'Personal Creative Project',
     summary: '캐릭터와 세계관을 직접 기획하고, AI 이미지·코딩 도구를 활용해 플레이 가능한 웹게임으로 구현한 개인 창작 프로젝트.',
     cover: {
       kind: 'image',
