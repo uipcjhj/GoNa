@@ -1,8 +1,14 @@
-# GONA's Sky Adventure 공개 테스트판 배포 (sky-test 브랜치 전용)
-#   기존 pages.yml 과 같은 방식으로 main(정식 /GoNa/) + dev(/GoNa/dev/) 를 그대로 빌드·검사하고,
-#   sky-test 브랜치의 미리 빌드된 파일을 /GoNa/sky-test/ 에만 추가해서 배포함.
-#   정식 릴리스 태그 작업은 하지 않음. 검사가 하나라도 실패하면 배포하지 않음(지금 사이트 유지).
-name: Pages + Sky test (Production + Development + /sky-test/)
+# GONA's Sky Adventure 테스트판 배포 — 이 브랜치(sky-test) 한 곳에서 모든 Pages 콘텐츠를 함께 올림
+#
+#   정식(Food Adventure)  https://uipcjhj.github.io/GoNa/          ← main 브랜치 (빌드해서 배포)
+#   개발(Food Adventure)  https://uipcjhj.github.io/GoNa/dev/      ← dev 브랜치 (빌드해서 배포)
+#   케이크 테스트         https://uipcjhj.github.io/GoNa/sky-test/     ← 이 브랜치의 sky-test/ (미리 빌드된 파일)
+#   응가 테스트           https://uipcjhj.github.io/GoNa/sky-poop-test/ ← 이 브랜치의 sky-poop-test/ (미리 빌드된 파일)
+#
+#   Pages 는 배포할 때마다 사이트 전체를 새로 올리므로, 모든 경로를 한 번에 다시 올린다.
+#   검사(아래 verify 단계)가 하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지됨.
+#   주의: main·dev 의 pages.yml 은 이 경로들을 모르므로, main/dev 가 푸시되면 테스트 경로가 사라진다 (그때는 이 워크플로를 다시 실행).
+name: Pages + Sky tests (Food + /sky-test/ + /sky-poop-test/)
 
 on:
   push:
@@ -25,7 +31,7 @@ jobs:
         with:
           ref: main
           path: prod
-      - name: Checkout sky test (sky-test · prebuilt static files)
+      - name: "Checkout sky tests (this branch - sky-test and sky-poop-test prebuilt)"
         uses: actions/checkout@v4
         with:
           ref: sky-test
@@ -54,27 +60,36 @@ jobs:
           SHORT=$(git rev-parse --short=7 HEAD)
           WHEN=$(TZ=Asia/Seoul date '+%m-%d %H:%M')
           VITE_BUILD_LABEL="🧪 개발 테스트 · ${SHORT} · ${WHEN}" npm run build:dev
-      - name: Assemble site (site/ = production · site/dev/ = development)
+      - name: Assemble site
         run: |
           mkdir -p site
           cp -R prod/dist/. site/
           rm -rf site/dev
           mkdir -p site/dev
           cp -R devsrc/dist/. site/dev/
-          # 개발 사이트를 홈 화면에 추가하면 이름이 'GONA dev' (정식 'GONA' 와 구분)
           sed -i 's/"short_name": "GONA"/"short_name": "GONA dev"/' site/dev/manifest.webmanifest
           sed -i 's/name="apple-mobile-web-app-title" content="GONA"/name="apple-mobile-web-app-title" content="GONA dev"/' site/dev/index.html
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
           printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
-          touch site/.nojekyll
-          # 공개 테스트판 (GONA's Sky Adventure BETA) — 정식·개발 파일은 건드리지 않고 sky-test/ 폴더만 추가
-          test ! -e site/sky-test
-          mkdir -p site/sky-test
+          # 테스트 경로 두 개 (각각 독립 폴더 · 각자 저장 키 사용)
+          rm -rf site/sky-test site/sky-poop-test
+          mkdir -p site/sky-test site/sky-poop-test
           cp -R skytest/sky-test/. site/sky-test/
-          test -f site/sky-test/index.html
-      - name: Verify (assets present · no dev tools in production)
-        run: node devsrc/tools/verify-site.cjs site prod devsrc
+          cp -R skytest/sky-poop-test/. site/sky-poop-test/
+          touch site/.nojekyll
+      - name: Verify (food sites · both sky tests present and their assets resolve)
+        run: |
+          node devsrc/tools/verify-site.cjs site prod devsrc
+          for d in sky-test sky-poop-test; do
+            test -f "site/$d/index.html" || { echo "✗ $d/index.html 없음"; exit 1; }
+            for a in $(grep -o 'assets/[^"]*\.\(js\|css\)' "site/$d/index.html" | sort -u); do
+              test -s "site/$d/$a" || { echo "✗ $d/$a 없음"; exit 1; }
+            done
+            echo "✓ $d: index.html 및 js/css 자원 확인"
+          done
+          test "$(sha1sum site/sky-test/index.html | cut -c1-12)" != "$(sha1sum site/sky-poop-test/index.html | cut -c1-12)" || { echo "✗ 두 테스트 빌드가 같음"; exit 1; }
+          echo "✓ 두 테스트 빌드는 서로 다른 파일"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -91,4 +106,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-
