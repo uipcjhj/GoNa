@@ -1,0 +1,169 @@
+# GitHub Pages 단일 배포 워크플로 — GoNa 사이트 전체를 한 번에 만들어 올림
+#
+#   https://uipcjhj.github.io/GoNa/               ← main      (정식 Food Adventure, 빌드)
+#   https://uipcjhj.github.io/GoNa/dev/           ← dev       (개발 Food Adventure, 빌드)
+#   https://uipcjhj.github.io/GoNa/sky-test/      ← sky-test  브랜치의 sky-test/      (미리 빌드된 케이크 테스트판)
+#   https://uipcjhj.github.io/GoNa/sky-poop-test/ ← sky-test  브랜치의 sky-poop-test/ (미리 빌드된 응가 테스트판)
+#
+# 규칙
+#   1. 이 파일은 main · dev · sky-test 세 브랜치에 '똑같은 내용'으로 둔다 (병합해도 충돌·덮어쓰기 없음).
+#   2. 어느 브랜치에서 푸시되든 네 경로를 '모두' 각 브랜치 최신 커밋에서 새로 만들어 한 번에 배포한다
+#      → 어떤 업데이트도 다른 사이트를 지우지 못한다.
+#   3. 배포는 한 번에 하나씩 (concurrency: pages, 진행 중인 배포는 취소하지 않음). 대기 중인 실행이 여러 개면
+#      가장 최근 것만 남는데, 매번 최신 브랜치를 다시 읽으므로 마지막 결과가 항상 최신 상태다.
+#   4. 배포 전에 검사: Pages 출처가 'GitHub Actions' 인지 · 정식/개발 필수 파일 · 두 테스트판 파일.
+#      하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지된다.
+#   5. 복구: Actions → 이 워크플로 → Run workflow 에서 main_ref · dev_ref · sky_ref 에 이전 커밋을 넣고 실행.
+#      2026-11-16 통합 전 정상 상태: main a907834 · dev a907834 · sky-test daa4d72
+name: Pages (Food + dev + sky-test + sky-poop-test)
+
+on:
+  push:
+    branches: [main, dev, sky-test]
+  workflow_dispatch:
+    inputs:
+      main_ref:
+        description: '정식판 커밋/브랜치 (비우면 main 최신)'
+        required: false
+        default: ''
+      dev_ref:
+        description: '개발판 커밋/브랜치 (비우면 dev 최신)'
+        required: false
+        default: ''
+      sky_ref:
+        description: '테스트판 커밋/브랜치 (비우면 sky-test 최신)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Check Pages source is GitHub Actions (stop if not)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bt=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.build_type' 2>&1) || { echo "✗ Pages 설정을 읽지 못함: $bt"; exit 1; }
+          src=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.source.branch // "-"' 2>/dev/null || echo "-")
+          echo "Pages build_type=$bt source.branch=$src"
+          if [ "$bt" != "workflow" ]; then
+            echo "✗ Pages 출처가 GitHub Actions 가 아님 (build_type=$bt). Settings → Pages → Source 를 'GitHub Actions' 로 바꾼 뒤 다시 실행하세요. 배포하지 않음."
+            exit 1
+          fi
+          echo "✓ Pages 출처 = GitHub Actions"
+      - name: Checkout production (main)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.main_ref || 'main' }}
+          path: prod
+      - name: Checkout development (dev)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.dev_ref || 'dev' }}
+          path: devsrc
+      - name: Checkout sky tests (sky-test)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sky_ref || 'sky-test' }}
+          path: skytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            prod/package-lock.json
+            devsrc/package-lock.json
+      - name: Build production (main)
+        working-directory: prod
+        run: |
+          npm ci
+          npm run build
+      - name: Build development (dev)
+        working-directory: devsrc
+        run: |
+          npm ci
+          SHORT=$(git rev-parse --short=7 HEAD)
+          WHEN=$(TZ=Asia/Seoul date '+%m-%d %H:%M')
+          VITE_BUILD_LABEL="🧪 개발 테스트 · ${SHORT} · ${WHEN}" npm run build:dev
+      - name: Assemble site (production + dev + sky-test + sky-poop-test)
+        run: |
+          mkdir -p site
+          cp -R prod/dist/. site/
+          rm -rf site/dev site/sky-test site/sky-poop-test
+          mkdir -p site/dev
+          cp -R devsrc/dist/. site/dev/
+          # 개발 사이트를 홈 화면에 추가하면 이름이 'GONA dev' (정식 'GONA' 와 구분)
+          sed -i 's/"short_name": "GONA"/"short_name": "GONA dev"/' site/dev/manifest.webmanifest
+          sed -i 's/name="apple-mobile-web-app-title" content="GONA"/name="apple-mobile-web-app-title" content="GONA dev"/' site/dev/index.html
+          # 두 Sky 테스트판 — 없으면 배포 중단 (조용히 빠지는 일이 없도록)
+          for d in sky-test sky-poop-test; do
+            test -f "skytest/$d/index.html" || { echo "✗ sky-test 브랜치에 $d/ 가 없음 — 배포 중단"; exit 1; }
+            mkdir -p "site/$d"
+            cp -R "skytest/$d/." "site/$d/"
+          done
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
+          printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
+          printf '{"sky-test":"%s","built":"%s","trigger":"%s@%s"}\n' "$(git -C skytest rev-parse HEAD)" "$now" "${GITHUB_REF_NAME}" "${GITHUB_SHA::7}" > site/sky-version.json
+          touch site/.nojekyll
+      - name: Verify (food sites · both sky tests · asset references)
+        run: |
+          node devsrc/tools/verify-site.cjs site prod devsrc
+          for d in "" dev/ sky-test/ sky-poop-test/; do
+            test -f "site/${d}index.html" || { echo "✗ ${d}index.html 없음"; exit 1; }
+            for a in $(grep -o 'assets/[^"]*\.\(js\|css\)' "site/${d}index.html" | sort -u); do
+              test -s "site/${d}$a" || { echo "✗ ${d}$a 없음"; exit 1; }
+            done
+            echo "✓ /${d} index.html 과 js/css 확인"
+          done
+          test "$(sha1sum < site/sky-test/index.html)" != "$(sha1sum < site/sky-poop-test/index.html)" || { echo "✗ 두 테스트판이 같은 파일"; exit 1; }
+          grep -q "Food Adventure" site/index.html || { echo "✗ 정식판 index.html 제목 확인 실패"; exit 1; }
+          echo "✓ 네 경로 모두 포함"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  release-tag:
+    # 정식(main) 푸시로 배포가 끝나면 그 커밋에 롤백용 태그를 붙임 (기존 동작 유지 · 이미 있으면 건너뜀)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Tag production release
+        run: |
+          SHA=$(git rev-parse HEAD)
+          if git tag --points-at "$SHA" | grep -q '^prod-'; then echo "already tagged"; exit 0; fi
+          NAME="prod-$(TZ=Asia/Seoul date '+%Y%m%d-%H%M')-$(git rev-parse --short=7 HEAD)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NAME" "$SHA" -m "Production release $NAME"
+          git push origin "$NAME"
