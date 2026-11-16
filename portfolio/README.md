@@ -19,6 +19,7 @@ npm run preview  # 빌드 결과 미리보기
 | 주소 | 내용 |
 | --- | --- |
 | `/` | Hero → Career Highlights(3) → Selected Work(4) → More Work(4) → AI Lab(2, 다크 전환) → Creative Archive → About·Experience → Capabilities → How I Work → Contact |
+| `/archive/` | Creative Archive 갤러리: 유형 필터(`?category=Video`), 작업물 상세 창(`?work=<id>`) |
 | `/work/` | 전체 프로젝트 10개 + 카테고리 필터 (`?category=Growth` 처럼 주소에 남음) |
 | `/work/<slug>/` | 상세: Hero → Key Information → Featured Results → Process → Outcome (내용이 있는 영역만) |
 | 그 외 | 404 안내 |
@@ -30,14 +31,15 @@ npm run preview  # 빌드 결과 미리보기
 | `site.ts` | 이름, 직무, 핵심 메시지, 소개, 연락처(이메일·LinkedIn·GitHub·이력서) |
 | `projects.ts` | 프로젝트 10개(현대무벡스 6, 극동MES 2, AI Lab 2). 배열 순서가 프로젝트 번호: 역할 범위(scope), 대표 결과물(featured), 과정(process), 결과(outcome) |
 | `about.ts` | Career Highlights, About 문단, 경력 타임라인(career), Capabilities, How I Work |
-| `archive.ts` | Creative Archive: 분야별 이전 작업물 목록. 이미지는 `public/media/archive/` 에 넣고 항목의 `media` 에 적으면 갤러리로 나온다 |
+| `works.ts` | Creative Archive 작업물(한 건이 데이터 한 개). `public/media/archive/<id>/` 폴더에 이미지를 넣으면 그 작업물의 갤러리가 자동으로 구성된다 |
+| `videos.ts` | 확인된 공식 YouTube 영상 데이터 (프로젝트와 아카이브가 함께 사용) |
 | `figures.ts` + `private/` | 회사 수치 (아래 설명) |
 
 - **없는 것은 화면에 나오지 않습니다.** 연락처는 값이 비어 있으면 숨겨지고, 상세 페이지 영역은 내용이 있는 것만 보입니다.
 - **역할 범위(scope)**: 기획·제작·검수·운영처럼 성격별로 나눠 적습니다. 직접 한 일과 협업·지원한 일을 섞지 않습니다.
 - **결과(outcome)**: 끝난 것은 `done`, 진행 중이거나 기획 단계인 것은 `ongoing` 에 적습니다.
 - **경력(career)**: 확인된 날짜만 적습니다. 현대무벡스는 입사일만 확정이라 종료·재직 여부를 적지 않았습니다.
-- **수상작**: `archive.ts` 에는 제목만 있습니다. 등급·주최·연도는 증빙을 확인한 뒤 `context` 에 적습니다.
+- **공모전 작품**: `works.ts` 에는 제목만 있습니다. 수상 등급·주최·연도는 증빙을 확인한 뒤 `description` 에 적습니다.
 - **이메일·LinkedIn·이력서**: `site.ts` 의 `contact` 에 값을 넣으면 Contact 영역에 나타납니다.
 
 ### 회사 수치 — 저장소에 올리지 않습니다

@@ -4,6 +4,7 @@ import { Route, Routes, useLocation } from 'react-router';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { ActiveSectionContext } from './lib/sections';
+import ArchivePage from './pages/ArchivePage';
 import Home from './pages/Home';
 import NotFound from './pages/NotFound';
 import ProjectDetail from './pages/ProjectDetail';
@@ -39,6 +40,7 @@ export default function App() {
               <Routes location={location}>
                 <Route path="/" element={<Home />} />
                 <Route path="/work" element={<WorkIndex />} />
+                <Route path="/archive" element={<ArchivePage />} />
                 <Route path="/work/:slug" element={<ProjectDetail />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

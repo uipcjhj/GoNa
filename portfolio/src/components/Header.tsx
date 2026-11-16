@@ -22,7 +22,7 @@ export function Header({ active }: { active: string | null }) {
         <nav aria-label="주요 메뉴">
           <ul className="flex items-center text-[0.8125rem] font-medium min-[400px]:gap-1 min-[400px]:text-[0.9375rem] sm:gap-3">
             {NAV.map((item) => {
-              const current = pathname === '/' ? active === item.id : onWork && item.id === 'work';
+              const current = pathname === '/' ? active === item.id : (onWork && item.id === 'work') || (pathname.startsWith('/archive') && item.id === 'archive');
               return (
                 <li key={item.id}>
                   <Link
