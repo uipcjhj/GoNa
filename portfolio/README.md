@@ -43,21 +43,37 @@ npm run preview  # 빌드 결과 미리보기
 
 ### 관리자 화면 (`/admin/`)
 
-`npm run dev` 또는 빌드 결과의 `/admin/` 에서 엽니다. 현황판(`/admin/`)과 편집기(`/admin/cms/`, [Sveltia CMS](https://sveltiacms.app/en/))로 이뤄져 있고, 설정은 `scripts/admin.mjs` 한 파일에 있습니다.
+현황판(`/admin/`)과 편집기(`/admin/cms/`, [Sveltia CMS](https://sveltiacms.app/en/))로 이뤄져 있고, 설정은 `scripts/admin.mjs` 한 파일에 있습니다.
+편집기에서 저장하면 저장소에 커밋되고, GitHub Actions 가 사이트를 다시 빌드해 배포합니다(보통 1~3분).
 
-| 연결 방식 | 저장되는 곳 | 필요한 것 |
-| --- | --- | --- |
-| 연습용 (기본) | 브라우저 안. 실제 사이트는 바뀌지 않음 | 없음 |
-| 내 컴퓨터의 저장소 | 컴퓨터에 받아 둔 저장소 폴더의 파일 | Chrome/Edge, `CMS_REPO` 설정, 저장 후 git push |
-| GitHub 저장소 | 저장소에 바로 커밋 → GitHub Actions 가 다시 빌드·배포 | `CMS_REPO` 설정, 로그인용 액세스 토큰 |
+**처음 한 번 연결하기** (저장소 이름 `portfolio` 기준)
 
-- GitHub 에 연결하려면 빌드할 때 `CMS_REPO=계정/저장소 CMS_BRANCH=main` 을 줍니다. `.github/workflows/pages.yml` 은 이 값을 자동으로 넣습니다.
-- 로그인은 GitHub **fine-grained personal access token** 을 편집기 로그인 화면에 붙여 넣는 방식입니다(이 저장소 하나에 Contents 읽기/쓰기 권한만). 토큰은 그 브라우저에만 저장되며 코드나 저장소에는 들어가지 않습니다. 인증 서버가 필요 없습니다.
-- 토큰이 없는 사람은 `/admin/` 을 열어도 아무것도 저장할 수 없습니다.
-- 주의: 저장소가 공개라면 "숨김" 콘텐츠도 저장소의 파일로는 보입니다. 숨김은 사이트 빌드에서만 빠집니다. 공개하면 안 되는 내용은 저장하지 않습니다.
-- 편집기는 화면 번역과 아이콘 글꼴을 외부 CDN(unpkg, jsDelivr)에서 받습니다.
-- 올린 사진은 WebP(긴 변 2400px 이하)로 바뀌어 저장됩니다. 큰 영상은 YouTube 에 올리고 주소를 등록합니다.
-- 배포가 잘못되면 GitHub 의 커밋 기록에서 해당 커밋을 되돌리면(Revert) 이전 내용으로 다시 배포됩니다.
+1. GitHub 에서 빈 저장소 `portfolio` 를 만든다 (Public, README·.gitignore 추가하지 않음).
+2. 이 폴더의 내용을 그 저장소의 `main` 브랜치로 올린다.
+3. 저장소 Settings → Pages → Source 를 **GitHub Actions** 로 바꾼다. 첫 배포가 끝나면 `https://<계정>.github.io/portfolio/` 가 열린다.
+4. 로그인용 토큰을 만든다: GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+   - Repository access: **Only select repositories** → `portfolio` 하나만
+   - Permissions → Repository permissions → **Contents: Read and write** (다른 권한은 주지 않는다)
+   - Expiration: 90일 이하 권장
+5. `https://<계정>.github.io/portfolio/admin/` → 편집기 열기 → **액세스 토큰으로 로그인** 에 토큰을 붙여 넣는다.
+   ("GitHub(으)로 로그인" 버튼은 별도 인증 서버가 있어야 동작하므로 쓰지 않는다.)
+
+**토큰과 보안**
+
+- 토큰은 로그인한 **그 브라우저의 localStorage** (`sveltia-cms.user` 항목)에 저장된다. 코드·저장소·서버 어디에도 전송·저장되지 않고, GitHub API 호출에만 쓰인다.
+- 편집기는 만료 시간을 두지 않는다. **로그아웃하거나 브라우저 데이터를 지우기 전까지** 남고, 토큰 자체의 만료일이 지나면 GitHub 가 거부한다.
+- 로그아웃: 편집기 오른쪽 위 계정 아이콘 → **로그아웃**. 저장된 초안·캐시까지 지우려면 계정 메뉴 → 설정 → 데이터 지우기.
+- 공용·타인 기기에서는 로그인하지 않는다. 꼭 써야 했다면 로그아웃한 뒤 GitHub 에서 그 토큰을 폐기(Revoke)한다. 토큰이 노출된 것 같을 때도 즉시 폐기하고 새로 만든다.
+- 토큰이 없는 사람은 `/admin/` 을 열어도 아무것도 저장할 수 없다.
+- **저장소가 공개라면 "숨김" 콘텐츠와 올린 파일도 GitHub 에서는 누구나 볼 수 있다.** 숨김은 사이트 빌드에서만 빠진다. 회사 내부 자료, 비공개 수치, 개인정보는 편집기에 저장하지 않는다.
+- 편집기는 화면 번역과 아이콘 글꼴을 외부 CDN(unpkg, jsDelivr)에서 받는다.
+
+**운영 메모**
+
+- 새 프로젝트를 만들 때는 영문 "주소 이름"을 한 번 정한다. 커버를 비워 두면 제목으로 글자 커버가 만들어진다.
+- 올린 사진(PNG·JPG)은 WebP(긴 변 2400px 이하)로 바뀌어 `public/media/uploads/` 에 저장된다. 큰 영상은 YouTube 에 올리고 주소를 등록한다.
+- 배포가 잘못되면 GitHub 저장소의 커밋 기록에서 해당 커밋을 Revert 하면 이전 내용으로 다시 배포된다. 저장소 Actions 탭에서 빌드 성공 여부를 볼 수 있다.
+- 연결 없이 써 보려면 `npm run dev` 후 `/admin/` 을 연다. `CMS_REPO` 를 주지 않으면 연습용 저장소(브라우저 안에서만 저장)로 열린다.
 
 ### 회사 수치 — 저장소에 올리지 않습니다
 
@@ -131,4 +147,4 @@ scripts/prerender.mjs   빌드 후 미디어 검사 + 경로별 정적 HTML + 40
 BASE_PATH=/저장소이름/ npm run build
 ```
 
-`site.ts` 의 `url` 에 배포 주소를 적으면 canonical, `sitemap.xml`, `robots.txt` 가 함께 생성됩니다.
+`content/settings/site.json` 의 `url`(관리자 화면 Settings → 사이트 정보)에 배포 주소를 적으면 canonical, `sitemap.xml`, `robots.txt` 가 함께 생성됩니다.

@@ -2,6 +2,7 @@ import { useInView } from 'motion/react';
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Cover } from '../components/Cover';
+import { MetaLine } from '../components/MetaLine';
 import { Reveal } from '../components/Reveal';
 import { labProjects } from '../data/projects';
 
@@ -39,11 +40,7 @@ export function Lab() {
             <Reveal delay={i * 0.06}>
               <Link to={`/work/${project.slug}/`} className="group block focus-visible:outline-offset-8">
                 <Cover cover={project.cover} ratio="16 / 10" zoom />
-                <p className="meta mt-5 flex flex-wrap gap-x-2 text-muted">
-                  <span>{project.type}</span>
-                  <span>|</span>
-                  <span>{project.category}</span>
-                </p>
+                <MetaLine items={[project.type ?? project.organization, project.category]} className="mt-5" />
                 <h3 className="mt-2 text-title leading-[1.12] font-semibold tracking-[-0.03em]">
                   <span className="bg-[linear-gradient(#c8ff5f,#c8ff5f)] bg-[length:0%_100%] bg-no-repeat transition-[background-size,color] duration-500 ease-out-soft group-hover:bg-[length:100%_100%] group-hover:text-ink">
                     {project.title}

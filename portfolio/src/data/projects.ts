@@ -20,9 +20,34 @@ const FIGURES: Record<string, Partial<NonNullable<Project['outcome']>>> = {
   ...(kdmesGrowth && { 'youtube-social-growth': { changes: kdmesGrowth } }),
 };
 
+/**
+ * 커버가 비어 있거나 덜 채워진 프로젝트(관리자 화면에서 막 만든 것)는 제목으로 글자 커버를 만든다.
+ * 이미지 커버인데 이미지가 없을 때, 글자 커버인데 큰 글자가 없을 때도 마찬가지.
+ */
+function coverOf(data: Omit<Project, 'slug'>): Project['cover'] {
+  const c = data.cover as Partial<Project['cover']> | undefined;
+  if (c?.kind && c.kind !== 'type' && (c as { src?: string }).src) return c as Project['cover'];
+  const t = c?.kind === 'type' ? (c as Partial<Extract<Project['cover'], { kind: 'type' }>>) : {};
+  // 제목을 두세 줄로 나눈다 (한 줄이 너무 길어지지 않게)
+  const words = data.title.split(/\s+/);
+  const lines: string[] = [];
+  for (const w of words) {
+    if (lines.length && (lines[lines.length - 1] + ' ' + w).length <= 14) lines[lines.length - 1] += ' ' + w;
+    else lines.push(w);
+  }
+  return {
+    kind: 'type',
+    headline: t.headline?.length ? t.headline : lines.slice(0, 3),
+    caption: t.caption ?? data.category ?? data.period ?? '',
+    tone: t.tone ?? 'wash',
+    motif: t.motif,
+    backdrop: t.backdrop?.src ? { src: t.backdrop.src, alt: t.backdrop.alt ?? data.title } : undefined,
+  };
+}
+
 export const projects: Project[] = entries<Omit<Project, 'slug'>>(files)
   .map(({ name, data }) => {
-    const project: Project = { ...data, slug: name, scope: data.scope ?? [] };
+    const project: Project = { ...data, slug: name, scope: data.scope ?? [], cover: coverOf(data) };
     const figures = FIGURES[name];
     // 수치가 공개되면 "확인 후 게시" 안내문은 뺀다
     if (figures) project.outcome = { ...project.outcome, ...figures, note: undefined };

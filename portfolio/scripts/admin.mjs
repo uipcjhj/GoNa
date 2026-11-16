@@ -61,7 +61,7 @@ const cover = object('cover', '대표 비주얼 (카드·첫 화면)', [
   select('kind', '종류', [{ label: '글자 커버', value: 'type' }, { label: '이미지', value: 'image' }], { default: 'type' }),
   strings('headline', '글자 커버: 큰 글자 (줄마다 한 항목)'),
   str('caption', '글자 커버: 작은 설명'),
-  select('tone', '글자 커버: 색', [{ label: '검정', value: 'ink' }, { label: '연회색', value: 'wash' }, { label: '라임', value: 'signal' }], { default: 'ink' }),
+  select('tone', '글자 커버: 색', [{ label: '검정', value: 'ink' }, { label: '연회색', value: 'wash' }, { label: '라임', value: 'signal' }]),
   select('motif', '글자 커버: 장식', ['frames', 'search', 'grid', 'radar', 'play']),
   object('backdrop', '글자 커버 위에 올릴 실제 이미지', [image('src', '이미지'), str('alt', '설명')], { hint: '불러오지 못하면 글자 커버가 보입니다.' }),
   image('src', '이미지 커버: 이미지'),
