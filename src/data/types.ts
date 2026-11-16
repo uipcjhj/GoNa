@@ -78,8 +78,25 @@ export interface FeaturedItem {
   media?: Media;
 }
 
+/** 자유롭게 쓰는 본문 블록 (관리자 화면의 '본문' 에서 추가) */
+export type Block =
+  | { kind: 'heading'; text: string; level?: 'h2' | 'h3' }
+  | { kind: 'text'; body: string }
+  | { kind: 'image'; src: string; alt?: string; caption?: string }
+  | { kind: 'gallery'; images: { src: string; alt?: string; caption?: string }[] }
+  | { kind: 'youtube'; src: string; alt?: string; poster?: string }
+  | { kind: 'pdf'; src: string; alt?: string }
+  | { kind: 'quote'; text: string; cite?: string }
+  | { kind: 'divider' };
+
 export interface Project {
   slug: string;
+  /** 노출 순서 (작을수록 앞). 사이트의 프로젝트 번호가 된다. */
+  order?: number;
+  /** false 면 사이트에 나오지 않는다 */
+  published?: boolean;
+  /** 자유 본문. 상세 페이지 맨 아래에 나온다. */
+  body?: Block[];
   title: string;
   /** 화면에 표시하는 카테고리 문구 */
   category: string;

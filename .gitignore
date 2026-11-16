@@ -3,3 +3,5 @@ dist
 dist-ssr
 # 공개 여부가 정해지지 않은 회사 수치 — 저장소에 올리지 않는다
 src/data/private/*.local.ts
+# 빌드할 때 만들어지는 관리자 화면
+public/admin

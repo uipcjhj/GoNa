@@ -1,0 +1,26 @@
+{
+  "title": "국회의원실 보도자료",
+  "category": "Editorial",
+  "year": "2017",
+  "organization": "박찬대 국회의원실",
+  "role": "작성",
+  "documents": [
+    {
+      "label": "보도자료",
+      "title": "전체 총 대출액, 1년 6개월 사이에 1조 원 가량 늘어"
+    },
+    {
+      "label": "보도자료",
+      "title": "스마트폰 관련 피해구제 신청, “삼성전자” 압도적"
+    },
+    {
+      "label": "보도자료",
+      "title": "이동통신사 소비자피해구제신청, “SK텔레콤”에서 최다 발생"
+    }
+  ],
+  "source": "노션 Export ZIP 의 HWP 4개 중 담당자가 본인으로 적힌 3개",
+  "verificationStatus": "verified",
+  "publicationStatus": "title-only",
+  "featured": false,
+  "order": 25
+}

@@ -1,0 +1,40 @@
+{
+  "steps": [
+    {
+      "en": "Read",
+      "ko": "시장을 읽습니다",
+      "text": "산업 뉴스, 경쟁사 동향, 채널 데이터를 살펴 지금 무엇이 달라지고 있는지부터 확인합니다.",
+      "project": {
+        "label": "Market Intelligence",
+        "to": "/work/market-intelligence/"
+      }
+    },
+    {
+      "en": "Design",
+      "ko": "메시지를 설계합니다",
+      "text": "기능 설명을 고객이 얻는 가치 중심의 이야기로 바꾸고, 채널과 형식에 맞게 구조를 잡습니다.",
+      "project": {
+        "label": "Product Storytelling",
+        "to": "/work/product-storytelling/"
+      }
+    },
+    {
+      "en": "Build",
+      "ko": "콘텐츠와 기술로 구현합니다",
+      "text": "영상과 디자인은 직접 만들거나 제작사와 함께 만들고, 필요한 도구는 AI로 직접 구현합니다.",
+      "project": {
+        "label": "YouTube & Social Growth",
+        "to": "/work/youtube-social-growth/"
+      }
+    },
+    {
+      "en": "Measure",
+      "ko": "숫자로 확인합니다",
+      "text": "KPI를 정해 두고 결과를 기준일과 함께 기록하고 보고합니다.",
+      "project": {
+        "label": "B2B Digital Marketing & Growth",
+        "to": "/work/b2b-digital-marketing/"
+      }
+    }
+  ]
+}

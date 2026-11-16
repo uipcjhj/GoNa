@@ -1,7 +1,7 @@
 // 빌드 후 실행: 각 경로를 정적 HTML 로 만들어 둔다.
 // → GitHub Pages 에서 /work/ 같은 주소로 바로 들어와도 열리고, 검색엔진이 내용을 읽을 수 있다.
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -9,43 +9,24 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
 const { render, getMeta, getTheme, staticPaths, site, base, projects, works } = await import(pathToFileURL(join(root, 'dist-ssr/entry-server.js')));
 
-// ── 미디어 검사: 자료는 자기 프로젝트 폴더(public/media/<slug>/)의 것만 쓸 수 있다 ──
-// 파일이 없거나, 다른 프로젝트의 자료를 가져다 쓰거나, 어디에도 쓰이지 않는 파일이 있으면 빌드를 멈춘다.
+// ── 미디어 검사 ──
+// 콘텐츠에 적힌 파일이 없으면 경고한다 (관리자 화면에서 올린 파일이 빠졌는지 알 수 있도록). 빌드는 멈추지 않는다.
 {
-  const problems = [];
   const used = new Set();
-  // 프로젝트 자료는 media/<slug>/, Creative Archive 자료는 media/archive/<작업물 id>/
-  const owners = [
-    ...projects.map((p) => ({
-      slug: p.slug,
-      list: [p.cover, ...(p.featured?.media ?? []), ...(p.featured?.items ?? []).map((i) => i.media), ...(p.process?.media ?? []), ...(p.process?.groups ?? []).flatMap((g) => g.media ?? [])],
-    })),
-    ...works.map((w) => ({ slug: `archive/${w.id}`, list: w.media ?? [] })),
-  ];
-  for (const p of owners) {
-    for (const m of p.list) {
-      if (!m || m.kind === 'type') continue;
-      for (const file of [m.kind === 'youtube' ? undefined : m.src, m.poster]) {
-        if (!file || /^https?:/.test(file)) continue;
-        used.add(file);
-        if (!file.startsWith(`media/${p.slug}/`)) problems.push(`${p.slug}: "${file}" 는 이 프로젝트 폴더(media/${p.slug}/)의 자료가 아닙니다`);
-        if (!existsSync(join(dist, file))) problems.push(`${p.slug}: "${file}" 파일이 없습니다`);
-      }
+  const missing = [];
+  const visit = (v, owner) => {
+    if (Array.isArray(v)) v.forEach((x) => visit(x, owner));
+    else if (v && typeof v === 'object') Object.values(v).forEach((x) => visit(x, owner));
+    else if (typeof v === 'string' && /^\/?media\/.+\.[a-z0-9]+$/i.test(v)) {
+      const file = v.replace(/^\//, '');
+      used.add(file);
+      if (!existsSync(join(dist, file))) missing.push(`${owner}: "${file}" 파일이 없습니다`);
     }
-  }
-  const mediaDir = join(dist, 'media');
-  if (existsSync(mediaDir)) {
-    for (const entry of await readdir(mediaDir, { recursive: true, withFileTypes: true })) {
-      if (!entry.isFile() || entry.name === 'README.md') continue;
-      const file = join(entry.parentPath, entry.name).slice(dist.length + 1).replaceAll('\\', '/');
-      if (!used.has(file)) problems.push(`"${file}" 는 어느 프로젝트에서도 쓰이지 않습니다`);
-    }
-  }
-  if (problems.length) {
-    console.error('미디어 검사 실패:\n  ' + problems.join('\n  '));
-    process.exit(1);
-  }
-  console.log(`media check ok (${used.size} files)`);
+  };
+  projects.forEach((p) => visit(p, p.slug));
+  works.forEach((w) => visit(w, `archive/${w.id}`));
+  if (missing.length) console.warn('미디어 경고:\n  ' + missing.join('\n  '));
+  console.log(`media check ${missing.length ? 'has warnings' : 'ok'} (${used.size} files)`);
 }
 
 const template = await readFile(join(dist, 'index.html'), 'utf8');

@@ -1,0 +1,150 @@
+{
+  "title": "YouTube & Social Growth",
+  "address": "youtube-social-growth",
+  "category": "Content Marketing / Social Media",
+  "filter": "Content",
+  "period": "2022–2025",
+  "organization": "극동MES",
+  "summary": "콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 운영했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "YouTube",
+      "& Social"
+    ],
+    "caption": "Plan, shoot, edit, publish",
+    "tone": "ink",
+    "motif": "play",
+    "backdrop": {
+      "src": "https://i.ytimg.com/vi/1kQew3POth4/maxresdefault.jpg",
+      "alt": "바다로요트 YouTube 영상 썸네일"
+    }
+  },
+  "placement": "selected",
+  "scope": [
+    {
+      "label": "기획",
+      "items": [
+        "YouTube 영상 콘텐츠 기획",
+        "Instagram 카드뉴스·숏폼·브랜드 콘텐츠 기획"
+      ]
+    },
+    {
+      "label": "제작",
+      "items": [
+        "영상 촬영·편집·업로드",
+        "카드뉴스·Shorts·Reels 제작",
+        "Badaro Yacht 관련 콘텐츠 제작"
+      ]
+    },
+    {
+      "label": "운영",
+      "items": [
+        "YouTube·Instagram 공식 채널 운영",
+        "월 2회 YouTube 영상 정기 발행"
+      ]
+    },
+    {
+      "label": "분석·보고",
+      "items": [
+        "채널별 성장 지표 분석",
+        "월별 성과 분석 및 콘텐츠 운영 성과 보고"
+      ]
+    }
+  ],
+  "featured": {
+    "media": [
+      {
+        "kind": "youtube",
+        "src": "1kQew3POth4",
+        "alt": "★한국 상륙!★ 피이 보트 발뻗고 누워봤습니다. 라이노490 PE 레저 보트 공간 미쳤다",
+        "caption": "★한국 상륙!★ 피이 보트 발뻗고 누워봤습니다. 라이노490 PE 레저 보트 공간 미쳤다",
+        "poster": "https://i.ytimg.com/vi/1kQew3POth4/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "wuuJOpOl6tw",
+        "alt": "요즘 카약은 이렇게 나온다고? 1인용·2인용 변신! | 하이보 분할형 카약 언박싱",
+        "caption": "요즘 카약은 이렇게 나온다고? 1인용·2인용 변신! | 하이보 분할형 카약 언박싱",
+        "poster": "https://i.ytimg.com/vi/wuuJOpOl6tw/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "fzs8aDx7BwI",
+        "alt": "물 아무리 넣어도, 쏠려도 안침몰함.. 요즘 PE 불침선 미쳤다 | HDPE보트",
+        "caption": "물 아무리 넣어도, 쏠려도 안침몰함.. 요즘 PE 불침선 미쳤다 | HDPE보트",
+        "poster": "https://i.ytimg.com/vi/fzs8aDx7BwI/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "zJycMdcqGMY",
+        "alt": "한국 출시해도 될까..? 중국 박람회에서 ‘가성비 미쳤다’는 PE보트 발견함 | HDPE보트",
+        "caption": "한국 출시해도 될까..? 중국 박람회에서 ‘가성비 미쳤다’는 PE보트 발견함 | HDPE보트",
+        "poster": "https://i.ytimg.com/vi/zJycMdcqGMY/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "kf8Pj010BW8",
+        "alt": "요트회사가 만든 인산철 배터리, 정말 다를까?",
+        "caption": "요트회사가 만든 인산철 배터리, 정말 다를까?",
+        "poster": "https://i.ytimg.com/vi/kf8Pj010BW8/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "pDNXL-XOIbY",
+        "alt": "내 보트가 이렇게 편해질 줄이야.. 롤바부터 핸드레일까지 액세서리 총집합!",
+        "caption": "내 보트가 이렇게 편해질 줄이야.. 롤바부터 핸드레일까지 액세서리 총집합!",
+        "poster": "https://i.ytimg.com/vi/pDNXL-XOIbY/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      }
+    ],
+    "note": "재직 당시 운영한 바다로요트 공식 YouTube 채널의 콘텐츠 사례입니다. 재직 기간에 게시된 영상이며, 영상별 담당 범위는 따로 표기하지 않았습니다.",
+    "items": [
+      {
+        "title": "바다로요트 YouTube",
+        "status": "공식 채널",
+        "link": {
+          "label": "채널 열기",
+          "href": "https://www.youtube.com/@BadaroYacht"
+        }
+      },
+      {
+        "title": "바다로요트 Shorts",
+        "status": "공식 채널",
+        "link": {
+          "label": "Shorts 열기",
+          "href": "https://www.youtube.com/@BadaroYacht/shorts"
+        }
+      }
+    ]
+  },
+  "process": {
+    "challenge": "브랜드가 제공하는 제품과 서비스를 고객에게 알리고, 지속적인 콘텐츠 발행을 통해 브랜드 인지도와 관심을 확대해야 했습니다.",
+    "approach": [
+      "정기적인 콘텐츠 발행 체계",
+      "고객이 관심을 가질 만한 주제 기획",
+      "영상과 카드뉴스의 멀티채널 활용",
+      "월별 성과 분석 및 콘텐츠 개선"
+    ],
+    "flow": [
+      "기획",
+      "촬영",
+      "편집",
+      "발행",
+      "성과 분석"
+    ]
+  },
+  "outcome": {
+    "done": [
+      "정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행"
+    ],
+    "note": "채널 성장 수치는 집계 기간과 증빙을 확인한 뒤 게시합니다."
+  },
+  "order": 3,
+  "published": true
+}

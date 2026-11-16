@@ -1,0 +1,122 @@
+{
+  "title": "GONA Game Universe",
+  "address": "gona-game-universe",
+  "category": "Creative Coding / Game Design",
+  "filter": "AI Lab",
+  "period": "2026",
+  "type": "Personal Creative Project",
+  "summary": "캐릭터와 세계관을 직접 기획하고, AI 이미지·코딩 도구를 활용해 플레이 가능한 웹게임으로 구현한 개인 창작 프로젝트.",
+  "cover": {
+    "kind": "image",
+    "src": "media/gona-game-universe/cover.webp",
+    "alt": "GONA’s Food Adventure 게임 리소스로 구성한 대표 이미지",
+    "ratio": "16 / 10"
+  },
+  "placement": "lab",
+  "theme": "dark",
+  "scope": [
+    {
+      "label": "기획",
+      "items": [
+        "캐릭터와 세계관 기획"
+      ]
+    },
+    {
+      "label": "구현",
+      "items": [
+        "AI 이미지·코딩 도구를 활용한 웹게임 구현"
+      ]
+    }
+  ],
+  "featured": {
+    "items": [
+      {
+        "title": "GONA’s Food Adventure",
+        "status": "공개",
+        "link": {
+          "label": "게임 플레이",
+          "href": "https://uipcjhj.github.io/GoNa/"
+        },
+        "media": {
+          "kind": "image",
+          "src": "media/gona-game-universe/food.webp",
+          "alt": "GONA’s Food Adventure 오프닝 화면",
+          "ratio": "1 / 2"
+        }
+      },
+      {
+        "title": "GONA Game Paradise",
+        "status": "공개",
+        "link": {
+          "label": "GONA GONE WILD! 열기",
+          "href": "https://uipcjhj.github.io/-GONA-s-Game-Paradise/"
+        },
+        "media": {
+          "kind": "image",
+          "src": "media/gona-game-universe/paradise.webp",
+          "alt": "GONA GONE WILD! 시작 화면",
+          "ratio": "1 / 2"
+        }
+      },
+      {
+        "title": "GONA’s Sky Adventure",
+        "status": "테스트 빌드",
+        "link": {
+          "label": "테스트 빌드 열기",
+          "href": "https://uipcjhj.github.io/GoNa/sky-test/"
+        },
+        "media": {
+          "kind": "image",
+          "src": "media/gona-game-universe/sky.webp",
+          "alt": "GONA’s Sky Adventure 테스트 빌드 시작 화면",
+          "ratio": "1 / 2"
+        }
+      }
+    ]
+  },
+  "process": {
+    "groupStyle": "events",
+    "groups": [
+      {
+        "title": "GONA’s Food Adventure",
+        "items": [
+          "모바일 브라우저 기반 횡스크롤 러너",
+          "간식 수집 및 성장 시스템",
+          "4단계 캐릭터 성장",
+          "보스전·특수 공격",
+          "컷신·엔딩 스토리"
+        ]
+      },
+      {
+        "title": "GONA Game Paradise",
+        "items": [
+          "게임들을 연결하는 통합 플랫폼",
+          "픽셀아트 월드맵",
+          "미니게임천국",
+          "업적, 코인, XP, 미션, 도감, 상점",
+          "게임 기록 및 공유 랭킹 구조"
+        ]
+      },
+      {
+        "title": "GONA’s Sky Adventure",
+        "items": [
+          "세로형 아케이드 슈팅게임",
+          "고나 및 가족 동료 캐릭터",
+          "무기, 차지샷, 탄막, 보스전",
+          "모바일 대응 인터페이스"
+        ]
+      }
+    ]
+  },
+  "outcome": {
+    "done": [
+      "GONA’s Food Adventure 공개",
+      "GONA Game Paradise 공개 (GONA GONE WILD!)"
+    ],
+    "ongoing": [
+      "GONA’s Sky Adventure 테스트 빌드 개발"
+    ]
+  },
+  "order": 10,
+  "published": true
+}

@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { Reveal } from '../components/Reveal';
-import { capabilities, process } from '../data/about';
+import { capabilities, process, tools } from '../data/about';
 
 /** 업무 영역 여덟 가지. 누르면 해당 프로젝트로 간다. */
 export function Capabilities() {
@@ -25,6 +25,12 @@ export function Capabilities() {
           </li>
         ))}
       </ul>
+      {tools.length > 0 && (
+        <p className="mt-6 text-[0.9375rem] text-muted">
+          <span className="meta mr-3 text-fg">Tools</span>
+          {tools.join(' · ')}
+        </p>
+      )}
     </section>
   );
 }

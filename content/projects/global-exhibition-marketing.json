@@ -1,0 +1,105 @@
+{
+  "title": "Global Exhibition Marketing",
+  "address": "global-exhibition-marketing",
+  "category": "Exhibition / Global Communication",
+  "filter": "Content",
+  "period": "2026",
+  "organization": "HYUNDAI MOVEX",
+  "summary": "글로벌 전시회의 사전 홍보부터 현장 콘텐츠, 사후 디지털 커뮤니케이션까지 연결했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "AW",
+      "MODEX",
+      "WAC"
+    ],
+    "caption": "Global exhibitions 2026",
+    "tone": "signal",
+    "backdrop": {
+      "src": "https://i.ytimg.com/vi/-Runjlka8m0/maxresdefault.jpg",
+      "alt": "현대무벡스 MODEX 2026 현장스케치 영상 썸네일"
+    }
+  },
+  "placement": "selected",
+  "scope": [
+    {
+      "label": "홍보",
+      "items": [
+        "국·영문 전시 사전 홍보 (AW)",
+        "국·영문 초청장, 글로벌 SNS 홍보, 미국법인 홍보 메시지 (MODEX)"
+      ]
+    },
+    {
+      "label": "전시·현장 콘텐츠",
+      "items": [
+        "AMR·Digital Twin 등 전시 콘텐츠, 현장 스케치 영상 (AW)",
+        "3840×1920 전시 디스플레이 영상, 현장 스케치 및 사후 콘텐츠 (MODEX)",
+        "공항물류 구축사례 정리, 국·영문 카드뉴스 (WAC)"
+      ]
+    },
+    {
+      "label": "제작 지원",
+      "items": [
+        "상부 LED 영상 제작 지원 (AW)"
+      ]
+    },
+    {
+      "label": "검수·보고",
+      "items": [
+        "영업부서 검수를 거쳐 경영진 보고 (WAC)"
+      ]
+    },
+    {
+      "label": "분석",
+      "items": [
+        "SNS 전후 성과 분석 (AW)"
+      ]
+    }
+  ],
+  "featured": {
+    "media": [
+      {
+        "kind": "youtube",
+        "src": "yV7Oj2s7YzA",
+        "alt": "AW2026 On-site Highlights | AW2026 전시회 현장스케치",
+        "caption": "AW2026 On-site Highlights | AW2026 전시회 현장스케치 (2026.05.13 게시)",
+        "poster": "https://i.ytimg.com/vi/yV7Oj2s7YzA/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "-Runjlka8m0",
+        "alt": "MODEX 2026 On-site Highlights | MODEX 2026 전시회 현장스케치",
+        "caption": "MODEX 2026 On-site Highlights | MODEX 2026 전시회 현장스케치 (2026.06.05 게시)",
+        "poster": "https://i.ytimg.com/vi/-Runjlka8m0/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      }
+    ],
+    "note": "현대무벡스 공식 YouTube 채널에 공개된 영상입니다. 단독 제작물이 아니며, 담당 범위는 위 My role에 적은 것과 같습니다."
+  },
+  "process": {
+    "flow": [
+      "사전 홍보",
+      "현장 콘텐츠",
+      "사후 디지털 커뮤니케이션"
+    ],
+    "tags": [
+      {
+        "title": "Featured events",
+        "items": [
+          "AW 2026",
+          "MODEX 2026",
+          "WAC 2026"
+        ]
+      }
+    ]
+  },
+  "outcome": {
+    "done": [
+      "WAC 2026 국·영문 카드뉴스: 경영진 보고 후 SNS 게시"
+    ],
+    "note": "전시 전후 채널 변화 수치는 공개 범위를 확인한 뒤 게시합니다."
+  },
+  "order": 4,
+  "published": true
+}

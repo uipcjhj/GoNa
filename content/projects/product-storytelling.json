@@ -1,0 +1,97 @@
+{
+  "title": "Product Storytelling — 4WS & MGF",
+  "address": "product-storytelling",
+  "category": "Product Content / Video Production",
+  "filter": "Content",
+  "period": "2026",
+  "organization": "HYUNDAI MOVEX",
+  "summary": "복잡한 물류자동화 기술을 고객이 이해하기 쉬운 시각적 콘텐츠로 전환했습니다.",
+  "cover": {
+    "kind": "type",
+    "headline": [
+      "4WS",
+      "& MGF"
+    ],
+    "caption": "Product film / 3D / Shorts",
+    "tone": "wash",
+    "motif": "frames",
+    "backdrop": {
+      "src": "https://i.ytimg.com/vi/0zRlcTGMZv0/maxresdefault.jpg",
+      "alt": "현대무벡스 4-Way Shuttle System 영상 썸네일"
+    }
+  },
+  "header": "split",
+  "placement": "selected",
+  "scope": [
+    {
+      "label": "기획",
+      "items": [
+        "4-Way Shuttle 홍보영상 기획",
+        "실사와 3D 기반 제품 스토리 구성"
+      ]
+    },
+    {
+      "label": "검수",
+      "items": [
+        "랙 구조, 이송 동선, 공간효율 등 기술 표현 검토",
+        "제품 담당 부서와 제작사 검수 협업"
+      ]
+    },
+    {
+      "label": "제작 협업",
+      "items": [
+        "MGF 3D 및 Shorts 콘텐츠 제작 협업"
+      ]
+    },
+    {
+      "label": "제작",
+      "items": [
+        "제품 기술 형상에 맞는 썸네일 재제작",
+        "국·영문 설명 및 홍보 문구 제작"
+      ]
+    }
+  ],
+  "featured": {
+    "media": [
+      {
+        "kind": "youtube",
+        "src": "0zRlcTGMZv0",
+        "alt": "4-Way Shuttle System | High-Density Storage & Flexible Automation",
+        "caption": "4-Way Shuttle System | High-Density Storage & Flexible Automation (2026.11.03 게시)",
+        "poster": "https://i.ytimg.com/vi/0zRlcTGMZv0/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "zMKEpCbbuII",
+        "alt": "4-Way Shuttle | High-Density Storage & 4-Directional Automation",
+        "caption": "4-Way Shuttle | High-Density Storage & 4-Directional Automation (2026.03.20 게시)",
+        "poster": "https://i.ytimg.com/vi/zMKEpCbbuII/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      },
+      {
+        "kind": "youtube",
+        "src": "NF14cKYpgN4",
+        "alt": "Mechanical Gap Filler (MGF) | Safer & More Accessible Rail Platforms",
+        "caption": "Mechanical Gap Filler (MGF) | Safer & More Accessible Rail Platforms (2026.11.10 게시)",
+        "poster": "https://i.ytimg.com/vi/NF14cKYpgN4/maxresdefault.jpg",
+        "ratio": "16 / 9"
+      }
+    ],
+    "note": "현대무벡스 공식 YouTube 채널에 공개된 영상입니다. 단독 제작물이 아니며, 담당 범위는 위 My role에 적은 것과 같습니다."
+  },
+  "process": {
+    "challenge": "정확한 기술정보와 이해하기 쉬운 시각적 메시지 사이의 균형을 잡아야 했습니다.",
+    "shift": {
+      "from": "기능 중심 설명",
+      "to": "고객 가치 중심 스토리텔링"
+    }
+  },
+  "outcome": {
+    "done": [
+      "제품 홍보영상, 스토리보드, 썸네일 및 파생 콘텐츠 제작·검수"
+    ]
+  },
+  "order": 2,
+  "published": true
+}

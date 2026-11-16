@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Work } from '../data/works';
 import { asset } from '../lib/asset';
+import { Body, Prose } from './Body';
 import { Media } from './Media';
 import { TextLink } from './TextLink';
 
@@ -36,6 +37,8 @@ export function WorkModal({ work, onClose }: { work: Work | null; onClose: () =>
     ['Year', work.year],
     ['Organization', work.organization],
     ['Role', work.role],
+    ['Award', work.award],
+    ['Tags', work.tags?.join(' · ')],
   ].filter((f): f is [string, string] => Boolean(f[1]));
 
   return (
@@ -134,6 +137,27 @@ export function WorkModal({ work, onClose }: { work: Work | null; onClose: () =>
             </p>
           )}
         </div>
+
+        {(work.intent || work.process || work.result || work.body) && (
+          <div className={`space-y-6 border-t border-fg pt-5 ${current ? 'lg:col-span-2' : ''}`}>
+            {(
+              [
+                ['기획 의도', work.intent],
+                ['제작 과정', work.process],
+                ['결과', work.result],
+              ] as const
+            ).map(
+              ([label, text]) =>
+                text && (
+                  <section key={label} className="max-w-[44rem]">
+                    <h3 className="meta mb-2 text-muted">{label}</h3>
+                    <Prose text={text} />
+                  </section>
+                ),
+            )}
+            <Body blocks={work.body} label={work.title} />
+          </div>
+        )}
 
         {work.documents && (
           <ol className={`border-t border-fg ${current ? 'lg:col-span-2' : ''} sm:columns-2 sm:gap-x-8`}>
