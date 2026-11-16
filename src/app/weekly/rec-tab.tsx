@@ -67,12 +67,12 @@ export function RecommendTab({ rows, curation, target, onSet, onSelectAll, onReg
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-navy-900/50 px-4 py-3">
         <div className="text-sm text-slate-600">
-          추천 <b className="text-slate-900">{picks.length}</b>건
+          추천 <b className="text-slate-900">{picks.length}</b>건 <span className="text-[13px] text-slate-500">(검증 완료 {picks.filter(({ r }) => r.gate.aiDone).length} · 검증 대기 {picks.filter(({ r }) => !r.gate.aiDone).length})</span>
           <span className="mx-1.5 text-slate-300">|</span>글로벌 {curation.balance.global} · 국내 {curation.balance.domestic} · 경쟁사 {curation.balance.competitor}
           {curation.excludedPrevious > 0 && <><span className="mx-1.5 text-slate-300">|</span>지난 2주 보고 프로젝트 {curation.excludedPrevious}건 제외</>}
           {curation.types && <><span className="mx-1.5 text-slate-300">|</span>잠재 수주기회 {curation.types.opportunity} · 경쟁사 모니터링 {curation.types.competitor} · 기술·시장동향 {curation.types.trend}</>}
-          {(curation.shortfall ?? 0) > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">기준 대비 {curation.shortfall}건 부족 — 검증된 기사만 추천</span></>}
-          {(curation.pendingAI ?? 0) > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">AI 원문 검증 대기·검토 {curation.pendingAI}건</span></>}
+          {(curation.shortfall ?? 0) > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">기준 대비 {curation.shortfall}건 부족 — 기준에 맞는 기사만 추천 (억지로 채우지 않음)</span></>}
+          {(curation.pendingAI ?? 0) > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">원문 검증 전·검토 {curation.pendingAI}건 (순위 낮게 반영)</span></>}
           {curation.needsCheck.length > 0 && <><span className="mx-1.5 text-slate-300">|</span><span className="text-amber-700">확인 필요 {curation.needsCheck.length}건 별도 보관</span></>}
         </div>
         {!readOnly && <div className="flex flex-wrap items-center gap-2">
@@ -91,17 +91,24 @@ export function RecommendTab({ rows, curation, target, onSet, onSelectAll, onReg
           <p className="mt-1 text-sm text-slate-500">
             {readOnly
               ? "이 기간에 검증이 끝난 추천 기사가 아직 없습니다."
-              : (curation.pendingAI ?? 0) > 0
-                ? <>발행일이 확인된 후보 {curation.pendingAI}건이 Gemini 원문 검증을 기다리고 있습니다. 더보기(…) → &lsquo;Gemini 원문 검증 분석&rsquo;을 실행하세요. 검증되지 않은 기사는 추천하지 않습니다.</>
+              : (curation.dateCheck?.length ?? 0) > 0
+                ? <>발행일이 아직 확인되지 않은 유력 후보 {curation.dateCheck!.length}건이 있습니다. 더보기(…) → &lsquo;추천 후보 Gemini 검증&rsquo;이 원문 URL·발행일을 먼저 확인한 뒤 요약까지 작성합니다.</>
                 : <>이 기간의 실제 기사가 없거나, 발행일이 확인된 기사가 없습니다. &lsquo;기사 수집&rsquo;을 실행해 보세요.</>}
           </p>
         </div>
       )}
-      <div className="space-y-3">
-        {picks.map(({ p, r }) => (
-          <ArticleCard key={r.id} r={r} rank={p.rank} priority={p.priority} reasons={p.reasons} onSet={(s) => onSet([r.id], s)} onRefresh={onRefresh} />
-        ))}
-      </div>
+      {/* 검증 완료 추천: Gemini가 원문을 읽고 4줄 요약·분류를 만든 기사 / 검증 대기 추천: 발행일 확인·고관련성이지만 아직 분석 전 (예비 분류, 승인 불가) */}
+      {[
+        { key: "done", title: "검증 완료 추천", hint: "Gemini 원문 검증 완료 — 4줄 요약·분류·근거 확인 가능", list: picks.filter(({ r }) => r.gate.aiDone) },
+        { key: "wait", title: "검증 대기 추천", hint: "발행일 확인된 고관련성 후보 — Gemini 원문 검증 전이므로 요약·분류는 예비값이며 승인되지 않습니다", list: picks.filter(({ r }) => !r.gate.aiDone) },
+      ].filter((g) => g.list.length > 0).map((g) => (
+        <section key={g.key} className="space-y-3">
+          <div className="flex flex-wrap items-baseline gap-x-3"><h3 className="text-base font-semibold text-slate-900">{g.title} <span className={g.key === "done" ? "text-sky-700" : "text-amber-700"}>{g.list.length}</span></h3><span className="text-[13px] text-slate-500">{g.hint}</span></div>
+          {g.list.map(({ p, r }) => (
+            <ArticleCard key={r.id} r={r} rank={p.rank} priority={p.priority} reasons={p.reasons} onSet={(s) => onSet([r.id], s)} onRefresh={onRefresh} />
+          ))}
+        </section>
+      ))}
       {picks.length > 0 && (
         <p className="flex items-start gap-1.5 text-[13px] text-slate-500">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />

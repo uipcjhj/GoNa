@@ -10,7 +10,9 @@
     "hash-password": "node scripts/hash-password.mjs",
     "test": "node --conditions=react-server --import tsx --test tests/*.test.*ts",
     "gemini:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts --check",
-    "report:compare": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts"
+    "report:compare": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts",
+    "diagnose": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/diagnose.mts",
+    "sources:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/sources-check.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

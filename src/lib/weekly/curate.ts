@@ -62,14 +62,15 @@ function rejectReason(r: WeeklyRow, why: "duplicate" | "balance" | "rank"): stri
   return "우선순위 차순위";
 }
 
-/** v3: only Gemini-verified (or user-approved) articles are recommended. */
-export const CURATION_VERSION = "c3";
+/** v4: candidates are ranked even before Gemini verification (flagged 검증 전); verified ones rank first. Export / approval still warn. */
+export const CURATION_VERSION = "c4";
 
 export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
   const same = storyMatcher([...rows.map((r) => r.titleKo ?? r.title), ...o.previous.map((p) => p.title)]);
   const titleOf = (r: WeeklyRow) => r.titleKo ?? r.title;
   const needsCheck: Curation["needsCheck"] = [];
   const aiExcluded: Curation["rejects"] = [];
+  const dateCheck: { id: string; score: number }[] = [];
   let excludedPrevious = 0;
   let pendingAI = 0;
 
@@ -79,20 +80,17 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
     const p = curationPriority(r);
     if (r.detail!.group === "review") { if ((r.relevance ?? 0) >= 40) needsCheck.push({ articleId: r.id, reason: "카테고리 확인 필요" }); continue; }
     if (r.dateStatus !== "verified" && !o.includeUnverified) {
+      if (p.score >= 50 && (r.inPeriod || !r.publishedAt)) dateCheck.push({ id: r.id, score: p.score });
       if (p.score >= 55) needsCheck.push({ articleId: r.id, reason: r.viaGoogleNews ? "발행일 미확인 (Google News 검색일만 있음 — 원문 확인 필요)" : "발행일 미확인" });
       continue;
     }
     if (r.publishedAt && !r.inPeriod) { if (p.score >= 55) needsCheck.push({ articleId: r.id, reason: "조사 기간 외 발행" }); continue; }
-    // only Gemini-verified articles (or ones the user reviewed and approved) can be recommended for the report
-    if (!r.gate.aiDone && !(r.gate.approved && (r.summary4.length === 4 || r.edits?.summary4?.some(Boolean)))) {
+    // not yet verified by Gemini: still a candidate (ranked lower, flagged) — the list is never left empty just because analysis has not run
+    if (!r.gate.aiDone) {
       pendingAI++;
-      const reason = r.aiStatus === "failed" ? `AI 분석 실패 — 재분석 필요 (${r.ai?.error?.message.slice(0, 60) ?? ""})`
-        : r.aiStatus === "insufficient_source" ? "원문 부족 — 발행 매체 원문 URL 확인 후 재분석"
-        : r.aiStatus === "needs_review" ? `사용자 검토 필요 — ${r.ai?.reviewReasons[0] ?? ""}`
-        : "AI 분석 필요 (Gemini 원문 검증 전)";
-      if ((r.relevance ?? 0) >= 40 || r.ai) needsCheck.push({ articleId: r.id, reason });
-      continue;
-    }
+      p.score -= r.aiStatus === "failed" || r.aiStatus === "insufficient_source" ? 12 : r.aiStatus === "needs_review" ? 4 : 6;
+      p.reasons.push(r.aiStatus === "failed" ? "AI 분석 실패 — 재분석 필요" : r.aiStatus === "insufficient_source" ? "원문 부족 — 원문 복원·본문 입력 필요" : r.aiStatus === "needs_review" ? "사용자 검토 필요" : "Gemini 원문 검증 전 (키워드 예비 분류)");
+    } else p.score += 6; // verified: facts, 4-line summary and category come from the article body
     if (r.ai?.reportType === "exclude") {
       aiExcluded.push({ articleId: r.id, reason: `보고 제외 (AI 판단): ${r.ai.excludeReason || "광고·홍보·관련성 낮음"}`, detail: r.ai.titleKo || r.title, monitoring: false });
       continue;
@@ -174,8 +172,19 @@ export function curate(rows: WeeklyRow[], o: CurateOptions): Curation {
   }
 
   for (const x of aiExcluded) { if (rejects.length >= 10) break; rejects.push(x); }
+  // one article per story (representative = highest priority): analysing duplicates would only waste the free API quota
+  const rankedRows: typeof eligible = [];
+  for (const r of [...eligible].filter((x) => !aiExcluded.some((e) => e.articleId === x.id)).sort((a, b) => b._p.score - a._p.score)) {
+    if (rankedRows.some((p) => (r.dupGroup && p.dupGroup === r.dupGroup) || (r.opportunityId && p.opportunityId === r.opportunityId) || same(titleOf(r), titleOf(p)) || sameCompetitorStory(r, p))) continue;
+    rankedRows.push(r);
+    if (rankedRows.length >= 60) break;
+  }
+  const rankedIds = rankedRows.map((r) => r.id);
+  dateCheck.sort((a, b) => b.score - a.score);
   const typeOf = (r: (typeof picks)[number]) => r.ai?.reportType ?? (r.detail?.group === "competitor" ? "competitor" : "trend");
   return {
+    ranked: rankedIds,
+    dateCheck: dateCheck.slice(0, 40).map((x) => x.id),
     version: CURATION_VERSION,
     shortfall: Math.max(0, o.target - picks.length),
     pendingAI,

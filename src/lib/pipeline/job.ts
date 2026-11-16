@@ -8,7 +8,6 @@ import { getStore } from "@/lib/db/store";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { getArticles, getJob, getSettings, listArticles, listJobs, listOpportunities, saveArticles, saveJob, saveOpportunities, saveSettings, getOpportunity } from "@/lib/db/repo";
 import { searchGdelt, RateLimitError } from "@/lib/news/gdelt";
-import { sleep } from "@/lib/util/http";
 import { fetchRss } from "@/lib/news/rss";
 import { searchGnews } from "@/lib/news/gnews";
 import { searchGoogleNews } from "@/lib/news/googlenews";
@@ -22,6 +21,9 @@ import { checkCompetitors, isMarketResearchPR } from "@/lib/weekly/classify";
 import { analyzeArticle, aiConfigured } from "./analyze";
 import { analyzeForReport, needsAnalysis } from "@/lib/report/factcheck";
 import { readArticleSource } from "@/lib/report/source";
+import { loadWeekly } from "@/lib/weekly/view";
+import { applyResume, flushHealth, getResume, isQuarantined, loadHealth, recordHealth, saveResume } from "@/lib/news/health";
+import { resolvePeriod } from "@/lib/weekly/period";
 const GN_RESOLVES = new Map<string, number>();
 import { geminiConfigured } from "@/lib/ai/gemini";
 import type { WeeklyReport } from "@/lib/types";
@@ -62,7 +64,18 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     return { job: running, created: false, resumed: true };
   }
   const settings = await getSettings();
-  const queries = mode === "collect" ? planQueries(settings) : mode === "quick" ? planQuickQueries(settings) : mode === "weekly" && range ? planWeeklyQueries(settings, range) : [];
+  let queries = mode === "collect" ? planQueries(settings) : mode === "quick" ? planQuickQueries(settings) : mode === "weekly" && range ? planWeeklyQueries(settings, range) : [];
+  let resumeNote = "";
+  if (mode === "weekly" && range && options?.resume && !range.days?.length) {
+    // 이어하기: 지난 실행에서 끝내지 못했거나 실패한 검색부터 (끝난 검색은 건너뜀). 성공한 결과는 이미 저장돼 있다.
+    const row = await getResume(range);
+    if (row && (row.failed.length || row.pending.length)) {
+      const before = queries.length;
+      queries = applyResume(queries, row, options.resume);
+      resumeNote = ` — ${options.resume === "failed" ? "실패·미완료 소스만" : "이어하기"}: 계획 ${before}건 중 ${queries.length}건 실행 (완료 ${row.done.length}건 건너뜀)`;
+    }
+  }
+  queries = queries.filter((q, i, a) => a.findIndex((x) => x.label === q.label && x.provider === q.provider) === i); // identical labels run once
   const now = new Date().toISOString();
   const job: Job = {
     id: `job_${now.replace(/[-:.TZ]/g, "").slice(0, 14)}_${randomUUID().slice(0, 6)}`,
@@ -95,7 +108,7 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
   };
   const label = mode === "quick" ? `빠른 테스트 시작 — 국내 ${QUICK.perSide}건 + 글로벌 ${QUICK.perSide}건 목표, 검색 ${queries.length}건, 제한시간 ${QUICK.totalSeconds}초 (GDELT는 8초 1회만 시도)`
     : mode === "collect" ? `전체 탐색 시작 — 제한시간 ${Math.max(5, settings.maxJobMinutes || 20)}분, `+`수집 시작 (${trigger === "scheduled" ? "예약 실행" : "수동 실행"}) — 검색 ${queries.length}건 예정`
-    : mode === "weekly" ? `주간 업계동향 수집 시작 — ${range?.startDate} ~ ${range?.endDate}${range?.days?.length ? ` (누락 날짜 ${range.days.join(", ")})` : ""}, 검색 ${queries.length}건 예정`
+    : mode === "weekly" ? `주간 업계동향 수집 시작 — ${range?.startDate} ~ ${range?.endDate}${range?.days?.length ? ` (누락 날짜 ${range.days.join(", ")})` : ""}, 검색 ${queries.length}건 예정${resumeNote}`
     : mode === "weekly-analyze" ? `주간 업계동향 보고서용 Gemini 원문 검증 분석 — ${range?.startDate} ~ ${range?.endDate}${options?.retryFailed ? " (실패·원문 부족 기사 재분석 포함)" : ""}` : "규칙 기반 분석 기사 AI 재분석 시작";
   log(job, "info", label);
   if (mode === "reanalyze") {
@@ -115,9 +128,11 @@ export async function startJob(trigger: Job["trigger"], mode: Job["mode"] = "col
     const selected = new Set(Object.entries(rep?.items ?? {}).filter(([, it]) => it.status === "selected").map(([id]) => id));
     const verifiedDate = (a: Article) => /^(원문 메타데이터|발행 매체 RSS|RSS pubDate)/.test(a.publishedAtBasis ?? "") && Boolean(a.publishedAt);
     // explicit request (checked articles / 보고서 선정 전체): only those articles; failed ones are retried, completed ones reused
-    const explicit = options?.ids?.length ? options.ids : options?.scope === "selected" ? [...selected] : null;
+    // scope "auto": selected articles + the top-ranked recommendation candidates (run automatically after collection / 추천 생성)
+    const explicit = options?.ids?.length ? options.ids : options?.scope === "selected" ? [...selected] : options?.scope === "auto" ? await autoCandidates(range, settings, selected) : null;
+    const order = new Map((explicit ?? []).map((id, i) => [id, i]));
     const aiCands = !geminiConfigured() ? []
-      : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: true, upgrade: Boolean(options?.ids?.length) }))
+      : explicit ? (await getArticles(explicit)).filter((a) => a.status === "analyzed" && !a.isDemo && needsAnalysis(a, { retryFailed: options?.scope !== "auto", upgrade: Boolean(options?.ids?.length) })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
       : inRange
           .filter((a) => a.status === "analyzed" && needsAnalysis(a, { retryFailed: Boolean(options?.retryFailed) }) && (selected.has(a.id) || (a.weekly?.relevance ?? 0) >= 35))
           .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || Number(verifiedDate(b)) - Number(verifiedDate(a)) || (b.weekly?.relevance ?? 0) - (a.weekly?.relevance ?? 0))
@@ -167,8 +182,8 @@ async function runQuery(q: Job["queries"][number], settings: Settings, rangeStar
     return fetchRss(feed?.name ?? q.label, q.query, rangeStart ?? sinceIso, feed?.lang ?? "en", fast);
   }
   if (q.provider === "googlenews") {
-    const p = JSON.parse(q.query) as { q: string; lang: "ko" | "en"; startDate?: string; endDate?: string; when?: string };
-    return searchGoogleNews(p.q, { lang: p.lang, startDate: p.startDate, endDate: p.endDate, max: 30, fast, when: p.when });
+    const p = JSON.parse(q.query) as { q: string; lang: "ko" | "en"; startDate?: string; endDate?: string; when?: string; edition?: string };
+    return searchGoogleNews(p.q, { lang: p.lang, startDate: p.startDate, endDate: p.endDate, max: 30, fast, when: p.when, edition: p.edition });
   }
   if (q.provider === "gnews") return searchGnews(q.query, sinceIso);
   return [];
@@ -217,17 +232,26 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
   let raw: RawArticle[] = [];
   // circuit breaker: if a provider failed 3 times in a row, skip its remaining queries this run
   const fails = (job.providerFailures ??= {});
-  if ((fails[q.provider] ?? 0) >= 3) {
-    log(job, "warn", `건너뜀: ${q.label} — ${q.provider} 연속 3회 실패`);
+  const limit = q.provider === "gdelt" ? 2 : 3; // GDELT is slow / rate limited: give up early, Google News & RSS carry the run
+  const health = await loadHealth();
+  const hkey = q.provider === "rss" ? `rss:${q.query}` : q.provider;
+  const paused = q.provider === "rss" ? isQuarantined(health, hkey) : null;
+  if (paused) {
+    (job.failedSources ??= []).push(`${q.label} — 연속 실패로 보류 중 (${paused.slice(5, 16).replace("T", " ")}까지)`);
+    log(job, "warn", `건너뜀: ${q.label} — 최근 연속 실패로 24시간 보류된 소스`);
+  } else if ((fails[q.provider] ?? 0) >= limit) {
+    (job.failedSources ??= []).push(`${q.label} — ${q.provider} 연속 ${limit}회 실패로 건너뜀`);
+    log(job, "warn", `건너뜀: ${q.label} — ${q.provider} 연속 ${limit}회 실패 (이번 실행에서 중단)`);
   } else {
     try {
       raw = await runQuery(q, settings, job.range ? new Date(new Date(job.range.start).getTime() - 86400_000).toISOString() : undefined, quick);
       fails[q.provider] = 0;
+      recordHealth(health, hkey, true, raw.length);
       log(job, "info", `검색 완료: ${q.label} → ${raw.length}건`);
     } catch (e) {
       job.stats.errors++;
-      if (e instanceof RateLimitError) { if (!quick) await sleep(20_000); } // back off; do not count toward the breaker
-      else fails[q.provider] = (fails[q.provider] ?? 0) + 1;
+      fails[q.provider] = (fails[q.provider] ?? 0) + 1; // 429 / timeouts count too — otherwise 20 min are burnt on retries
+      recordHealth(health, hkey, false, 0, e instanceof Error ? e.message : String(e));
       const c = (e as { cause?: { code?: string; message?: string } })?.cause;
       const cause = c ? c.code || c.message || String(c) : null;
       const raw0 = `${e instanceof Error ? e.message : e} ${cause ?? ""}`;
@@ -306,7 +330,7 @@ async function discoverStep(job: Job, settings: Settings, recentTitles: { id: st
       a.duplicateOf = dup.id;
       a.statusNote = "동일 제목 기사(재배포/신디케이션) — 분석 생략";
       job.stats.duplicates++;
-    } else if (a.preScore < 3 && !a.competitors.length) {
+    } else if (a.preScore < 3 && !a.competitors.length && !(job.mode === "weekly" && weeklyPreScore(a.title, a.excerpt) >= 2)) {
       a.status = "filtered";
       a.statusNote = `사전 관련성 필터 미통과 (점수 ${a.preScore})`;
       job.stats.filtered++;
@@ -506,6 +530,30 @@ async function supplementStep(job: Job, settings: Settings, oppId: string, ctx: 
 }
 
 /** Weekly: for important paywalled articles, look for a free/official article on the same story. */
+/** Selected + top-ranked candidates of the week (curation is recomputed so new articles are included). */
+async function autoCandidates(range: NonNullable<Job["range"]>, settings: Settings, selected: Set<string>): Promise<string[]> {
+  const p = resolvePeriod({ p: "custom", start: range.startDate, end: range.endDate });
+  const rep = await getStore().get<WeeklyReport>("reports", `${range.startDate}_${range.endDate}`);
+  if (rep?.curation) { rep.curation = null; await getStore().upsert("reports", [rep]); }
+  let v = await loadWeekly(p);
+  // step 1 (no Gemini): confirm publisher URL + publication date of high-priority candidates whose date is only a search date
+  const check = (v.curation.dateCheck ?? []).slice(0, 25);
+  if (check.length) {
+    const arts = await getArticles(check);
+    let blocked = 0;
+    for (const a of arts) {
+      if (blocked >= 2) break; // Google answers with a captcha: stop instead of hammering it
+      const r = await readArticleSource(a, { searchAlternatives: false }).catch(() => null);
+      if (r && (r.trace.bodyStatus === "google_blocked")) blocked++;
+    }
+    await saveArticles(arts);
+    const rep2 = await getStore().get<WeeklyReport>("reports", `${range.startDate}_${range.endDate}`);
+    if (rep2?.curation) { rep2.curation = null; await getStore().upsert("reports", [rep2]); }
+    v = await loadWeekly(p);
+  }
+  return [...new Set([...selected, ...(v.curation.ranked ?? [])])].slice(0, Math.max(10, settings.weekly.aiPerRun ?? 30));
+}
+
 async function weeklyAlternatives(job: Job, settings: Settings, ctx: { opps: Opportunity[]; articles: Article[] }) {
   const r = job.range!;
   const arts = (await listArticles({ sinceDays: Math.ceil((Date.now() - new Date(r.start).getTime()) / 86400_000) + 2 }))
@@ -587,6 +635,12 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
       const discoverCut = job.cursor < job.queries.length && (overLimit() || (quick && Date.now() >= discoverEnd));
       if (discoverCut) log(job, "warn", `검색 제한시간 도달 — 남은 검색 ${job.queries.length - job.cursor}건은 건너뛰고 지금까지 수집한 결과로 진행합니다.`);
       if (job.cursor >= job.queries.length || discoverCut) {
+        await flushHealth().catch(() => {});
+        if (job.mode === "weekly" && job.range && !job.range.days?.length) {
+          const failedLabels = new Set((job.failedSources ?? []).map((x) => x.split(" — ")[0]!));
+          const row = await saveResume(job.range, job.queries, job.cursor, failedLabels).catch(() => null);
+          if (row && (row.failed.length || row.pending.length)) log(job, "info", `이어하기 저장: 완료 ${row.done.length}건 · 실패 ${row.failed.length}건 · 미실행 ${row.pending.length}건 — '이어서 수집' 또는 '실패 소스만 재실행'으로 계속할 수 있습니다.`);
+        }
         if (quick) {
           job.step = "수집 기사 선별 중";
           const pool = job.quickPool ?? [];

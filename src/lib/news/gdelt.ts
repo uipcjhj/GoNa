@@ -15,13 +15,30 @@ function parseSeenDate(s: string | undefined): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
+/** GDELT rejects phrases / words that are too short ("The specified phrase is too short"): "AS/RS", "AI", "Geek+" …
+ *  Quoted phrases are normalised (punctuation → space) and dropped when any word is < 3 chars; bare words < 3 chars are dropped. */
+export function sanitizeGdeltQuery(query: string): string {
+  let q = query.replace(/"([^"]*)"/g, (_m, phrase: string) => {
+    const words = phrase.replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+    if (!words.length || words.some((w) => w.length < 3)) return words.length === 1 && words[0]!.length >= 3 ? words[0]! : " ";
+    return words.length === 1 ? words[0]! : `"${words.join(" ")}"`;
+  });
+  q = q.replace(/(^|[\s(])([\p{L}\p{N}]{1,2})(?=[\s)]|$)/gu, (m, pre: string, w: string) => (/^(OR|AND)$/i.test(w) ? m : pre)); // bare short words
+  for (let i = 0; i < 4; i++) {
+    q = q.replace(/\(\s*(?:OR\s*)*\)/g, " ").replace(/\(\s*OR\s+/g, "(").replace(/\s+OR\s*\)/g, ")").replace(/\bOR\s+OR\b/g, "OR").replace(/^\s*OR\s+|\s+OR\s*$/g, "");
+  }
+  return q.replace(/\s+/g, " ").trim();
+}
+
 export async function searchGdelt(query: string, opts: { timespanDays: number; max: number; englishOnly: boolean; start?: string; end?: string; fast?: boolean }): Promise<RawArticle[]> {
   // GDELT asks clients to keep to ~1 request / 5 seconds.
   const wait = 6500 - (Date.now() - lastCall);
   if (wait > 0) await sleep(wait);
   lastCall = Date.now();
 
-  const q = opts.englishOnly ? `${query} sourcelang:english` : query;
+  const clean = sanitizeGdeltQuery(query);
+  if (!clean) return [];
+  const q = opts.englishOnly ? `${clean} sourcelang:english` : clean;
   const params = new URLSearchParams({
     query: q,
     mode: "artlist",
@@ -35,7 +52,7 @@ export async function searchGdelt(query: string, opts: { timespanDays: number; m
     params.set("enddatetime", gd(opts.end));
   } else params.set("timespan", `${Math.max(1, opts.timespanDays)}d`);
   // fast (quick test): one short attempt, no retries — GDELT is often slow or rate-limited
-  const res = await fetchWithRetry(`${ENDPOINT}?${params}`, { timeoutMs: opts.fast ? 8000 : 30000 }, opts.fast ? 0 : 2, 12000);
+  const res = await fetchWithRetry(`${ENDPOINT}?${params}`, { timeoutMs: opts.fast ? 8000 : 20000 }, opts.fast ? 0 : 1, 8000);
   const text = await res.text();
   lastCall = Date.now();
   if (res.status === 429) throw new RateLimitError(`GDELT 호출 제한 (429): ${text.slice(0, 120)}`);

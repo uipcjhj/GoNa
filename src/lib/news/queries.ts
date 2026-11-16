@@ -2,6 +2,7 @@
 // so that every combination is covered over several days and no region dominates.
 import type { PlannedQuery, Settings } from "@/lib/types";
 import { gnewsEnabled } from "./gnews";
+import { projectSignal } from "./signal";
 
 const q = (s: string) => (/\s|\//.test(s) ? `"${s.replace(/"/g, "")}"` : s);
 const orGroup = (arr: string[]) => (arr.length === 1 ? q(arr[0]) : `(${arr.map(q).join(" OR ")})`);
@@ -79,7 +80,14 @@ export function planQueries(s: Settings): PlannedQuery[] {
     added = false;
     for (const p of pools) if (p[i]) { gdelt.push(p[i]); added = true; }
   }
-  const plan = gdelt.slice(0, Math.max(1, s.maxQueriesPerRun));
+  // Google News RSS first: fast, rarely throttled, real publisher names and dates — GDELT (slow / rate limited) only supplements
+  const gn = (qs: string, label: string, lang: "ko" | "en" = "en"): PlannedQuery => ({ provider: "googlenews", query: JSON.stringify({ q: qs, lang, when: `${Math.max(3, Math.min(14, s.lookbackDays || 7))}d` }), label: `Google News · ${label}` });
+  const googleFirst: PlannedQuery[] = [
+    ...regions.map((region) => gn(`(warehouse OR "distribution center" OR factory OR plant) (investment OR expansion OR construction OR automation) (${(byRegion.get(region) ?? []).slice(0, 4).map((n) => `"${n}"`).join(" OR ")})`, region)),
+    ...rotate(industries, rot).slice(0, 6).map((ind) => gn(`(${ind.keywords.slice(0, 3).map((k) => `"${k}"`).join(" OR ")}) (plant OR factory OR facility) (investment OR expansion)`, `산업 · ${ind.name}`)),
+    ...chunk(comps, 4).slice(0, 4).map((grp) => gn(`(${grp.map((x) => `"${x}"`).join(" OR ")}) (warehouse OR automation OR contract OR robotics)`, `경쟁사 · ${grp.join(", ")}`)),
+  ];
+  const plan = [...googleFirst, ...gdelt.slice(0, Math.max(1, s.maxQueriesPerRun))];
 
   for (const f of s.rssFeeds.filter((f) => f.enabled)) plan.push({ provider: "rss", query: f.url, label: `RSS · ${f.name}` });
 
@@ -100,6 +108,7 @@ export function preScore(title: string, desc: string | null, s: Settings): numbe
   for (const w of strong) if (text.includes(w)) score += 2;
   for (const w of action) if (text.includes(w)) score += 1;
   for (const c of s.competitors) if (c.aliases.some((a) => text.includes(a.toLowerCase()))) score += 4;
+  score += projectSignal(title, desc).score; // 신설·증설·착공 등 실제 프로젝트 신호 (한국어·영어)
   const negative = ["stock price", "shares fell", "shares rose", "dividend", "quarterly results", "earnings call", "obituary", "football", "election", "celebrity"];
   for (const w of negative) if (text.includes(w)) score -= 3;
   return score;

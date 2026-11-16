@@ -109,6 +109,9 @@ export const WEEKLY_RSS: Settings["rssFeeds"] = [
   { name: "전자신문 (오늘의뉴스)", url: "https://rss.etnews.com/Section901.xml", enabled: true, scope: "domestic", lang: "ko" },
   { name: "The Robot Report", url: "https://www.therobotreport.com/feed/", enabled: true, scope: "global", lang: "en" },
   { name: "Robotics & Automation News", url: "https://roboticsandautomationnews.com/feed/", enabled: true, scope: "global", lang: "en" },
+  // 후보 소스: 접근성·발행일은 첫 실행에서 측정하고(npm run sources:check), 연속 실패하면 24시간 자동 보류
+  { name: "FreightWaves", url: "https://www.freightwaves.com/news/feed", enabled: true, scope: "global", lang: "en", candidate: true },
+  { name: "The Loadstar", url: "https://theloadstar.com/feed/", enabled: true, scope: "global", lang: "en", candidate: true },
 ];
 
 /** Coverage added in v2: AS/RS, WMS/WCS, AGV/AMR/무인지게차, 피킹·분류·팔레타이징, 피지컬 AI, 항만·공항·철도, 콜드체인·제약,
@@ -256,6 +259,12 @@ export function mergeSettings(stored: Partial<Settings> | null | undefined): Set
       globalQueries: add(merged.weekly.globalQueries, WEEKLY_V2_QUERIES.global),
       techQueriesKo: add(merged.weekly.techQueriesKo, WEEKLY_V2_QUERIES.techKo),
     };
+  }
+  // migration: newly added candidate feeds are appended once to existing settings (users can disable / delete them)
+  if (stored?.rssFeeds && merged.rssFeeds) {
+    const known = new Set(merged.rssFeeds.map((f) => f.url));
+    const added = WEEKLY_RSS.filter((f) => f.candidate && !known.has(f.url));
+    if (added.length) merged.rssFeeds = [...merged.rssFeeds, ...added];
   }
   // migration: settings saved before the weekly feature get the new domestic/global feeds once
   if (stored && !stored.weekly && stored.rssFeeds) {

@@ -226,16 +226,18 @@ describe("기사 선정", () => {
     assert.deepEqual(c.picks.map((p) => p.articleId), ["ok"]);
     assert.ok(c.needsCheck.some((n) => n.articleId === "nodate"));
   });
-  test("Gemini 검증 전·실패 기사는 추천하지 않고, 12건을 억지로 채우지 않는다", () => {
+  test("Gemini 검증 전 후보도 순위에 올리되(표시), 검증 완료 기사가 먼저 — 12건을 억지로 채우지 않음", () => {
     const c = curate([
-      row({ id: "ok", title: "OO plant", ...base }),
-      row({ id: "pending", title: "Pending", ai: null, summary4: [], ...base }),
-      row({ id: "failed", title: "Failed", ai: { ...aiResult(), status: "failed", summary: [] }, summary4: [], ...base }),
-      row({ id: "review", title: "Review", ai: { ...aiResult(), status: "needs_review", reviewReasons: ["원문에 없는 수치"] }, ...base }),
+      row({ id: "pending", title: "Pending plant story", ai: null, summary4: [], ...base, relevance: 90 }),
+      row({ id: "ok", title: "Verified distribution center story", ...base, relevance: 70 }),
+      row({ id: "failed", title: "Failed analysis article", ai: { ...aiResult(), status: "failed", summary: [] }, summary4: [], ...base }),
     ], { target: 12, rejectCount: 5, includeUnverified: false, previous: [] });
-    assert.deepEqual(c.picks.map((p) => p.articleId), ["ok"]);
-    assert.equal(c.shortfall, 11);
-    assert.equal(c.pendingAI, 3);
+    assert.equal(c.picks[0]!.articleId, "ok", "검증 완료가 먼저");
+    assert.deepEqual(c.picks.map((p) => p.articleId).sort(), ["failed", "ok", "pending"]);
+    assert.ok(c.picks.find((p) => p.articleId === "pending")!.reasons.some((r) => r.includes("검증 전")));
+    assert.equal(c.shortfall, 9);
+    assert.equal(c.pendingAI, 2);
+    assert.deepEqual(c.ranked?.slice(0, 1), ["ok"]);
   });
   test("광고·홍보로 판단된 기사는 추천하지 않는다", () => {
     const c = curate([row({ id: "ad", title: "Diwali campaign", ai: aiResult({ reportType: "exclude", excludeReason: "제품 광고 캠페인" }), ...base })], { target: 12, rejectCount: 5, includeUnverified: false, previous: [] });
@@ -529,5 +531,87 @@ describe("KNAPP 원문 복원", () => {
     const c = curate([ko, ...en], { target: 12, rejectCount: 5, includeUnverified: false, previous: [] });
     assert.equal(c.picks.length, 1);
     assert.equal(c.picks[0]!.articleId, "irobot");
+  });
+});
+
+// ---------------------------------------------------------------- 수집 안정성
+import { sanitizeGdeltQuery } from "@/lib/news/gdelt";
+import { planWeeklyQueries } from "@/lib/weekly/plan";
+
+describe("GDELT 질의·수집 계획", () => {
+  test("'phrase too short' 원인(AS/RS, Geek+, 2글자 단어) 제거", () => {
+    assert.equal(sanitizeGdeltQuery('("AS/RS" OR "Geek+" OR "Hai Robotics") (warehouse OR AI)'), '(Geek OR "Hai Robotics") (warehouse)');
+    assert.equal(sanitizeGdeltQuery('"AS/RS" automation'), "automation");
+    assert.equal(sanitizeGdeltQuery('("AI" OR "ML")'), "");
+  });
+  test("주간 수집 계획: 국내 세부·글로벌 국가별 Google News 질의 포함, GDELT는 보조", () => {
+    const plan = planWeeklyQueries(settings, { start: "2026-11-08T15:00:00Z", end: "2026-11-15T15:00:00Z", startDate: "2026-11-09", endDate: "2026-11-15" });
+    const gn = plan.filter((q) => q.provider === "googlenews");
+    assert.ok(gn.length >= 60, `Google News ${gn.length}건`);
+    assert.ok(gn.some((q) => q.label.includes("국내 세부")) && gn.some((q) => q.label.includes("글로벌 · Poland") || q.label.includes("글로벌 · United States")));
+    assert.ok(plan.findIndex((q) => q.provider === "gdelt") > plan.findIndex((q) => q.provider === "googlenews"), "GDELT는 Google News 뒤");
+  });
+});
+
+// ---------------------------------------------------------------- 수집 품질·신뢰성
+import { projectSignal } from "@/lib/news/signal";
+import { classifyFailure, buildDiagnostics } from "@/lib/news/diagnostics";
+import { applyResume, isQuarantined, recordHealth } from "@/lib/news/health";
+import { weeklyPreScore } from "@/lib/weekly/classify";
+
+describe("프로젝트 신호·사전 필터", () => {
+  test("신설·증설·착공 프로젝트는 통과, 부동산 거래·실적·광고는 낮게", () => {
+    for (const t of ["이수페타시스, 대구국가산단에 5천억 투자…7공장 신설 추진", "Amara Raja to Expand Battery Manufacturing Capacity", "Prologis plans 4M sf warehouse campus in Joliet", "AutoStore to buy Dutch robotics firm Logiqs for €30M"]) assert.ok(weeklyPreScore(t, null) >= 2, t);
+    for (const t of ["CenterPoint Buys Second Cartersville Warehouse This Year", "Rockwell Automation (ROK) Fiscal Q4 2026 Earnings Call"]) assert.ok(weeklyPreScore(t, null) < 2, t);
+    assert.ok(projectSignal("GAC Starts Production at Battery Pack Plant in Thailand").flags.includes("이미 준공·가동") || projectSignal("GAC opens battery pack plant in Thailand").flags.includes("이미 준공·가동"));
+  });
+});
+
+describe("수집 진단·소스 상태·이어하기", () => {
+  test("실패 원인 분류: 429 / 타임아웃 / 질의 오류 / 네트워크", () => {
+    assert.equal(classifyFailure("GDELT 호출 제한 (429)"), "rate_limit");
+    assert.equal(classifyFailure("응답 시간 초과"), "timeout");
+    assert.equal(classifyFailure("GDELT: The specified phrase is too short."), "bad_query");
+    assert.equal(classifyFailure("fetch failed"), "network");
+  });
+  test("소스별 요청·성공·실패·결과 수 집계", () => {
+    const job = { id: "j", mode: "weekly", queries: [{ provider: "gdelt", query: "x", label: "GDELT · a" }, { provider: "googlenews", query: "x", label: "Google News · b" }],
+      log: [{ t: "", level: "info", msg: "검색 완료: Google News · b → 25건" }, { t: "", level: "error", msg: "검색 실패: GDELT · a — GDELT 호출 제한 (429): x" }, { t: "", level: "warn", msg: "건너뜀: GDELT · a — gdelt 연속 2회 실패" }] } as never;
+    const d = buildDiagnostics([job], []);
+    const g = d.sources.find((s) => s.source === "googlenews")!, gd = d.sources.find((s) => s.source === "gdelt")!;
+    assert.deepEqual([g.requests, g.ok, g.results], [1, 1, 25]);
+    assert.deepEqual([gd.failed, gd.fail.rate_limit, gd.skipped], [1, 1, 1]);
+  });
+  test("RSS 소스는 3회 연속 실패하면 24시간 보류, 성공하면 해제", () => {
+    const h = { id: "x", sources: {}, updatedAt: "" } as never;
+    const now = new Date("2026-11-10T00:00:00Z");
+    for (let i = 0; i < 3; i++) recordHealth(h, "rss:u", false, 0, "fetch failed", now);
+    assert.ok(isQuarantined(h, "rss:u", now.getTime() + 3600_000));
+    assert.equal(isQuarantined(h, "rss:u", now.getTime() + 25 * 3600_000), null);
+    recordHealth(h, "rss:u", true, 10, undefined, now);
+    assert.equal(isQuarantined(h, "rss:u", now.getTime() + 1000), null);
+    for (let i = 0; i < 5; i++) recordHealth(h, "gdelt", false, 0, "429", now);
+    assert.equal(isQuarantined(h, "gdelt", now.getTime()), null, "검색 API는 실행 단위 차단기로 처리");
+  });
+  test("이어하기: 실패·미실행 먼저, 끝난 검색은 건너뜀, 실패만 재실행 모드", () => {
+    const q = (l: string, provider = "googlenews") => ({ provider, query: l, label: l }) as never;
+    const plan = [q("a"), q("b"), q("c"), q("rss1", "rss"), q("d")];
+    const row = { id: "r", done: ["a", "b"], failed: [q("c")], pending: [q("d")], updatedAt: "" } as never;
+    assert.deepEqual(applyResume(plan, row, "continue").map((x: { label: string }) => x.label), ["c", "d", "rss1"]);
+    assert.deepEqual(applyResume(plan, row, "failed").map((x: { label: string }) => x.label), ["c", "d"]);
+  });
+});
+
+describe("추천 후보 선별", () => {
+  const base = { reportStatus: "unreviewed" as const };
+  test("발행일 미확인 유력 후보는 dateCheck로 분리, 동일 스토리는 ranked에 1건만", () => {
+    const c = curate([
+      row({ id: "nodate", title: "Big plant in Poland", dateStatus: "search", ...base, relevance: 80 }),
+      row({ id: "a", title: "KNAPP Establishes Robotics and AI Innovation Hub in Boston, MA", competitors: ["KNAPP"], ...base, relevance: 70 }),
+      row({ id: "b", title: "Knapp opens U.S. “robotics and AI innovation hub”", competitors: ["KNAPP"], ...base, relevance: 65 }),
+      row({ id: "c", title: "오스트리아 크납, 美 보스턴에 물류산업용 로보틱스 랩 출범", competitors: ["KNAPP"], ...base, relevance: 60 }),
+    ], { target: 12, rejectCount: 5, includeUnverified: false, previous: [] });
+    assert.deepEqual(c.dateCheck, ["nodate"]);
+    assert.equal(c.ranked?.length, 1, "KNAPP 3건 → 대표 1건");
   });
 });

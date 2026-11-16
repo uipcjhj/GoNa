@@ -2,6 +2,7 @@
 // Separate from the Opportunity Score: a policy change or a competitor contract can be highly
 // relevant to the weekly report even when it is not a sales opportunity.
 import { containsAny } from "@/lib/util/text";
+import { projectSignal } from "@/lib/news/signal";
 import { normalizeNumbers } from "@/lib/report/validate";
 import { COMPETITOR_RULES, KW } from "./categories";
 import { REVIEW_LABEL, TAXONOMY, labelOf, withV2 } from "./taxonomy";
@@ -242,6 +243,7 @@ export function weeklyPreScore(title: string, desc: string | null): number {
   s += hits(title, KW.tech).length;
   if (hits(title, KW.facilityInvest).length && detectIndustry(text) !== "Unknown") s += 2;
   if (Object.values(COMPETITOR_RULES).some((r) => r.ko.some((k) => title.includes(k)))) s += 3;
+  s += projectSignal(title, desc).score;
   return s;
 }
 

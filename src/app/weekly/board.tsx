@@ -77,7 +77,13 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
     act("curate", async () => {
       const d = await postJson("/api/weekly/curate", { ...pq, action: "generate", includeUnverified });
       router.refresh();
-      return `AI 추천을 다시 생성했습니다 — 추천 ${d.curation.picks.length}건, 후보 탈락 ${d.curation.rejects.length}건, 확인 필요 ${d.curation.needsCheck.length}건.`;
+      const base = `AI 추천을 다시 생성했습니다 — 추천 ${d.curation.picks.length}건, 후보 탈락 ${d.curation.rejects.length}건, 확인 필요 ${d.curation.needsCheck.length}건.`;
+      // one button: rank, then let Gemini read the top candidates (summary / category / facts) — completed ones are never re-called
+      if (view.ai) {
+        const a = await postJson("/api/weekly/analyze", { ...pq, scope: "auto" }).catch(() => null);
+        if (a && !a.busy) return `${base} 상위 후보의 Gemini 원문 검증을 시작했습니다 — 끝나면 요약·분류가 자동으로 채워집니다.`;
+      }
+      return base;
     });
   const selectAll = () =>
     act("selectall", async () => {
@@ -99,7 +105,8 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
 
   // KPI cards double as filters: click → matching list (tab + filter kept in sync)
   const kpis: { label: string; value: number; sub: string; accent?: boolean; warn?: boolean; tab: Tab; filter?: string }[] = [
-    { label: "수집 기사", value: view.counts.collected, sub: `분석 ${rows.filter((r) => r.analysis !== "pending").length}건`, tab: "all", filter: "all" },
+    // 수집 = 기간 내 저장된 기사(중복 제외). 목록(전체 수집 기사 탭)은 관련성 필터·분석 대기·오류를 뺀 분석 완료 기사
+    { label: "수집 기사", value: view.counts.collected, sub: `목록 ${rows.length}(분석 ${rows.filter((r) => r.analysis !== "pending").length}${rows.some((r) => r.analysis === "pending") ? ` · 대기 ${rows.filter((r) => r.analysis === "pending").length}` : ""}) · 필터 제외 ${view.breakdown.filtered}`, tab: "all", filter: "all" },
     { label: "AI 추천", value: view.curation.picks.length, sub: (view.curation.shortfall ?? 0) > 0 ? `기준 ${view.target}건 · ${view.curation.shortfall}건 부족` : `기준 ${view.target}건`, accent: true, tab: "rec" },
     { label: "보고서 선정", value: selected, sub: selected === view.target ? "기준 충족" : `기준 ${view.target}건`, tab: readOnly ? "all" : "edit", filter: readOnly ? "selected" : undefined },
     { label: "후보 탈락", value: view.curation.rejects.length, sub: "참고 기사", tab: "rejects" },
@@ -157,6 +164,8 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
             {menu === "collect" && (
               <div className="absolute right-0 z-40 mt-1 w-72 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
                 <MenuItem title="선택 기간 다시 검색" desc="이 주간의 국내외 뉴스를 수집 (저장된 기사는 중복 저장 안 함)" onClick={() => startJob("collect", "/api/weekly/collect", {}, "선택 기간 검색")} />
+                {view.resume && <MenuItem title={`이어서 수집 (실패 ${view.resume.failed} · 미실행 ${view.resume.pending}건)`} desc={`지난 수집에서 끝내지 못한 검색부터 계속합니다 (완료 ${view.resume.done}건은 건너뜀, 성공한 결과는 이미 저장됨)`} onClick={() => startJob("resume", "/api/weekly/collect", { resume: "continue" }, "이어서 수집")} />}
+                {view.resume && view.resume.failed > 0 && <MenuItem title={`실패 소스만 재실행 (${view.resume.failed}건)`} desc="타임아웃·429·연결 실패로 끝난 검색만 다시 시도합니다" onClick={() => startJob("failed", "/api/weekly/collect", { resume: "failed" }, "실패 소스 재실행")} />}
                 <MenuItem title="이번 주 기사 수집" desc="이번 주 월요일부터 오늘까지" onClick={() => startJob("this", "/api/weekly/collect", { current: true }, "이번 주 기사 수집")} />
                 {view.missingDays.length > 0 && <MenuItem title={`누락 날짜 추가 수집 (${view.missingDays.length}일)`} desc={view.missingDays.join(", ")} onClick={() => startJob("days", "/api/weekly/collect", { days: view.missingDays }, "누락 날짜 수집")} />}
               </div>
@@ -185,7 +194,8 @@ export function WeeklyBoard({ period, view, tab: tabIn, readOnly = false }: { pe
             {menu === "more" && (
               <div className="absolute right-0 z-40 mt-1 w-80 rounded-xl border border-line bg-navy-900 p-1.5 shadow-2xl">
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="분류 다시 적용 (무료)" desc="새 분류체계·판단 규칙을 저장된 기사에 적용합니다. 원문 링크·발행일·선정 상태는 그대로 유지되며 AI를 호출하지 않습니다." onClick={() => regenerate()} />
-                <MenuItem icon={<Sparkles className="h-4 w-4" />} title="Gemini 원문 검증 분석 (보고서 후보만)" desc="선정 기사·관련도 상위 후보의 원문을 읽고 사실·근거·4줄 요약을 만듭니다. 이미 분석된 기사는 재사용해 무료 사용량을 아낍니다." onClick={() => startJob("analyze", "/api/weekly/analyze", {}, "Gemini 원문 검증 분석")} />
+                <MenuItem icon={<Sparkles className="h-4 w-4" />} title="추천 후보 Gemini 검증 (자동 선정)" desc="보고서 선정 기사 + 우선순위 상위 후보를 원문 기준으로 분석합니다. 완료된 기사는 다시 호출하지 않습니다." onClick={() => analyze({ scope: "auto" }, "추천 후보 원문 검증")} />
+                <MenuItem icon={<Sparkles className="h-4 w-4" />} title="Gemini 원문 검증 분석 (관련도 순)" desc="선정 기사·관련도 상위 후보의 원문을 읽고 사실·근거·4줄 요약을 만듭니다. 이미 분석된 기사는 재사용해 무료 사용량을 아낍니다." onClick={() => startJob("analyze", "/api/weekly/analyze", {}, "Gemini 원문 검증 분석")} />
                 <MenuItem icon={<Sparkles className="h-4 w-4" />} title="보고서 선정 기사 전체 분석" desc="보고서에 선정한 기사 중 아직 검증되지 않은 기사만 분석합니다 (완료된 기사는 재호출 안 함)." onClick={() => analyze({ scope: "selected" }, "보고서 선정 기사 원문 검증")} />
                 <MenuItem icon={<RefreshCw className="h-4 w-4" />} title="실패·원문 부족 기사만 재분석" desc="AI 분석 실패 또는 원문 부족으로 끝난 기사만 다시 분석합니다." onClick={() => startJob("analyze", "/api/weekly/analyze", { retryFailed: true }, "실패 기사 재분석")} />
               </div>

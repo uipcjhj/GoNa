@@ -115,7 +115,7 @@ export function detailByRules(a: Article, w: WeeklyAnalysis): DetailCategory {
       : has(text, RE.plant) && investing ? "제조물류 투자"
       : investing && (has(text, RE.warehouse) || has(text, RE.plant)) ? "투자·확장"
       : "Industry";
-    d = { group: "global", country: sub === "Industry" ? null : countryKo, sub };
+    d = { group: "global", country: countryKo, sub }; // "글로벌시장(폴란드) / Industry" like the company report
   }
   // relevance too weak to place the article confidently → 확인 필요
   if (!w.primaryCategory || (w.relevance < 30 && d.group !== "competitor")) d = { group: "review", country: null, sub: REVIEW_LABEL };

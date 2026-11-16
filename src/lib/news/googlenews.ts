@@ -14,7 +14,7 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function searchGoogleNews(
   query: string,
-  opts: { lang: "ko" | "en"; startDate?: string; endDate?: string; max?: number; fast?: boolean; when?: string },
+  opts: { lang: "ko" | "en"; startDate?: string; endDate?: string; max?: number; fast?: boolean; when?: string; edition?: string },
 ): Promise<RawArticle[]> {
   const wait = (opts.fast ? 800 : 1500) - (Date.now() - lastCall);
   if (wait > 0) await sleep(wait);
@@ -26,7 +26,9 @@ export async function searchGoogleNews(
     const e = new Date(`${opts.endDate}T00:00:00Z`);
     q += ` after:${ymd(new Date(s.getTime() - 86400_000))} before:${ymd(new Date(e.getTime() + 2 * 86400_000))}`;
   } else q += ` when:${opts.when ?? "7d"}`;
-  const loc = opts.lang === "ko" ? "hl=ko&gl=KR&ceid=KR:ko" : "hl=en-US&gl=US&ceid=US:en";
+  // regional English editions surface local outlets (GB / AU / SG / MY / IN / CA …) that the US edition ranks low
+  const ed = opts.edition && /^[A-Z]{2}$/.test(opts.edition) ? opts.edition : null;
+  const loc = opts.lang === "ko" ? "hl=ko&gl=KR&ceid=KR:ko" : ed ? `hl=en-${ed}&gl=${ed}&ceid=${ed}:en` : "hl=en-US&gl=US&ceid=US:en";
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&${loc}`;
   const res = await fetchWithRetry(url, { timeoutMs: opts.fast ? 8000 : 20000 }, opts.fast ? 1 : 2, opts.fast ? 1500 : 4000);
   if (!res.ok) throw new Error(`Google News HTTP ${res.status}`);

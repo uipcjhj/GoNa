@@ -299,6 +299,8 @@ export interface Curation {
   needsCheck: { articleId: string; reason: string }[];
   excludedPrevious: number; // stories already reported in previous weeks
   balance: { global: number; domestic: number; competitor: number };
+  dateCheck?: string[]; // 발행일 미확인이지만 우선순위가 높은 후보 — 원문 URL·발행일 확인 대상 (Gemini 전 단계)
+  ranked?: string[]; // 모든 후보(검증 여부 무관)의 우선순위 순 ID — Gemini 원문 검증 대상 선정에 사용
   version?: string; // curation rules version — older saved curations are recomputed (no stale picks)
   shortfall?: number; // target − picks (never padded)
   pendingAI?: number; // candidates waiting for Gemini 원문 검증 / review
@@ -470,7 +472,7 @@ export interface Job {
   log: JobLog[];
   error: string | null;
   slices: number;
-  options?: { retryFailed?: boolean; ids?: string[]; scope?: "selected" }; // weekly-analyze: explicit articles / 보고서 선정 전체 // weekly-analyze: also re-run failed / 원문 부족 articles
+  options?: { retryFailed?: boolean; ids?: string[]; scope?: "selected" | "auto"; resume?: "continue" | "failed" }; // weekly-analyze: explicit articles / 보고서 선정 전체 // weekly-analyze: also re-run failed / 원문 부족 articles
   haltReason?: string | null; // stopped early (e.g. Gemini key / quota error) — remaining articles untouched
 }
 
@@ -521,7 +523,7 @@ export interface Settings {
   competitors: { name: string; enabled: boolean; aliases: string[]; requiresContext?: boolean; note?: string }[];
   competitorsVersion?: number; // 2 = expanded list (AutoStore, TGW, Geek+, … + 국내 SI)
   developers?: string[]; // 물류부동산 개발사 (경쟁사 아님 — 투자·개발 주체)
-  rssFeeds: { name: string; url: string; enabled: boolean; scope?: "domestic" | "global"; lang?: "ko" | "en" }[];
+  rssFeeds: { name: string; url: string; enabled: boolean; scope?: "domestic" | "global"; lang?: "ko" | "en"; candidate?: boolean }[];
   weekly: WeeklySettings;
   weights: ScoringWeights;
   hotThreshold: number;

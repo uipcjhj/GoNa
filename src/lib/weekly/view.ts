@@ -11,6 +11,7 @@ import { getReport, previousReports, saveReport } from "./report";
 import { CURATION_VERSION, curate } from "./curate";
 import type { AccessType, Article, Curation, DateStatus, DetailCategory, Priority, RelevanceBreakdown, ReportAIStatus, ReportAnalysis, ReportItem, ReportStatus, SourceLevel, SourceTrace, SourceType, VerificationStatus, WeeklyAnalysis, WeeklyCategory, WeeklyJudgment, WeeklyReport } from "@/lib/types";
 import { REPORT_ANALYSIS_VERSION } from "@/lib/report/factcheck";
+import { getResume } from "@/lib/news/health";
 import { labelOf } from "./taxonomy";
 
 export interface WeeklyRow {
@@ -47,6 +48,10 @@ export interface WeeklyView {
   hotWatch: { id: string; company: string; projectName: string; country: string; score: number; priority: Priority; articleId: string; inPeriod: boolean; isDemo: boolean }[];
   curation: Curation;
   target: number;
+  /** 수집 기사 수의 구성: DB 전체 → 기간 내 → (중복·관련성 필터·대기/오류 제외) → 화면 목록 */
+  breakdown: { period: number; duplicate: number; filtered: number; pending: number; listed: number };
+  /** 이어하기 정보: 지난 수집에서 끝내지 못했거나 실패한 검색 수 */
+  resume: { pending: number; failed: number; done: number; at: string } | null;
 }
 
 export async function loadWeekly(p: Period): Promise<WeeklyView> {
@@ -166,7 +171,15 @@ export async function loadWeekly(p: Period): Promise<WeeklyView> {
     report.curation = curation;
     await saveReport(report);
   }
-  return { rows, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch, curation: curation ?? emptyCuration(target), target };
+  const resumeRow = await getResume(p).catch(() => null);
+  const breakdown = {
+    period: arts.length,
+    duplicate: arts.filter((a) => a.status === "duplicate").length,
+    filtered: arts.filter((a) => a.status === "filtered").length,
+    pending: arts.filter((a) => a.status === "queued" || a.status === "error").length,
+    listed: rows.length,
+  };
+  return { rows, report, counts, missingDays, dayCounts, dupGroups, ai: aiConfigured(), hotWatch, curation: curation ?? emptyCuration(target), target, breakdown, resume: resumeRow && (resumeRow.failed.length || resumeRow.pending.length) ? { pending: resumeRow.pending.length, failed: resumeRow.failed.length, done: resumeRow.done.length, at: resumeRow.updatedAt } : null };
 }
 
 export function emptyCuration(target: number): Curation {
