@@ -1,0 +1,22 @@
+import { site } from '../data/site';
+import { findProject, projects } from '../data/projects';
+
+export interface PageMeta {
+  title: string;
+  description: string;
+}
+
+/** 경로(베이스 제외, 예: '/work/project-a/')에 해당하는 제목·설명 */
+export function getMeta(pathname: string): PageMeta {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  if (path === '/') return { title: `${site.name} — ${site.role}`, description: site.description };
+  if (path === '/work') {
+    return { title: `Work — ${site.name}`, description: '디지털마케팅, 브랜드 콘텐츠, 영상, AI Lab 프로젝트 전체 목록.' };
+  }
+  const project = findProject(path.match(/^\/work\/([^/]+)$/)?.[1]);
+  if (project) return { title: `${project.title} — ${site.name}`, description: project.summary };
+  return { title: `페이지를 찾을 수 없습니다 — ${site.name}`, description: site.description };
+}
+
+/** 정적 HTML 로 미리 만들어 둘 경로 목록 */
+export const staticPaths = ['/', '/work/', ...projects.map((p) => `/work/${p.slug}/`)];

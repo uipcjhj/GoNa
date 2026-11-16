@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+/* ── 디자인 토큰 ─────────────────────────────────────────────
+   색은 CSS 변수로 두고, AI Lab 영역에서 html[data-theme='dark'] 로 바뀐다. */
+:root {
+  --bg: #f7f7f2;
+  --fg: #17191b;
+  --muted: #737a7b;
+  --rule: rgb(23 25 27 / 0.16);
+  --wash: rgb(23 25 27 / 0.05);
+  --accent: #c8ff5f;
+}
+html[data-theme='dark'] {
+  --bg: #17191b;
+  --fg: #f7f7f2;
+  --muted: #9aa1a2;
+  --rule: rgb(247 247 242 / 0.2);
+  --wash: rgb(247 247 242 / 0.06);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-wash: var(--wash);
+  --color-accent: var(--accent);
+  --color-ink: #17191b;
+  --color-paper: #f7f7f2;
+
+  --font-sans: 'Space Grotesk Variable', 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* 타입 스케일 (화면 너비에 따라 유동) */
+  --text-meta: 0.75rem;
+  --text-body: 1rem;
+  --text-lead: clamp(1.25rem, 0.95rem + 1.3vw, 2rem);
+  --text-title: clamp(1.75rem, 1.1rem + 2.8vw, 3.5rem);
+  --text-display: clamp(2.75rem, 1rem + 8.5vw, 9rem);
+  --text-hero: clamp(2.6rem, 14.2vw, 15rem);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@layer base {
+  html {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-padding-top: 4.5rem;
+    transition:
+      background-color 0.7s ease,
+      color 0.7s ease;
+  }
+  body {
+    min-height: 100dvh;
+    line-height: 1.7;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection {
+    background: #c8ff5f;
+    color: #17191b;
+  }
+  :focus-visible {
+    outline: 2px solid var(--fg);
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* 좌우 여백 + 아이폰 노치 안전 영역 */
+  .shell {
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+  }
+  @media (min-width: 48rem) {
+    .shell {
+      padding-left: max(2.5rem, env(safe-area-inset-left));
+      padding-right: max(2.5rem, env(safe-area-inset-right));
+    }
+  }
+
+  .meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+
+  /* 외곽선 글자: "아직 아이디어인 상태" */
+  .outline-text {
+    color: transparent;
+    -webkit-text-stroke: 1px var(--fg);
+  }
+  @media (min-width: 48rem) {
+    .outline-text {
+      -webkit-text-stroke-width: 1.5px;
+    }
+  }
+
+  /* 이미지가 아직 없는 자리 */
+  .placeholder-media {
+    background:
+      repeating-linear-gradient(135deg, transparent 0 13px, var(--rule) 13px 14px),
+      var(--wash);
+  }
+
+  /* 밑줄 링크 */
+  .link {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.22em;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  .link:hover {
+    background-color: #c8ff5f;
+    color: #17191b;
+    text-decoration-color: transparent;
+  }
+}
