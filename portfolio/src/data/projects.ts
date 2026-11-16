@@ -1,92 +1,317 @@
-import type { Project, StepContent, StepKey } from './types';
+import { channelKpi, exhibitionChanges } from './figures';
+import type { Project } from './types';
 
 /**
  * 프로젝트 데이터. 화면 컴포넌트는 이 파일만 읽는다.
  *
- * 새 프로젝트 추가: 아래 배열에 객체를 하나 더 넣으면 목록·필터·상세 페이지(/work/<slug>/)가 자동으로 생긴다.
- * 이미지 교체: public/media/ 에 파일을 넣고 cover.src / steps.*.media.src 에 'media/파일명' 을 적는다.
- * placeholder: true 는 "임시" 표시. 실제 내용으로 바꾼 뒤 지운다.
- * 성과(Impact)에는 확인된 수치만 적는다.
+ * - 새 프로젝트: 배열에 객체를 추가하면 목록·필터·상세 페이지(/work/<slug>/)가 자동으로 생긴다.
+ * - 상세 페이지 순서: Hero → Key Information(scope) → Featured Results(featured) → Process(process) → Outcome(outcome).
+ *   내용이 없는 영역은 화면에 나오지 않는다.
+ * - scope 는 맡은 일을 성격별로 나눈 것. 직접 한 일과 협업·지원한 일을 섞지 않는다.
+ * - outcome.done 에는 끝난 결과만, 진행 중이거나 기획 단계인 것은 outcome.ongoing 에 적는다.
+ * - 회사 수치(KPI, 전시 전후 변화율)는 이 파일에 적지 않는다. data/figures.ts 설명 참고.
+ * - 자료: public/media/<slug>/ 에 넣고 cover / featured.media / process.media 에 적는다.
+ *   회사 자료는 외부 공개 가능 여부를 확인한 뒤에 올린다.
  */
-
-const guide: Record<StepKey, string> = {
-  overview: '프로젝트가 무엇이었는지 한 문단으로 적어 주세요. 브랜드, 기간, 맡은 역할이 드러나면 좋습니다.',
-  challenge: '어떤 문제나 목표에서 출발했는지 적어 주세요.',
-  strategy: '문제를 어떻게 풀기로 했는지, 그렇게 판단한 근거는 무엇이었는지 적어 주세요.',
-  execution: '실제로 만든 것과 진행 과정을 적어 주세요. 결과물 이미지나 영상을 함께 넣을 수 있습니다.',
-  impact: '확인된 결과만 적어 주세요. 수치가 없다면 정성적인 변화나 후속 진행을 적습니다.',
-  reflection: '잘된 점, 아쉬운 점, 다음에 다르게 할 점을 적어 주세요.',
-};
-
-function draftSteps(): Record<StepKey, StepContent> {
-  const entries = (Object.keys(guide) as StepKey[]).map((key) => [
-    key,
-    {
-      body: [guide[key]],
-      placeholder: true,
-      ...(key === 'execution' ? { media: { kind: 'image', alt: '실행 결과물 (임시 이미지)', ratio: '16 / 10' } } : {}),
-    },
-  ]);
-  return Object.fromEntries(entries);
-}
-
-function draftProject(slug: string, title: string, category: Project['category'], ratio: string, featured = true): Project {
-  return {
-    slug,
-    title,
-    category,
-    summary: '프로젝트를 한 문장으로 소개하는 자리입니다.',
-    cover: { kind: 'image', alt: `${title} 대표 이미지 (임시)`, ratio },
-    featured,
-    placeholder: true,
-    steps: draftSteps(),
-  };
-}
-
 export const projects: Project[] = [
-  draftProject('project-a', '프로젝트 제목 A', 'Digital Marketing', '16 / 10'),
-  draftProject('project-b', '프로젝트 제목 B', 'Brand Content', '4 / 5'),
-  draftProject('project-c', '프로젝트 제목 C', 'Video', '4 / 5'),
-  draftProject('project-d', '프로젝트 제목 D', 'Digital Marketing', '16 / 10'),
-
-  // ── AI Lab ────────────────────────────────────────────────
-  // 이름만 확정. 소개·이미지·링크를 채운 뒤 placeholder 를 지운다
-  draftProject('global-opportunity-radar', 'Global Opportunity Radar', 'AI Lab', '16 / 10', false),
+  // ── 01 ────────────────────────────────────────────────────
   {
-    slug: 'gona-food-adventure',
-    title: 'GONA’s Food Adventure',
-    category: 'AI Lab',
-    kind: 'Game',
-    tools: ['Vite', 'TypeScript', 'Phaser 4', 'GitHub Pages'],
-    summary: '모바일 브라우저에서 바로 실행되는 도트 감성의 횡스크롤 러너 게임.',
-    cover: { kind: 'image', src: 'media/gona-cover.webp', alt: 'GONA’s Food Adventure 타이틀 화면', ratio: '16 / 10' },
-    link: { label: '게임 플레이', href: 'https://uipcjhj.github.io/GoNa/' },
-    steps: {
-      // Overview · Execution 은 게임 저장소 README 를 근거로 쓴 초안이다. 본인 표현으로 다듬어 주세요.
-      overview: {
-        body: [
-          '설치 없이 모바일 브라우저에서 바로 즐기는 횡스크롤 러너 게임입니다. 화면을 터치해 점프하고, 공중에서 한 번 더 터치하면 더블 점프를 합니다.',
-          '딸기, 바나나, 쿠키를 먹어 점수를 얻고, 시간이 지날수록 속도가 빨라지며 장애물 패턴이 다양해집니다.',
-        ],
-      },
-      challenge: { body: [guide.challenge], placeholder: true },
-      strategy: { body: [guide.strategy], placeholder: true },
-      execution: {
-        body: [
-          'Vite, TypeScript, Phaser 4로 만들었습니다. 알이 부화하는 오프닝, 움직이는 타이틀 화면, 보스전, 엔딩 영상까지 하나의 흐름으로 이어집니다.',
-          '아이폰 Safari에서 영상과 배경음악이 정상적으로 재생되도록 맞췄고, 홈 화면에 추가해 앱처럼 실행할 수 있습니다.',
-          'GitHub Pages에 정식 버전과 개발 버전을 나누어 배포하고, 배포 전에 필수 리소스가 빠지지 않았는지 자동으로 검사합니다.',
-        ],
-      },
-      impact: { body: [guide.impact], placeholder: true },
-      reflection: { body: [guide.reflection], placeholder: true },
+    slug: 'b2b-digital-marketing',
+    title: 'B2B Digital Marketing & Growth',
+    category: 'Digital Strategy / Social Media / Analytics',
+    filter: 'Growth',
+    period: '2025–2026',
+    organization: 'HYUNDAI MOVEX',
+    summary: '글로벌 디지털 채널의 콘텐츠 전략을 체계화하고, 데이터 기반 운영을 통해 브랜드의 디지털 접점을 확장했습니다.',
+    cover: { kind: 'type', headline: ['YouTube', 'LinkedIn', 'Instagram'], caption: 'Global channels, 2025–2026', tone: 'ink' },
+    header: 'split',
+    placement: 'selected',
+    scope: [
+      { label: '운영', items: ['YouTube, LinkedIn, Instagram 공식 채널 운영', '영문 LinkedIn 콘텐츠 운영'] },
+      { label: '전략·기획', items: ['글로벌 디지털 콘텐츠 전략 및 실행', '유튜브 콘텐츠 재생목록 체계화'] },
+      { label: '제작·최적화', items: ['제목, 설명, 썸네일 및 SEO 최적화', '롱폼·숏폼 콘텐츠 재가공'] },
+      { label: '분석·보고', items: ['KPI 관리 및 성과 보고'] },
+    ],
+    process: {
+      challenge: '세 개의 채널에 흩어진 콘텐츠를 하나의 전략 아래 체계화하고, 운영 결과를 데이터로 확인하고 보고할 수 있는 구조가 필요했습니다.',
+      approach: [
+        '유튜브 재생목록을 체계화해 콘텐츠를 찾기 쉽게 정리',
+        '제목, 설명, 썸네일을 검색에 맞춰 최적화',
+        '롱폼 콘텐츠를 숏폼으로 재가공해 하나의 소재를 여러 접점에서 활용',
+        '영문 LinkedIn 콘텐츠로 글로벌 고객과의 접점 확보',
+      ],
+    },
+    outcome: channelKpi ? { metrics: channelKpi } : { note: '채널 KPI 수치는 공개 범위를 확인한 뒤 게시합니다.' },
+  },
+
+  // ── 02 ────────────────────────────────────────────────────
+  {
+    slug: 'product-storytelling',
+    title: 'Product Storytelling — 4WS & MGF',
+    category: 'Video Production / Product Communication',
+    filter: 'Content',
+    period: '2026',
+    organization: 'HYUNDAI MOVEX',
+    summary: '복잡한 물류자동화 기술을 고객이 이해하기 쉬운 시각적 콘텐츠로 전환했습니다.',
+    cover: { kind: 'type', headline: ['4WS', '& MGF'], caption: 'Product film / 3D / Shorts', tone: 'wash', motif: 'frames' },
+    header: 'split',
+    placement: 'selected',
+    scope: [
+      { label: '기획', items: ['4-Way Shuttle 홍보영상 기획', '실사와 3D 기반 제품 스토리 구성'] },
+      { label: '검수', items: ['랙 구조, 이송 동선, 공간효율 등 기술 표현 검토', '제품 담당 부서와 제작사 검수 협업'] },
+      { label: '제작 협업', items: ['MGF 3D 및 Shorts 콘텐츠 제작 협업'] },
+      { label: '제작', items: ['제품 기술 형상에 맞는 썸네일 재제작', '국·영문 설명 및 홍보 문구 제작'] },
+    ],
+    process: {
+      challenge: '정확한 기술정보와 이해하기 쉬운 시각적 메시지 사이의 균형을 잡아야 했습니다.',
+      shift: { from: '기능 중심 설명', to: '고객 가치 중심 스토리텔링' },
+    },
+    outcome: {
+      done: ['제품 홍보영상, 스토리보드, 썸네일 및 파생 콘텐츠 제작·검수'],
     },
   },
-  // 아래 두 프로젝트도 이름만 확정
-  { ...draftProject('gona-game-paradise', 'GONA Game Paradise', 'AI Lab', '16 / 10', false), kind: 'Game' },
-  { ...draftProject('gona-sky-adventure', 'GONA’s Sky Adventure', 'AI Lab', '16 / 10', false), kind: 'Game' },
+
+  // ── 03 ────────────────────────────────────────────────────
+  {
+    slug: 'global-exhibition-marketing',
+    title: 'Global Exhibition Marketing',
+    category: 'Exhibition / Global Communication',
+    filter: 'Content',
+    period: '2026',
+    organization: 'HYUNDAI MOVEX',
+    summary: '글로벌 전시회의 사전 홍보부터 현장 콘텐츠, 사후 디지털 커뮤니케이션까지 연결했습니다.',
+    cover: { kind: 'type', headline: ['AW', 'MODEX', 'WAC'], caption: 'Global exhibitions 2026', tone: 'signal' },
+    placement: 'selected',
+    scope: [
+      { label: '홍보', items: ['국·영문 전시 사전 홍보 (AW)', '국·영문 초청장, 글로벌 SNS 홍보, 미국법인 홍보 메시지 (MODEX)'] },
+      {
+        label: '전시·현장 콘텐츠',
+        items: [
+          'AMR·Digital Twin 등 전시 콘텐츠, 현장 스케치 영상 (AW)',
+          '3840×1920 전시 디스플레이 영상, 현장 스케치 및 사후 콘텐츠 (MODEX)',
+          '공항물류 구축사례 정리, 국·영문 카드뉴스 (WAC)',
+        ],
+      },
+      { label: '제작 지원', items: ['상부 LED 영상 제작 지원 (AW)'] },
+      { label: '검수·보고', items: ['영업부서 검수를 거쳐 경영진 보고 (WAC)'] },
+      { label: '분석', items: ['SNS 전후 성과 분석 (AW)'] },
+    ],
+    process: {
+      flow: ['사전 홍보', '현장 콘텐츠', '사후 디지털 커뮤니케이션'],
+      tags: [{ title: 'Featured events', items: ['AW 2026', 'MODEX 2026', 'WAC 2026'] }],
+    },
+    outcome: {
+      done: ['WAC 2026 국·영문 카드뉴스: 경영진 보고 후 SNS 게시'],
+      ...(exhibitionChanges ? { changes: exhibitionChanges } : { note: '전시 전후 채널 변화 수치는 공개 범위를 확인한 뒤 게시합니다.' }),
+    },
+  },
+
+  // ── 04 ────────────────────────────────────────────────────
+  {
+    slug: 'website-seo',
+    title: 'Website & SEO Enhancement',
+    category: 'Website / SEO / Digital Experience',
+    filter: 'Web & Research',
+    period: '2026',
+    organization: 'HYUNDAI MOVEX',
+    summary: '기업 홈페이지를 제품 정보 탐색과 검색 유입을 위한 디지털 접점으로 확장했습니다.',
+    cover: { kind: 'type', headline: ['SEO', 'Blog'], caption: '2026.08.20 메뉴 오픈', tone: 'wash', motif: 'search' },
+    header: 'split',
+    placement: 'selected',
+    scope: [
+      {
+        label: '기획',
+        items: [
+          'SEO Blog 신설 및 콘텐츠 구조 설계',
+          '구조화 데이터·태그·시리즈 체계 기획',
+          '물류자동화 및 WMS/WCS 콘텐츠 기획',
+          '3D Digital Mockup 페이지 기획',
+        ],
+      },
+      { label: '검수', items: ['홈페이지 개편 및 콘텐츠 검수'] },
+      { label: '협업', items: ['제품·솔루션별 3D 자료 협업'] },
+      { label: '개선', items: ['국·영문 홈페이지 개선'] },
+    ],
+    featured: {
+      milestone: { date: '2026.08.20', label: 'SEO 블로그 메뉴 오픈' },
+    },
+    process: {
+      groups: [
+        { title: 'Homepage', items: ['개편 및 콘텐츠 검수', '국·영문 개선'] },
+        { title: 'SEO Blog', status: '오픈', items: ['콘텐츠 구조', '구조화 데이터·태그·시리즈 체계', '물류자동화 및 WMS/WCS 콘텐츠'] },
+        { title: '3D Digital Mockup', status: '기획·개발 협업', items: ['페이지 기획', '제품·솔루션별 3D 자료'] },
+      ],
+    },
+    outcome: {
+      done: ['SEO 블로그 메뉴 오픈 (2026.08.20)'],
+      ongoing: ['3D Digital Mockup 페이지: 기획·개발 협업 단계'],
+    },
+  },
+
+  // ── 05 ────────────────────────────────────────────────────
+  {
+    slug: 'market-intelligence',
+    title: 'Market Intelligence & Opportunity Discovery',
+    category: 'Market Research / Strategic Intelligence',
+    filter: 'Web & Research',
+    period: '2025–2026',
+    organization: 'HYUNDAI MOVEX',
+    summary: '글로벌 산업정보를 분석해 시장 변화와 잠재 사업기회를 발굴하는 업무를 수행했습니다.',
+    cover: { kind: 'type', headline: ['Market', 'Intelligence'], caption: '5 markets × 6 industries', tone: 'ink', motif: 'grid' },
+    placement: 'more',
+    scope: [
+      { label: '조사', items: ['국내외 물류자동화 산업 뉴스 조사', '글로벌 공장 신설·증설·투자 동향'] },
+      { label: '선별·분류', items: ['잠재 수주기회 관련 뉴스 선별', '지역별·산업별 기사 분류'] },
+      { label: '분석', items: ['경쟁사 전략 및 기술 벤치마킹', '글로벌 SI 산업 리포트 검토'] },
+      { label: '보고', items: ['주간 업계동향 보고'] },
+    ],
+    process: {
+      flow: ['산업 뉴스 조사', '수주기회 관련 뉴스 선별', '지역별·산업별 분류', '주간 업계동향 보고'],
+      tags: [
+        { title: 'Markets', items: ['미국', '유럽', '동남아시아', 'UAE', '호주'] },
+        { title: 'Industries', items: ['물류자동화', '배터리', '타이어', '콜드체인', '석유화학', '로보틱스'] },
+      ],
+    },
+    outcome: {
+      next: {
+        text: ['이 업무 경험이 같은 과정을 AI로 구현한 개인 프로젝트 Global Opportunity Radar를 기획한 출발점이 됐습니다.'],
+        link: { label: 'Global Opportunity Radar 보기', to: '/work/global-opportunity-radar/' },
+      },
+    },
+  },
+
+  // ── 06 ────────────────────────────────────────────────────
+  {
+    slug: 'lead-generation-framework',
+    title: 'B2B Lead Generation Framework',
+    category: 'Lead Generation / Email Marketing',
+    filter: 'Growth',
+    period: '2026',
+    organization: 'HYUNDAI MOVEX',
+    status: '기획 및 시안 제작',
+    summary: '브랜드 인지도를 잠재 고객과의 지속적인 접점으로 연결하는 콘텐츠 기반 리드 확보 구조를 기획했습니다.',
+    cover: { kind: 'type', headline: ['Newsletter', '→ CTA', '→ Website'], caption: 'Framework, 기획 및 시안 단계', tone: 'wash' },
+    placement: 'more',
+    scope: [
+      {
+        label: '기획',
+        items: ['분기 뉴스레터 운영 체계 기획', '국·영문 콘텐츠 구조 설계', '전시 고객 DB 기반 타깃 구분', 'CTA 및 홈페이지 유입 구조 기획'],
+      },
+      { label: '시안 제작', items: ['산업 인사이트 및 제품 콘텐츠 구성', '4WS 뉴스레터 1호 시안'] },
+      { label: '검토 반영', items: ['영업부서 검토 및 수정'] },
+    ],
+    process: {
+      flow: ['전시 고객 DB', '타깃 구분', '분기 뉴스레터', 'CTA', '홈페이지 유입'],
+    },
+    outcome: {
+      ongoing: ['기획 및 시안 제작 단계'],
+    },
+  },
+
+  // ── 07 · AI Lab ───────────────────────────────────────────
+  {
+    slug: 'global-opportunity-radar',
+    title: 'Global Opportunity Radar',
+    category: 'AI Automation / Market Intelligence',
+    filter: 'AI Lab',
+    period: '2026',
+    type: 'Personal Project',
+    status: 'MVP 개발 및 기능 고도화',
+    summary: '반복적인 시장조사 업무를 AI 기반 산업정보 수집·분류 및 잠재 수주기회 탐색 시스템으로 구현한 프로젝트.',
+    cover: { kind: 'type', headline: ['Opportunity', 'Radar'], caption: 'AI market intelligence, MVP', tone: 'signal', motif: 'radar' },
+    placement: 'lab',
+    theme: 'dark',
+    scope: [{ label: '기획·개발·테스트', items: ['Claude Code 등 AI 개발 도구를 활용해 직접 진행'] }],
+    related: {
+      text: '시장정보 분석 업무에서 반복하던 과정에서 출발했습니다.',
+      link: { label: 'Market Intelligence 프로젝트 보기', to: '/work/market-intelligence/' },
+    },
+    process: {
+      challenge: '수많은 글로벌 산업 뉴스에서 실제 사업과 관련성이 높은 정보를 찾고, 중복을 제거하고, 분석 보고서를 작성하는 일이 반복됐습니다.',
+      flow: [
+        '국내외 산업 뉴스 수집',
+        '중복 기사 제거',
+        '지역·산업·투자·경쟁사 카테고리 분류',
+        'AI 기사 요약 및 관련성 검토',
+        '잠재 수주기회 추천',
+        '주간 업계동향 보고서 구성',
+        'Excel 출력 연동',
+      ],
+    },
+    outcome: {
+      ongoing: ['MVP 개발 및 기능 고도화'],
+    },
+  },
+
+  // ── 08 · AI Lab ───────────────────────────────────────────
+  {
+    slug: 'gona-game-universe',
+    title: 'GONA Game Universe',
+    category: 'Creative Coding / Game Design',
+    filter: 'AI Lab',
+    period: '2026',
+    type: 'Personal Project',
+    summary: '캐릭터와 세계관을 직접 기획하고, AI 이미지·코딩 도구를 활용해 플레이 가능한 웹게임으로 구현한 개인 창작 프로젝트.',
+    cover: {
+      kind: 'image',
+      src: 'media/gona-game-universe/cover.webp',
+      alt: 'GONA’s Food Adventure 게임 리소스로 구성한 대표 이미지',
+      ratio: '16 / 10',
+    },
+    placement: 'lab',
+    theme: 'dark',
+    scope: [
+      { label: '기획', items: ['캐릭터와 세계관 기획'] },
+      { label: '구현', items: ['AI 이미지·코딩 도구를 활용한 웹게임 구현'] },
+    ],
+    featured: {
+      // 캡처는 2026-11-16 에 각 게임의 실제 화면을 모바일 크기로 찍은 것. 링크도 같은 날 접속 확인.
+      items: [
+        {
+          title: 'GONA’s Food Adventure',
+          status: '공개',
+          link: { label: '게임 플레이', href: 'https://uipcjhj.github.io/GoNa/' },
+          media: { kind: 'image', src: 'media/gona-game-universe/food.webp', alt: 'GONA’s Food Adventure 오프닝 화면', ratio: '1 / 2' },
+        },
+        {
+          title: 'GONA Game Paradise',
+          status: '공개',
+          // 공개 이름은 "GONA GONE WILD! · 고나가 떴고나!"
+          link: { label: 'GONA GONE WILD! 열기', href: 'https://uipcjhj.github.io/-GONA-s-Game-Paradise/' },
+          media: { kind: 'image', src: 'media/gona-game-universe/paradise.webp', alt: 'GONA GONE WILD! 시작 화면', ratio: '1 / 2' },
+        },
+        {
+          title: 'GONA’s Sky Adventure',
+          status: '테스트 빌드',
+          link: { label: '테스트 빌드 열기', href: 'https://uipcjhj.github.io/GoNa/sky-test/' },
+          media: { kind: 'image', src: 'media/gona-game-universe/sky.webp', alt: 'GONA’s Sky Adventure 테스트 빌드 시작 화면', ratio: '1 / 2' },
+        },
+      ],
+    },
+    process: {
+      groups: [
+        {
+          title: 'GONA’s Food Adventure',
+          items: ['모바일 브라우저 기반 횡스크롤 러너', '간식 수집 및 성장 시스템', '4단계 캐릭터 성장', '보스전·특수 공격', '컷신·엔딩 스토리'],
+        },
+        {
+          title: 'GONA Game Paradise',
+          items: ['게임들을 연결하는 통합 플랫폼', '픽셀아트 월드맵', '미니게임천국', '업적, 코인, XP, 미션, 도감, 상점', '게임 기록 및 공유 랭킹 구조'],
+        },
+        {
+          title: 'GONA’s Sky Adventure',
+          items: ['세로형 아케이드 슈팅게임', '고나 및 가족 동료 캐릭터', '무기, 차지샷, 탄막, 보스전', '모바일 대응 인터페이스'],
+        },
+      ],
+    },
+    outcome: {
+      done: ['GONA’s Food Adventure 공개', 'GONA Game Paradise 공개 (GONA GONE WILD!)'],
+      ongoing: ['GONA’s Sky Adventure 테스트 빌드 개발'],
+    },
+  },
 ];
 
-export const selectedWork = projects.filter((p) => p.featured && p.category !== 'AI Lab').slice(0, 4);
-export const labProjects = projects.filter((p) => p.category === 'AI Lab');
+export const selectedWork = projects.filter((p) => p.placement === 'selected');
+export const moreWork = projects.filter((p) => p.placement === 'more');
+export const labProjects = projects.filter((p) => p.placement === 'lab');
 export const findProject = (slug?: string) => projects.find((p) => p.slug === slug);

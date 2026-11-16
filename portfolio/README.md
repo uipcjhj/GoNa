@@ -18,23 +18,62 @@ npm run preview  # 빌드 결과 미리보기
 
 | 주소 | 내용 |
 | --- | --- |
-| `/` | Hero → Selected Work(4) → AI Lab(다크 전환) → About → Contact |
-| `/work/` | 전체 프로젝트 + 카테고리 필터 (`?category=Video` 처럼 주소에 남음) |
-| `/work/<slug>/` | 상세: Overview → Challenge → Strategy → Execution → Impact → Reflection |
+| `/` | Hero → 핵심 업무 영역 6개 → Selected Work(4) → More Work(2) → AI Lab(2, 다크 전환) → About → How I Work → Contact |
+| `/work/` | 전체 프로젝트 8개 + 카테고리 필터 (`?category=Growth` 처럼 주소에 남음) |
+| `/work/<slug>/` | 상세: Hero → Key Information → Featured Results → Process → Outcome (내용이 있는 영역만) |
 | 그 외 | 404 안내 |
 
 ## 내용 고치기 — `src/data/` 만 수정하면 됩니다
 
 | 파일 | 내용 |
 | --- | --- |
-| `site.ts` | 이름, 콘셉트 문구, 자기소개, 이메일·LinkedIn·GitHub·이력서, 초안 띠(`draft`) |
-| `projects.ts` | 프로젝트 목록과 상세 6단계 본문. 객체를 추가하면 목록·필터·상세 페이지가 자동 생성 |
-| `about.ts` | 핵심 역량, 경력, 사용 도구 |
+| `site.ts` | 이름, 직무, 핵심 메시지, 소개, 연락처(이메일·LinkedIn·GitHub·이력서) |
+| `projects.ts` | 프로젝트 8개: 역할 범위(scope), 대표 결과물(featured), 과정(process), 결과(outcome) |
+| `about.ts` | 핵심 업무 영역, About 문단, How I Work |
+| `figures.ts` + `private/` | 회사 수치 (아래 설명) |
 
-- `placeholder: true` 인 항목은 화면에 **임시** 표시가 붙습니다. 실제 내용으로 바꾼 뒤 지우세요.
-- 이미지·영상: `public/media/` 에 파일을 넣고 데이터의 `src` 에 `media/파일명` 을 적습니다. `src` 가 비어 있으면 "임시 이미지" 자리표시가 나옵니다.
-- 이력서: `public/resume.pdf` 를 넣고 `site.ts` 의 `resume.href` 에 `'resume.pdf'` 를 적으면 다운로드 버튼이 켜집니다.
-- 성과(Impact)에는 확인된 수치만 적습니다.
+- **없는 것은 화면에 나오지 않습니다.** 연락처는 값이 비어 있으면 숨겨지고, 상세 페이지 영역은 내용이 있는 것만 보입니다.
+- **역할 범위(scope)**: 기획·제작·검수·운영처럼 성격별로 나눠 적습니다. 직접 한 일과 협업·지원한 일을 섞지 않습니다.
+- **결과(outcome)**: 끝난 것은 `done`, 진행 중이거나 기획 단계인 것은 `ongoing` 에 적습니다.
+- **이메일·LinkedIn·이력서**: `site.ts` 의 `contact` 에 값을 넣으면 Contact 영역에 나타납니다.
+
+### 회사 수치 — 저장소에 올리지 않습니다
+
+채널 KPI와 전시 전후 변화율은 코드에 없습니다. 수치는 `src/data/private/figures.local.ts` 에만 적으며,
+이 파일은 `.gitignore` 에 있어 저장소에 올라가지 않습니다.
+
+1. `src/data/private/figures.example.ts` 를 `figures.local.ts` 로 복사한다.
+2. 실제 수치를 적고, 공개할 항목만 `publish: true` 로 바꾼다.
+3. 빌드하면 `publish: true` 인 항목만 화면에 나온다.
+
+파일이 없으면(지금 상태, GitHub 자동 빌드 포함) 수치는 화면에도 빌드 결과물에도 없습니다.
+공개를 최종 결정해 저장소에서 관리하려면 그때 `.gitignore` 의 해당 줄을 지우고 커밋합니다.
+
+### 이미지·영상·PDF 넣기
+
+파일을 `public/media/<프로젝트 slug>/` 에 넣고 `projects.ts` 에 적습니다. `src` 가 비어 있는 자료와 빈 묶음은 화면에 나오지 않습니다.
+
+```ts
+// 메인 비주얼: 카드와 상세 첫 화면. 타이포그래피 커버를 대신한다.
+cover: { kind: 'image', src: 'media/product-storytelling/main.webp', alt: '4WS 홍보영상 장면' },
+
+featured: {
+  // 대표 결과물: Featured Results 맨 위에 나온다
+  media: [
+    { kind: 'youtube', src: '유튜브영상ID', alt: '4WS 홍보영상', poster: 'media/product-storytelling/thumb.webp' },
+    { kind: 'video', src: 'media/product-storytelling/shorts.mp4', alt: 'Shorts' },
+    { kind: 'pdf', src: 'media/product-storytelling/brochure.pdf', alt: '제품 소개서' },
+  ],
+},
+process: {
+  // 작업 과정 자료: Process 아래에 나온다
+  media: [{ kind: 'image', src: 'media/product-storytelling/storyboard.webp', alt: '스토리보드', caption: '스토리보드' }],
+},
+```
+
+- 이미지는 누르면 크게 열립니다. YouTube 는 누르기 전까지 외부 요청을 보내지 않습니다. PDF 는 새 창으로 열립니다.
+- **빌드할 때 미디어를 검사합니다.** 파일이 없거나, 다른 프로젝트 폴더의 자료를 쓰거나, 어디에도 쓰이지 않는 파일이 있으면 빌드가 멈춥니다.
+- 회사 자료는 외부 공개 가능 여부를 확인한 뒤 올립니다.
 
 ## 디자인 토큰 — `src/styles/index.css`
 
@@ -50,42 +89,44 @@ npm run preview  # 빌드 결과 미리보기
 ```
 src/
   data/        콘텐츠 (화면 코드와 분리)
-  sections/    메인 페이지 영역: Hero, SelectedWork, Lab, About, Contact
+  sections/    메인 페이지 영역: Hero, Capabilities(+How I Work), SelectedWork(+More Work), Lab, AboutPreview, Contact
   pages/       Home, WorkIndex, ProjectDetail, NotFound
-  components/  Header, Footer, ProjectCard, Media, Reveal, DraftTag, DraftBanner
+  components/  Header, Footer, ProjectCard, Cover(메인 비주얼), Media(이미지·영상·PDF·YouTube), Gallery(자료 묶음·확대 보기),
+               Blocks(상세 페이지 블록), Stats(KPI·변화율), Reveal, TextLink
   lib/         asset(하위 경로), meta(SEO), usePage(제목·스크롤), sections(스크롤 위치 감지)
-scripts/prerender.mjs   빌드 후 경로별 정적 HTML + 404.html 생성
+scripts/prerender.mjs   빌드 후 미디어 검사 + 경로별 정적 HTML + 404.html 생성
 ```
 
-## GitHub Pages 배포
+## 배포와 저장소 분리
 
-하위 경로는 `BASE_PATH` 로 지정합니다. 모든 링크·이미지·글꼴 주소에 자동으로 붙습니다.
+이 폴더는 독립 프로젝트입니다. 저장소 루트의 게임 코드와 서로 가져다 쓰는 파일이 없고, 자체 `package.json` 과 lockfile 을 갖고 있어
+폴더째로 새 저장소의 루트가 될 수 있습니다.
+
+지금 이 저장소(GoNa)의 GitHub Pages 는 GONA 게임이 쓰고 있어서(저장소당 사이트 하나) 여기서는 배포하지 않습니다.
+
+**별도 저장소로 옮기는 순서**
+
+1. GitHub 에서 새 저장소를 만든다. 이름이 `<계정>.github.io` 이면 주소가 `https://<계정>.github.io/`,
+   그 외(예: `portfolio`)면 `https://<계정>.github.io/portfolio/` 가 된다.
+2. 이 폴더의 내용만 새 저장소로 보낸다. 수치가 들어간 적 없는 브랜치에서 실행한다.
+
+   ```bash
+   git subtree split --prefix=portfolio -b portfolio-only
+   ```
+
+   ```bash
+   git push <새 저장소 주소> portfolio-only:main
+   ```
+
+3. 새 저장소 Settings → Pages → Source 를 "GitHub Actions" 로 바꾼다.
+
+`.github/workflows/pages.yml` 이 이 폴더 안에 들어 있어, 새 저장소에서는 `main` 에 푸시할 때마다 자동으로 빌드·배포됩니다.
+(지금 위치에서는 GitHub 가 이 파일을 실행하지 않습니다.) 하위 경로(`BASE_PATH`)는 저장소 이름에서 자동으로 정해집니다.
+
+직접 빌드할 때는 하위 경로를 지정합니다.
 
 ```bash
 BASE_PATH=/저장소이름/ npm run build
-```
-
-이 저장소의 Pages 는 GONA 게임이 쓰고 있어서(저장소당 사이트 하나) 자동 배포는 아직 연결하지 않았습니다.
-전용 저장소로 옮길 경우 아래 워크플로를 `.github/workflows/pages.yml` 로 두면 됩니다.
-
-```yaml
-name: Deploy portfolio
-on:
-  push: { branches: [main] }
-permissions: { contents: read, pages: write, id-token: write }
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: github-pages
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: BASE_PATH=/${{ github.event.repository.name }}/ npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
-      - uses: actions/deploy-pages@v4
 ```
 
 `site.ts` 의 `url` 에 배포 주소를 적으면 canonical, `sitemap.xml`, `robots.txt` 가 함께 생성됩니다.

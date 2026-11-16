@@ -1,7 +1,6 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router';
-import { DraftBanner } from './components/DraftBanner';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { ActiveSectionContext } from './lib/sections';
@@ -23,7 +22,6 @@ export default function App() {
         >
           본문으로 건너뛰기
         </a>
-        <DraftBanner />
         <Header active={active} />
         <ActiveSectionContext.Provider value={setActive}>
           {/* 페이지 전환: 이전 화면이 사라진 뒤 다음 화면이 올라온다 */}

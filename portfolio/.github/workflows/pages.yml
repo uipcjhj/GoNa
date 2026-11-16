@@ -1,0 +1,52 @@
+# 포트폴리오를 별도 저장소로 분리했을 때 쓰는 GitHub Pages 배포.
+#
+# 지금 위치(GoNa 저장소의 portfolio/.github/)에서는 실행되지 않는다.
+# GitHub 는 저장소 맨 위의 .github/workflows 만 실행하므로, 이 폴더가 새 저장소의 루트가 되면 그때부터 동작한다.
+#
+# 새 저장소에서 한 번만: Settings → Pages → Source 를 "GitHub Actions" 로 바꾼다.
+name: Deploy portfolio
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # 저장소 이름이 <계정>.github.io 이면 루트(/), 아니면 /<저장소 이름>/ 아래로 빌드한다
+      - name: Build
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          if [[ "$REPO" == *.github.io ]]; then export BASE_PATH=/; else export BASE_PATH="/$REPO/"; fi
+          npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
