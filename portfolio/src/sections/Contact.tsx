@@ -53,7 +53,7 @@ export function Contact() {
             {links.map((l) => (
               <li key={l.label} className="flex items-baseline justify-between gap-4 border-t border-rule py-3.5">
                 <span className="meta text-muted">{l.label}</span>
-                <a className="link font-medium break-all" href={l.href} target="_blank" rel="noreferrer">
+                <a className="link font-medium break-all" href={l.href} target="_blank" rel="noopener noreferrer">
                   {strip(l.href)}
                 </a>
               </li>

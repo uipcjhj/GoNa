@@ -12,7 +12,7 @@ export function TextLink({ link, className = 'link font-medium' }: { link: LinkI
   }
   if (!link.href) return null;
   return (
-    <a href={link.href} target="_blank" rel="noreferrer" className={className}>
+    <a href={link.href} target="_blank" rel="noopener noreferrer" className={className}>
       {link.label}
       <span className="sr-only"> (새 창)</span>
     </a>

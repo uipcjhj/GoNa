@@ -66,6 +66,7 @@ export function Media({ media, className = '', priority = false, zoom = false, a
         className="absolute inset-0 h-full w-full"
         src={`https://www.youtube-nocookie.com/embed/${media.src}?autoplay=1&rel=0`}
         title={media.alt}
+        referrerPolicy="strict-origin-when-cross-origin"
         allow="autoplay; encrypted-media; picture-in-picture"
         allowFullScreen
       />
@@ -96,7 +97,7 @@ export function Media({ media, className = '', priority = false, zoom = false, a
     content = ambient ? (
       <div className={box}>{inner}</div>
     ) : (
-      <a href={asset(media.src)} target="_blank" rel="noreferrer" className={`group ${box}`}>
+      <a href={asset(media.src)} target="_blank" rel="noopener noreferrer" className={`group ${box}`}>
         {inner}
         <span className="sr-only"> 열기 (새 창)</span>
       </a>

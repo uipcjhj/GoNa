@@ -57,6 +57,14 @@ export function Gallery({ items, label }: { items?: MediaData[]; label: string }
               <figure>
                 <Media media={media} onOpen={media.kind === 'image' ? () => setOpen(media) : undefined} />
                 {media.caption && <figcaption className="meta mt-2.5 text-muted">{media.caption}</figcaption>}
+                {/* 임베드가 막히거나 재생되지 않을 때를 위한 공식 링크 */}
+                {media.kind === 'youtube' && (
+                  <p className="meta mt-1.5">
+                    <a href={`https://www.youtube.com/watch?v=${media.src}`} target="_blank" rel="noopener noreferrer" className="link">
+                      YouTube에서 보기<span className="sr-only">: {media.alt} (새 창)</span>
+                    </a>
+                  </p>
+                )}
               </figure>
             </Reveal>
           </li>

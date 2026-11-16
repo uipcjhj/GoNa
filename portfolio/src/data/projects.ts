@@ -6,9 +6,16 @@ const thumb = (id: string) => `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
  * 공식 YouTube 채널에 공개된 영상 한 개. id 와 제목은 채널에서 직접 확인한 것만 적는다 (2026-11-16 확인).
  * 썸네일은 저장소에 복사하지 않고 YouTube 에서 불러온다.
  */
-const yt = (id: string, title: string): Media => ({ kind: 'youtube', src: id, alt: title, caption: title, poster: thumb(id), ratio: '16 / 9' });
+const yt = (id: string, title: string, published?: string): Media => ({
+  kind: 'youtube',
+  src: id,
+  alt: title,
+  caption: published ? `${title} (${published} 게시)` : title,
+  poster: thumb(id),
+  ratio: '16 / 9',
+});
 
-const MOVEX_NOTE = '현대무벡스 공식 YouTube 채널에 공개된 영상입니다. 담당 범위는 위 My role에 적은 것과 같으며, 단독 제작물이 아닙니다.';
+const MOVEX_NOTE = '현대무벡스 공식 YouTube 채널에 공개된 영상입니다. 단독 제작물이 아니며, 담당 범위는 위 My role에 적은 것과 같습니다.';
 
 /**
  * 프로젝트 데이터. 화면 컴포넌트는 이 파일만 읽는다.
@@ -77,9 +84,10 @@ export const projects: Project[] = [
     ],
     featured: {
       media: [
-        yt('0zRlcTGMZv0', '4-Way Shuttle System | High-Density Storage & Flexible Automation'),
-        yt('zMKEpCbbuII', '4-Way Shuttle | High-Density Storage & 4-Directional Automation'),
-        yt('NF14cKYpgN4', 'Mechanical Gap Filler (MGF) | Safer & More Accessible Rail Platforms'),
+        // 4WS 영상은 공식 채널에 두 가지 버전이 있다. 게시일은 채널 피드에서 확인.
+        yt('0zRlcTGMZv0', '4-Way Shuttle System | High-Density Storage & Flexible Automation', '2026.11.03'),
+        yt('zMKEpCbbuII', '4-Way Shuttle | High-Density Storage & 4-Directional Automation', '2026.03.20'),
+        yt('NF14cKYpgN4', 'Mechanical Gap Filler (MGF) | Safer & More Accessible Rail Platforms', '2026.11.10'),
       ],
       note: MOVEX_NOTE,
     },
@@ -100,7 +108,7 @@ export const projects: Project[] = [
     filter: 'Content',
     period: '2022–2025',
     organization: '극동MES',
-    summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 성장시켰습니다.',
+    summary: '콘텐츠의 기획부터 촬영, 편집, 발행, 성과 관리까지 직접 실행하며 브랜드의 디지털 채널을 운영했습니다.',
     cover: { kind: 'type', headline: ['YouTube', '& Social'], caption: 'Plan, shoot, edit, publish', tone: 'ink', motif: 'play', backdrop: { src: thumb('1kQew3POth4'), alt: '바다로요트 YouTube 영상 썸네일' } },
     placement: 'selected',
     scope: [
@@ -110,6 +118,8 @@ export const projects: Project[] = [
       { label: '분석·보고', items: ['채널별 성장 지표 분석', '월별 성과 분석 및 콘텐츠 운영 성과 보고'] },
     ],
     featured: {
+      // 재직 당시 운영 채널의 콘텐츠 사례. 2026-11-16 채널 목록에 모두 '1년 전'(2024.11~2025.11 게시)으로 표시됐다.
+      // 영상별 직접 제작 여부는 미확인 — 확인되면 그때 문구를 바꾼다. 확인 전에는 개인 기여도를 적지 않는다.
       media: [
         yt('1kQew3POth4', '★한국 상륙!★ 피이 보트 발뻗고 누워봤습니다. 라이노490 PE 레저 보트 공간 미쳤다'),
         yt('wuuJOpOl6tw', '요즘 카약은 이렇게 나온다고? 1인용·2인용 변신! | 하이보 분할형 카약 언박싱'),
@@ -118,7 +128,7 @@ export const projects: Project[] = [
         yt('kf8Pj010BW8', '요트회사가 만든 인산철 배터리, 정말 다를까?'),
         yt('pDNXL-XOIbY', '내 보트가 이렇게 편해질 줄이야.. 롤바부터 핸드레일까지 액세서리 총집합!'),
       ],
-      note: '극동MES 재직 기간에 바다로요트 공식 YouTube 채널에 게시된 영상 중 일부입니다. 채널 콘텐츠의 기획·촬영·편집·업로드를 담당했으며, 영상별 담당 범위는 다를 수 있습니다.',
+      note: '재직 당시 운영한 바다로요트 공식 YouTube 채널의 콘텐츠 사례입니다. 재직 기간에 게시된 영상이며, 영상별 담당 범위는 따로 표기하지 않았습니다.',
       items: [
         { title: '바다로요트 YouTube', status: '공식 채널', link: { label: '채널 열기', href: 'https://www.youtube.com/@BadaroYacht' } },
         { title: '바다로요트 Shorts', status: '공식 채널', link: { label: 'Shorts 열기', href: 'https://www.youtube.com/@BadaroYacht/shorts' } },
@@ -135,7 +145,7 @@ export const projects: Project[] = [
       flow: ['기획', '촬영', '편집', '발행', '성과 분석'],
     },
     outcome: {
-      done: ['정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행', '채널 성장 성과 확보'],
+      done: ['정기적인 콘텐츠 제작과 YouTube·Instagram 채널 운영 수행'],
       ...(kdmesGrowth ? { changes: kdmesGrowth } : { note: '채널 성장 수치는 집계 기간과 증빙을 확인한 뒤 게시합니다.' }),
     },
   },
@@ -167,8 +177,8 @@ export const projects: Project[] = [
     ],
     featured: {
       media: [
-        yt('yV7Oj2s7YzA', 'AW2026 On-site Highlights | AW2026 전시회 현장스케치'),
-        yt('-Runjlka8m0', 'MODEX 2026 On-site Highlights | MODEX 2026 전시회 현장스케치'),
+        yt('yV7Oj2s7YzA', 'AW2026 On-site Highlights | AW2026 전시회 현장스케치', '2026.05.13'),
+        yt('-Runjlka8m0', 'MODEX 2026 On-site Highlights | MODEX 2026 전시회 현장스케치', '2026.06.05'),
       ],
       note: MOVEX_NOTE,
     },

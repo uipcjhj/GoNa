@@ -85,7 +85,7 @@ export const career = [
 export const capabilities = [
   { en: 'Digital Marketing', ko: '글로벌 SNS 채널 운영 및 성장 전략', to: '/work/b2b-digital-marketing/' },
   { en: 'Content Marketing', ko: 'YouTube·Instagram 콘텐츠 기획·발행·성과 분석', to: '/work/youtube-social-growth/' },
-  { en: 'Video Production', ko: '영상 기획·촬영·편집, 제품 영상 기획 및 제작 관리', to: '/work/product-storytelling/' },
+  { en: 'Video Production', ko: '영상 기획·촬영·편집, 제품 영상 기획 및 검수', to: '/work/product-storytelling/' },
   { en: 'Brand & Graphic Design', ko: '광고·인쇄물·상세페이지·웹디자인', to: '/work/brand-content-design/' },
   { en: 'Global Exhibition', ko: 'B2B 브랜드 콘텐츠 및 전시 홍보', to: '/work/global-exhibition-marketing/' },
   { en: 'Website & SEO', ko: '홈페이지·SEO·뉴스레터·디지털 콘텐츠', to: '/work/website-seo/' },
