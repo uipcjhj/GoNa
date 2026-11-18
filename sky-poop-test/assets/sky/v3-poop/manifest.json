@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "files": {
+    "chars/halabeoji/illust.png": {},
+    "chars/halmeoni/illust.png": {},
+    "chars/mom/illust.png": {},
+    "chars/imo/illust.png": {},
+    "chars/samchon/illust.png": {},
+    "chars/dad/illust.png": {},
+    "chars/halabeoji/face.png": {},
+    "chars/imo/face.png": {},
+    "chars/samchon/face.png": {},
+    "chars/dad/face.png": {},
+    "chars/halmeoni/face.png": {},
+    "chars/mom/face.png": {},
+    "chars/mom/cutin.png": {},
+    "chars/dad/cutin.png": {},
+    "chars/imo/cutin.png": {},
+    "chars/halmeoni/cutin.png": {},
+    "chars/halabeoji/cutin.png": {},
+    "chars/samchon/cutin.png": {},
+    "chars/mom/fly.png": {},
+    "chars/dad/fly.png": {},
+    "chars/imo/fly.png": {},
+    "chars/samchon/fly.png": {},
+    "chars/halmeoni/fly.png": {},
+    "chars/halabeoji/fly.png": {},
+    "chars/samchon/probiotic.png": {
+      "rows": 3,
+      "cols": 4,
+      "cell": [
+        40,
+        40
+      ]
+    },
+    "fx/water-drop.png": {},
+    "fx/prune-orb.png": {},
+    "fx/heal-heart.png": {},
+    "fx/flame.png": {},
+    "fx/hex.png": {},
+    "fx/germ.png": {},
+    "fx/prune-splash.png": {},
+    "fx/water-splash.png": {},
+    "villain/duo.png": {
+      "rows": 2,
+      "cols": 4,
+      "cell": [
+        64,
+        64
+      ]
+    },
+    "villain/bbo-face.png": {
+      "frames": 3
+    },
+    "villain/kku-face.png": {
+      "frames": 3
+    },
+    "stage1/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -17,
+      "weakDy": 15,
+      "bullet": "flask"
+    },
+    "stage1/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "stage1/enemy-drone.png": {},
+    "stage1/enemy-fighter.png": {},
+    "stage1/enemy-wyvern.png": {},
+    "stage1/enemy-orb.png": {},
+    "stage1/enemy-gunship.png": {},
+    "ending/train.png": {},
+    "stage1/bg-backdrop.png": {
+      "tint": 0.5,
+      "noProps": true
+    }
+  }
+}
