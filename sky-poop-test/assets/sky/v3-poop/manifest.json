@@ -76,6 +76,22 @@
     "stage1/bg-backdrop.png": {
       "tint": 0.5,
       "noProps": true
+    },
+    "opening2/gona-eat.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-pat.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-startle.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-strain.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
     }
   }
 }
