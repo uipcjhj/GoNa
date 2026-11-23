@@ -56,7 +56,7 @@ async function fetchTwice(url: string): Promise<FetchedPage> {
   }));
   const failed = page.verification.httpStatus == null;
   domainFails.set(domain, failed ? (domainFails.get(domain) ?? 0) + 1 : 0);
-  if (pageCache.size > 500) pageCache.delete(pageCache.keys().next().value!);
+  if (pageCache.size > (process.env.RENDER ? 120 : 500)) pageCache.delete(pageCache.keys().next().value!);
   pageCache.set(url, { at: Date.now(), fail: failed || !(page.text && page.text.length > 200), page });
   return page;
 }

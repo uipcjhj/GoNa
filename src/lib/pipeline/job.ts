@@ -715,7 +715,8 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
       const reportMode = job.mode === "weekly-analyze" && geminiConfigured();
       // 서버리스(Vercel 무료: 요청당 최대 300초)에서는 작은 묶음(5건)으로 나누고, 새 묶음은 남은 시간이 충분할 때만 시작한다 (남은 기사는 다음 조각에서 이어서 처리)
       const serverless = Boolean(process.env.VERCEL);
-      const CONCURRENCY = reportMode ? Math.max(serverless ? 3 : 5, Math.min(20, Number(process.env.BULK_CHUNK) || (serverless ? 5 : 10))) : quick ? 4 : 3;
+      const smallHost = serverless || Boolean(process.env.RENDER); // 메모리 512MB 수준(Render 무료)도 작은 묶음
+      const CONCURRENCY = reportMode ? Math.max(smallHost ? 3 : 5, Math.min(20, Number(process.env.BULK_CHUNK) || (smallHost ? 5 : 10))) : quick ? 4 : 3;
       const margin = quick ? 3_000 : reportMode && serverless ? 100_000 : 20_000;
       while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin && !job.haltReason) {
         const batch = job.analyzeQueue.slice(job.analyzeIndex, job.analyzeIndex + CONCURRENCY);
@@ -809,6 +810,12 @@ export function internalSecret(): string {
 
 /** Run a slice; if more work remains, chain to a fresh invocation (keeps going after the browser closes). */
 export async function driveJob(jobId: string, origin: string): Promise<void> {
+  // Render 무료 서버는 15분간 외부 요청이 없으면 잠들어 진행 중인 작업이 끊긴다 → 작업이 도는 동안 자기 주소에 4분마다 요청을 보내 깨어 있게 한다
+  const self = process.env.RENDER_EXTERNAL_URL;
+  const ping = self ? setInterval(() => { fetch(`${self}/login`, { cache: "no-store" }).catch(() => undefined); }, 4 * 60_000) : null;
+  try { await driveJobInner(jobId, origin); } finally { if (ping) clearInterval(ping); }
+}
+async function driveJobInner(jobId: string, origin: string): Promise<void> {
   const done = await runJobSlice(jobId, sliceBudgetMs());
   if (done) return;
   const job = await getJob(jobId);

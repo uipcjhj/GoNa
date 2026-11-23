@@ -1,7 +1,7 @@
 // 로컬 DB(.data) → Supabase 데이터 이전 (기본은 점검만, 아무것도 쓰지 않음)
 //
 //   점검(읽기 전용):  npm run db:migrate
-//   실제 이전:        npm run db:migrate -- --apply --confirm <Supabase 프로젝트 호스트>
+//   실제 이전:        npm run db:migrate -- --apply --confirm <Supabase 프로젝트 호스트> --expect-articles <점검에서 본 기사 수>
 //   충돌 행 덮어쓰기: ... --overwrite   (기본은 Supabase에 이미 있는 행을 건드리지 않음)
 //   원본 폴더 지정:   --source /경로/.data
 //
@@ -56,6 +56,8 @@ const conflicts = plans.reduce((n, p) => n + p.conflicts.length, 0);
 if (conflicts) console.log(`  ※ 내용이 다른 ${conflicts}건은 ${flag("--overwrite") ? "원본으로 덮어씁니다(--overwrite)" : "건드리지 않습니다 (Supabase 쪽 값 유지)"}.`);
 
 if (!flag("--apply")) { console.log("\n점검만 했습니다. 실제 이전은 --apply --confirm <호스트> 를 붙여 실행하세요."); process.exit(0); }
+const srcArticles = summarize(src).articles;
+if (Number(opt("--expect-articles")) !== srcArticles) { console.error(`\n중단: 이 원본(${dir})의 기사 수는 ${srcArticles}건입니다. 점검 화면에서 확인한 실제 데이터의 기사 수를 --expect-articles <N> 으로 입력해야 합니다 (테스트·다른 DB 이전 방지).`); process.exit(2); }
 if (opt("--confirm") !== host) { console.error(`\n중단: --confirm ${host} 를 함께 입력해야 실제 이전합니다 (잘못된 프로젝트 방지).`); process.exit(2); }
 
 const backup = path.join(dir, `backup-before-migrate-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);

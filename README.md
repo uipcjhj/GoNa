@@ -68,6 +68,7 @@ HOT ≥ 80, WATCH 60~79, GENERAL < 60. 감점: 완공 프로젝트(−30), 과�
 ## 5. 배포 방법 (무료 플랜 기준, 약 20분)
 
 > **초보자용 단계별 가이드(데이터 이전·무료 한도·제약 포함): [`docs/DEPLOY-VERCEL.md`](docs/DEPLOY-VERCEL.md)**
+> **Render 무료 + Supabase 가이드(약관 확인 결과 포함): [`docs/DEPLOY-RENDER.md`](docs/DEPLOY-RENDER.md)**
 
 ### ① Supabase (데이터베이스)
 1. https://supabase.com 가입 → **New project** 생성 (Region: Northeast Asia (Seoul) 권장)
