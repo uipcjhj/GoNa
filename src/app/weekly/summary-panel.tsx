@@ -21,6 +21,7 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(0);
   const was = useRef(false);
+  const lastRefresh = useRef(0);
   const s = view.summary;
   const b = view.breakdown;
 
@@ -32,7 +33,8 @@ export function SummaryPanel({ view, pq }: { view: WeeklyView; pq: Record<string
       setJob(mine);
       setNow(Date.now());
       const act = Boolean(mine && d.active);
-      if (act) router.refresh(); // 요약이 쌓이는 동안 목록·진행률 갱신
+      // 요약이 쌓이는 동안 목록·진행률 갱신 (화면이 보일 때만, 서버 부하를 줄이기 위해 60초에 한 번)
+      if (act && document.visibilityState === "visible" && Date.now() - lastRefresh.current > 60_000) { lastRefresh.current = Date.now(); router.refresh(); }
       if (was.current && !act) fetch("/api/ai/status", { cache: "no-store" }).then((r) => r.json()).then(setBudget).catch(() => {});
       was.current = act;
     } catch { /* offline: keep last state */ }
