@@ -92,6 +92,159 @@
     "opening2/gona-strain.png": {
       "src": "canva",
       "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-cry.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-sleep.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-strain2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-eat2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-soldier.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-ghost.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-golem.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-knight.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-king.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-king2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "title/keyart.jpg": {},
+    "s2/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s3/enemy-drone.png": {},
+    "s3/enemy-fighter.png": {},
+    "s3/enemy-wyvern.png": {},
+    "s3/enemy-orb.png": {},
+    "s3/enemy-gunship.png": {},
+    "s6/enemy-drone.png": {},
+    "s6/enemy-fighter.png": {},
+    "s6/enemy-wyvern.png": {},
+    "s6/enemy-orb.png": {},
+    "s6/enemy-gunship.png": {},
+    "s3/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s2/enemy-drone.png": {},
+    "s2/enemy-fighter.png": {},
+    "s2/enemy-wyvern.png": {},
+    "s2/enemy-orb.png": {},
+    "s2/enemy-gunship.png": {},
+    "s4/enemy-drone.png": {},
+    "s4/enemy-fighter.png": {},
+    "s4/enemy-wyvern.png": {},
+    "s4/enemy-orb.png": {},
+    "s4/enemy-gunship.png": {},
+    "s4/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s5/enemy-drone.png": {},
+    "s5/enemy-fighter.png": {},
+    "s5/enemy-wyvern.png": {},
+    "s5/enemy-orb.png": {},
+    "s5/enemy-gunship.png": {},
+    "s5/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s6/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s2/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s3/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s4/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s5/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s6/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s2/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s3/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s4/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s5/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s6/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "ending/hug.jpg": {
+      "src": "higgsfield"
+    },
+    "ending/castle.jpg": {
+      "src": "higgsfield"
+    },
+    "ending/gona-relief.png": {
+      "src": "higgsfield"
+    },
+    "ending/gona-cheer.png": {
+      "src": "higgsfield"
     }
   }
 }
