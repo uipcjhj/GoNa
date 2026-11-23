@@ -245,6 +245,130 @@
     },
     "ending/gona-cheer.png": {
       "src": "higgsfield"
+    },
+    "title/logo.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "title/keyart-tall.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-eve.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-chew.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-eve-blur.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-full.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-clutch.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-drowsy.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-pat.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-bite.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-strain0.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-fly.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-sleep.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-rub.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-wake.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-night.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-giggle.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/castle.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/family.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/hug2.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/collapse.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/dream.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-morn.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/n-pat.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-strain2.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-startle.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-eat.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-cry.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-eat2.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-strain.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-sleep.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
     }
   }
 }
