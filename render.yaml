@@ -8,14 +8,16 @@ services:
     region: singapore            # 한국에서 가장 가까운 Render 리전 (Supabase는 서울 권장)
     branch: claude/charming-maxwell-n3yywy
     autoDeploy: true
-    buildCommand: npm ci && npm run build
-    startCommand: npm start      # next start -H 0.0.0.0 -p $PORT (Render가 PORT 지정)
+    # 빌드와 실행의 메모리 제한을 분리: 빌드(타입 검사 포함)는 힙 약 640MB 이상 필요 → 1536MB 허용 (빌드 머신은 별도 자원),
+    # 실행은 인스턴스 RAM 512MB 안에 들도록 힙 320MB로 제한 (측정: 기사 2천 건 부하에서 RSS 약 370MB)
+    buildCommand: npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build
+    startCommand: NODE_OPTIONS=--max-old-space-size=320 npm start   # next start -H 0.0.0.0 -p $PORT (Render가 PORT 지정)
     healthCheckPath: /login
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: NODE_OPTIONS
-        value: --max-old-space-size=384
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
