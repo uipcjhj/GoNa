@@ -713,8 +713,10 @@ export async function runJobSlice(jobId: string, budgetMs: number): Promise<bool
       // Gemini free tier: one report analysis at a time (calls are also paced inside the client)
       // 보고서 분석(Gemini): 10건 단위 묶음 — 원문은 병렬로 읽고, Gemini는 기사 여러 건을 한 번에 요약 (src/lib/report/batch.ts)
       const reportMode = job.mode === "weekly-analyze" && geminiConfigured();
-      const CONCURRENCY = reportMode ? Math.max(5, Math.min(20, Number(process.env.BULK_CHUNK) || 10)) : quick ? 4 : 3;
-      const margin = quick ? 3_000 : 20_000;
+      // 서버리스(Vercel 무료: 요청당 최대 300초)에서는 작은 묶음(5건)으로 나누고, 새 묶음은 남은 시간이 충분할 때만 시작한다 (남은 기사는 다음 조각에서 이어서 처리)
+      const serverless = Boolean(process.env.VERCEL);
+      const CONCURRENCY = reportMode ? Math.max(serverless ? 3 : 5, Math.min(20, Number(process.env.BULK_CHUNK) || (serverless ? 5 : 10))) : quick ? 4 : 3;
+      const margin = quick ? 3_000 : reportMode && serverless ? 100_000 : 20_000;
       while (job.analyzeIndex < job.analyzeQueue.length && Date.now() < deadline - margin && !job.haltReason) {
         const batch = job.analyzeQueue.slice(job.analyzeIndex, job.analyzeIndex + CONCURRENCY);
         job.step = `원문 확인·분석 중 (${Math.min(job.analyzeIndex + batch.length, job.analyzeQueue.length)}/${job.analyzeQueue.length})`;

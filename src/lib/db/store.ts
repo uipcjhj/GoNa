@@ -27,7 +27,7 @@ export interface Store {
 }
 
 /** Which timestamp each table is sorted / time-filtered by. */
-function sortAt(table: TableName, row: Row): string {
+export function sortAt(table: TableName, row: Row): string {
   const r = row as unknown as Record<string, unknown>;
   const v =
     table === "articles"
@@ -218,9 +218,15 @@ export function supabaseConfigured(): boolean {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+/** 개발 환경(next dev / Codespaces)에서는 .env.local 에 운영 Supabase 키가 있어도 로컬 DB를 쓴다 (운영 데이터 보호). 의도적으로 쓰려면 ALLOW_DEV_SUPABASE=1. */
+function devBlocksSupabase(): boolean {
+  return process.env.NODE_ENV !== "production" && !process.env.VERCEL && process.env.ALLOW_DEV_SUPABASE !== "1";
+}
+
 export function getStore(): Store {
   if (g.__gorStore) return g.__gorStore;
-  if (supabaseConfigured()) {
+  if (supabaseConfigured() && devBlocksSupabase()) console.warn("[db] 개발 모드: Supabase 키가 있지만 로컬 DB(.data)를 사용합니다 (운영 DB 보호). 사용하려면 ALLOW_DEV_SUPABASE=1");
+  if (supabaseConfigured() && !devBlocksSupabase()) {
     const sb = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });

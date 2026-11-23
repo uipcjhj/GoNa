@@ -14,7 +14,7 @@ process.env.GEMINI_RPD = "3";
 const { saveArticles, getArticle, getSettings, saveSettings, getJob } = await import("@/lib/db/repo");
 const { loadWeekly } = await import("@/lib/weekly/view");
 const { resolvePeriod } = await import("@/lib/weekly/period");
-const { startJob, driveJob } = await import("@/lib/pipeline/job");
+const { startJob, driveJob, runJobSlice } = await import("@/lib/pipeline/job");
 const { geminiUsage } = await import("@/lib/ai/gemini");
 
 const period = resolvePeriod({ p: "custom", start: "2026-11-02", end: "2026-11-08" });
@@ -129,5 +129,20 @@ describe("전체 기사 AI 요약", () => {
     await run({ ids: ["filtr002"] });
     assert.equal(calls - before_, 1);
     assert.equal((await getArticle("filtr002"))!.report?.status, "done");
+  });
+  test("서버리스 조각 실행: 시간이 부족한 조각은 아무것도 처리하지 않고 넘기고, 다음 조각이 이어서 완료 (진행 위치 저장)", async () => {
+    const more = [mk("serv0001", "analyzed"), mk("serv0002", "analyzed"), mk("serv0003", "queued")];
+    await saveArticles(more);
+    const { job } = await startJob("manual", "weekly-analyze", range, { scope: "all" } as never);
+    const first = await runJobSlice(job.id, 1000); // 남은 시간 < 여유 → 새 묶음을 시작하지 않음
+    assert.equal(first, false);
+    const mid = (await getJob(job.id))!;
+    assert.equal(mid.status, "running"); assert.equal(mid.analyzeIndex, 0);
+    const before = calls;
+    let done = false;
+    for (let i = 0; i < 5 && !done; i++) done = await runJobSlice(job.id, 600_000);
+    const end = (await getJob(job.id))!;
+    assert.ok(done && end.status === "completed", `status=${end.status}`);
+    assert.equal(calls - before, 3, "각 기사 1회씩만 호출 (재호출·중복 없음)");
   });
 });

@@ -12,7 +12,8 @@
     "gemini:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts --check",
     "report:compare": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/report-compare.mts",
     "diagnose": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/diagnose.mts",
-    "sources:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/sources-check.mts"
+    "sources:check": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/sources-check.mts",
+    "db:migrate": "node --conditions=react-server --import tsx scripts/migrate-to-supabase.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

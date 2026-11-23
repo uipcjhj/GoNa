@@ -86,7 +86,7 @@ export async function analyzeBatch(arts: Article[], settings: Settings, o: { rea
     let model = "";
     try {
       stats.calls++; stats.batchCalls++;
-      const r = await generateJSON<{ results?: (Raw & { id?: string })[] }>({ system: BATCH_SYSTEM, user, schema: BATCH_SCHEMA, maxOutputTokens: Math.min(30_000, 3500 * group.length + 1000), temperature: 0.1, timeoutMs: 150_000 });
+      const r = await generateJSON<{ results?: (Raw & { id?: string })[] }>({ system: BATCH_SYSTEM, user, schema: BATCH_SCHEMA, maxOutputTokens: Math.min(30_000, 3500 * group.length + 1000), temperature: 0.1, timeoutMs: process.env.VERCEL ? 90_000 : 150_000 });
       data = r.data; model = r.model;
     } catch (e) {
       const ge = e as GeminiError;
