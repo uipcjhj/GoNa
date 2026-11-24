@@ -369,6 +369,24 @@
     "opening3/n-sleep.png": {
       "src": "higgsfield",
       "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/fam-mom.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-dad.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-imo.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-samchon.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-halmeoni.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-halabeoji.webp": {
+      "src": "resize"
     }
   }
 }
