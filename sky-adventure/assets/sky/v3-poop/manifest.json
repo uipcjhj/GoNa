@@ -248,7 +248,7 @@
     },
     "title/logo.png": {
       "src": "higgsfield",
-      "note": "타이틀 로고 v5 (시안 4장 중 1번: 금빛 날개 · 크림 왕관 문장)"
+      "note": "타이틀 로고 v6: 영문 + 한글 명판 (고나의 스카이 어드벤처)"
     },
     "title/keyart-tall.jpg": {
       "src": "higgsfield",
@@ -475,6 +475,102 @@
     "opening3/sortie.jpg": {
       "src": "higgsfield",
       "note": "오프닝 출격 클라이맥스: 고나 + 가족 편대"
+    },
+    "album/mom-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 mom easy"
+    },
+    "album/mom-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 mom normal"
+    },
+    "album/mom-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 mom hard"
+    },
+    "album/dad-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 dad easy"
+    },
+    "album/dad-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 dad normal"
+    },
+    "album/dad-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 dad hard"
+    },
+    "album/imo-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 imo easy"
+    },
+    "album/imo-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 imo normal"
+    },
+    "album/imo-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 imo hard"
+    },
+    "album/halmeoni-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halmeoni easy"
+    },
+    "album/halmeoni-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halmeoni normal"
+    },
+    "album/halmeoni-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halmeoni hard"
+    },
+    "album/halabeoji-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halabeoji easy"
+    },
+    "album/halabeoji-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halabeoji normal"
+    },
+    "album/halabeoji-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 halabeoji hard"
+    },
+    "album/samchon-easy.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 samchon easy"
+    },
+    "album/samchon-normal.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 samchon normal"
+    },
+    "album/samchon-hard.jpg": {
+      "src": "higgsfield",
+      "note": "기념사진 samchon hard"
+    },
+    "ui/badge-easy.png": {
+      "src": "higgsfield",
+      "note": "클리어 배지 테두리 easy"
+    },
+    "ui/badge-normal.png": {
+      "src": "higgsfield",
+      "note": "클리어 배지 테두리 normal"
+    },
+    "ui/badge-hard.png": {
+      "src": "higgsfield",
+      "note": "클리어 배지 테두리 hard"
+    },
+    "opening3/eat-full.jpg": {
+      "src": "higgsfield",
+      "note": "장면 일러스트"
+    },
+    "opening3/sleep-full.jpg": {
+      "src": "higgsfield",
+      "note": "장면 일러스트"
+    },
+    "ending/wake.jpg": {
+      "src": "higgsfield",
+      "note": "장면 일러스트"
     }
   }
 }
