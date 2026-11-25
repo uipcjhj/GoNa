@@ -571,6 +571,14 @@
     "ending/wake.jpg": {
       "src": "higgsfield",
       "note": "장면 일러스트"
+    },
+    "ui/master.png": {
+      "src": "higgsfield",
+      "note": "MASTER 배지"
+    },
+    "album/special.jpg": {
+      "src": "higgsfield",
+      "note": "18장 완성 특별 기념사진"
     }
   }
 }
