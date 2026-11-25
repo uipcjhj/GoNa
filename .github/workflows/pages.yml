@@ -14,7 +14,8 @@
 #      가장 최근 것만 남는데, 매번 최신 브랜치를 다시 읽으므로 마지막 결과가 항상 최신 상태다.
 #   4. 배포 전에 검사: Pages 출처가 'GitHub Actions' 인지 · 정식/개발 필수 파일 · 두 테스트판 파일.
 #      하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지된다.
-#   5. 복구: Actions → 이 워크플로 → Run workflow 에서 main_ref · dev_ref · sky_ref 에 이전 커밋을 넣고 실행.
+#   5. main 에 배포 설정(.github/)만 바뀐 커밋은 정식판 릴리스 태그를 만들지 않음 (게임 내용이 같으므로).
+#   6. 복구: Actions → 이 워크플로 → Run workflow 에서 main_ref · dev_ref · sky_ref 에 이전 커밋을 넣고 실행.
 #      2026-11-16 통합 전 정상 상태: main a907834 · dev a907834 · sky-test daa4d72
 name: Pages (Food + dev + sky-test + sky-poop-test + sky-adventure)
 
@@ -174,6 +175,14 @@ jobs:
         run: |
           SHA=$(git rev-parse HEAD)
           if git tag --points-at "$SHA" | grep -q '^prod-'; then echo "already tagged"; exit 0; fi
+          # 배포 설정(.github/)만 바뀐 커밋은 정식판 내용이 그대로이므로 릴리스 태그를 만들지 않음
+          PREV=$(git describe --tags --match 'prod-*' --abbrev=0 "$SHA" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            CHANGED=$(git diff --name-only "$PREV" "$SHA")
+            if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qv '^\.github/'; then
+              echo "마지막 릴리스 $PREV 이후 .github/ 만 바뀜 → 태그 생략"; echo "$CHANGED"; exit 0
+            fi
+          fi
           NAME="prod-$(TZ=Asia/Seoul date '+%Y%m%d-%H%M')-$(git rev-parse --short=7 HEAD)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
