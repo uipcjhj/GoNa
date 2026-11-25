@@ -4,6 +4,7 @@
 #   https://uipcjhj.github.io/GoNa/dev/           ← dev       (개발 Food Adventure, 빌드)
 #   https://uipcjhj.github.io/GoNa/sky-test/      ← sky-test  브랜치의 sky-test/      (미리 빌드된 케이크 테스트판)
 #   https://uipcjhj.github.io/GoNa/sky-poop-test/ ← sky-test  브랜치의 sky-poop-test/ (미리 빌드된 응가 테스트판)
+#   https://uipcjhj.github.io/GoNa/sky-adventure/ ← sky-test  브랜치의 sky-adventure/ (미리 빌드된 정식 플레이판 · 없으면 경고만, 다른 경로는 그대로 배포)
 #
 # 규칙
 #   1. 이 파일은 main · dev · sky-test 세 브랜치에 '똑같은 내용'으로 둔다 (병합해도 충돌·덮어쓰기 없음).
@@ -15,7 +16,7 @@
 #      하나라도 실패하면 배포하지 않음 → 지금 사이트가 그대로 유지된다.
 #   5. 복구: Actions → 이 워크플로 → Run workflow 에서 main_ref · dev_ref · sky_ref 에 이전 커밋을 넣고 실행.
 #      2026-11-16 통합 전 정상 상태: main a907834 · dev a907834 · sky-test daa4d72
-name: Pages (Food + dev + sky-test + sky-poop-test)
+name: Pages (Food + dev + sky-test + sky-poop-test + sky-adventure)
 
 on:
   push:
@@ -99,7 +100,7 @@ jobs:
         run: |
           mkdir -p site
           cp -R prod/dist/. site/
-          rm -rf site/dev site/sky-test site/sky-poop-test
+          rm -rf site/dev site/sky-test site/sky-poop-test site/sky-adventure
           mkdir -p site/dev
           cp -R devsrc/dist/. site/dev/
           # 개발 사이트를 홈 화면에 추가하면 이름이 'GONA dev' (정식 'GONA' 와 구분)
@@ -111,6 +112,13 @@ jobs:
             mkdir -p "site/$d"
             cp -R "skytest/$d/." "site/$d/"
           done
+          # 정식 플레이판 — 예전 커밋으로 복구 실행할 때(폴더가 없던 시절)도 나머지 네 경로는 배포되도록 '있으면 복사'
+          if [ -f skytest/sky-adventure/index.html ]; then
+            mkdir -p site/sky-adventure
+            cp -R skytest/sky-adventure/. site/sky-adventure/
+          else
+            echo "::warning::sky-test 브랜치에 sky-adventure/ 가 없음 — 이번 배포에서 /sky-adventure/ 는 빠짐"
+          fi
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf '{"channel":"production","branch":"main","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C prod rev-parse HEAD)" "$(git -C prod rev-parse --short=7 HEAD)" "$now" > site/version.json
           printf '{"channel":"development","branch":"dev","commit":"%s","short":"%s","built":"%s"}\n' "$(git -C devsrc rev-parse HEAD)" "$(git -C devsrc rev-parse --short=7 HEAD)" "$now" > site/dev/version.json
@@ -119,7 +127,8 @@ jobs:
       - name: Verify (food sites · both sky tests · asset references)
         run: |
           node devsrc/tools/verify-site.cjs site prod devsrc
-          for d in "" dev/ sky-test/ sky-poop-test/; do
+          extra=""; test -d site/sky-adventure && extra="sky-adventure/"
+          for d in "" dev/ sky-test/ sky-poop-test/ $extra; do
             test -f "site/${d}index.html" || { echo "✗ ${d}index.html 없음"; exit 1; }
             for a in $(grep -o 'assets/[^"]*\.\(js\|css\)' "site/${d}index.html" | sort -u); do
               test -s "site/${d}$a" || { echo "✗ ${d}$a 없음"; exit 1; }
@@ -128,7 +137,10 @@ jobs:
           done
           test "$(sha1sum < site/sky-test/index.html)" != "$(sha1sum < site/sky-poop-test/index.html)" || { echo "✗ 두 테스트판이 같은 파일"; exit 1; }
           grep -q "Food Adventure" site/index.html || { echo "✗ 정식판 index.html 제목 확인 실패"; exit 1; }
-          echo "✓ 네 경로 모두 포함"
+          if [ -n "$extra" ]; then
+            test "$(sha1sum < site/sky-adventure/index.html)" != "$(sha1sum < site/sky-poop-test/index.html)" || { echo "✗ 정식 플레이판이 응가 테스트판과 같은 파일"; exit 1; }
+          fi
+          echo "✓ 네 경로 모두 포함 ${extra:+· 정식 플레이판 포함}"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

@@ -1,0 +1,392 @@
+{
+  "version": 1,
+  "files": {
+    "chars/halabeoji/illust.png": {},
+    "chars/halmeoni/illust.png": {},
+    "chars/mom/illust.png": {},
+    "chars/imo/illust.png": {},
+    "chars/samchon/illust.png": {},
+    "chars/dad/illust.png": {},
+    "chars/halabeoji/face.png": {},
+    "chars/imo/face.png": {},
+    "chars/samchon/face.png": {},
+    "chars/dad/face.png": {},
+    "chars/halmeoni/face.png": {},
+    "chars/mom/face.png": {},
+    "chars/mom/cutin.png": {},
+    "chars/dad/cutin.png": {},
+    "chars/imo/cutin.png": {},
+    "chars/halmeoni/cutin.png": {},
+    "chars/halabeoji/cutin.png": {},
+    "chars/samchon/cutin.png": {},
+    "chars/mom/fly.png": {},
+    "chars/dad/fly.png": {},
+    "chars/imo/fly.png": {},
+    "chars/samchon/fly.png": {},
+    "chars/halmeoni/fly.png": {},
+    "chars/halabeoji/fly.png": {},
+    "chars/samchon/probiotic.png": {
+      "rows": 3,
+      "cols": 4,
+      "cell": [
+        40,
+        40
+      ]
+    },
+    "fx/water-drop.png": {},
+    "fx/prune-orb.png": {},
+    "fx/heal-heart.png": {},
+    "fx/flame.png": {},
+    "fx/hex.png": {},
+    "fx/germ.png": {},
+    "fx/prune-splash.png": {},
+    "fx/water-splash.png": {},
+    "villain/duo.png": {
+      "rows": 2,
+      "cols": 4,
+      "cell": [
+        64,
+        64
+      ]
+    },
+    "villain/bbo-face.png": {
+      "frames": 3
+    },
+    "villain/kku-face.png": {
+      "frames": 3
+    },
+    "stage1/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -17,
+      "weakDy": 15,
+      "bullet": "flask"
+    },
+    "stage1/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "stage1/enemy-drone.png": {},
+    "stage1/enemy-fighter.png": {},
+    "stage1/enemy-wyvern.png": {},
+    "stage1/enemy-orb.png": {},
+    "stage1/enemy-gunship.png": {},
+    "ending/train.png": {},
+    "stage1/bg-backdrop.png": {
+      "tint": 0.5,
+      "noProps": true
+    },
+    "opening2/gona-eat.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-pat.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-startle.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-strain.png": {
+      "src": "canva",
+      "note": "오프닝 고나 표정 (Canva AI · 200px 픽셀 정리)"
+    },
+    "opening2/gona-cry.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-sleep.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-strain2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/gona-eat2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-soldier.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-ghost.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-golem.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-knight.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-king.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "opening2/v-king2.png": {
+      "src": "higgsfield",
+      "note": "오프닝 컷신 그림"
+    },
+    "title/keyart.jpg": {},
+    "s2/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s3/enemy-drone.png": {},
+    "s3/enemy-fighter.png": {},
+    "s3/enemy-wyvern.png": {},
+    "s3/enemy-orb.png": {},
+    "s3/enemy-gunship.png": {},
+    "s6/enemy-drone.png": {},
+    "s6/enemy-fighter.png": {},
+    "s6/enemy-wyvern.png": {},
+    "s6/enemy-orb.png": {},
+    "s6/enemy-gunship.png": {},
+    "s3/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s2/enemy-drone.png": {},
+    "s2/enemy-fighter.png": {},
+    "s2/enemy-wyvern.png": {},
+    "s2/enemy-orb.png": {},
+    "s2/enemy-gunship.png": {},
+    "s4/enemy-drone.png": {},
+    "s4/enemy-fighter.png": {},
+    "s4/enemy-wyvern.png": {},
+    "s4/enemy-orb.png": {},
+    "s4/enemy-gunship.png": {},
+    "s4/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s5/enemy-drone.png": {},
+    "s5/enemy-fighter.png": {},
+    "s5/enemy-wyvern.png": {},
+    "s5/enemy-orb.png": {},
+    "s5/enemy-gunship.png": {},
+    "s5/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s6/boss.png": {
+      "frames": 3,
+      "k": 0.5,
+      "partDx": 35,
+      "partDy": -10,
+      "weakDy": 10
+    },
+    "s2/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s3/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s4/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s5/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s6/midboss.png": {
+      "frames": 2,
+      "k": 0.5
+    },
+    "s2/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s3/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s4/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s5/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "s6/bg-backdrop.png": {
+      "tint": 0.35,
+      "noProps": true
+    },
+    "ending/hug.jpg": {
+      "src": "higgsfield"
+    },
+    "ending/castle.jpg": {
+      "src": "higgsfield"
+    },
+    "ending/gona-relief.png": {
+      "src": "higgsfield"
+    },
+    "ending/gona-cheer.png": {
+      "src": "higgsfield"
+    },
+    "title/logo.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "title/keyart-tall.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-eve.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-chew.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-eve-blur.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-full.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-clutch.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-drowsy.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-pat.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/a-bite.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-strain0.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-fly.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-sleep.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-rub.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-wake.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-night.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/b-giggle.png": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/castle.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/family.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/hug2.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "ending/collapse.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/dream.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/room-morn.jpg": {
+      "src": "higgsfield",
+      "note": "리마스터 2026-11-23"
+    },
+    "opening3/n-pat.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-strain2.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-startle.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-eat.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-cry.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-eat2.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-strain.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/n-sleep.png": {
+      "src": "higgsfield",
+      "note": "크기·바닥선 맞춘 사본"
+    },
+    "opening3/fam-mom.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-dad.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-imo.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-samchon.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-halmeoni.webp": {
+      "src": "resize"
+    },
+    "opening3/fam-halabeoji.webp": {
+      "src": "resize"
+    }
+  }
+}
