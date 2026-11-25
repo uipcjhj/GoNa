@@ -387,6 +387,74 @@
     },
     "opening3/fam-halabeoji.webp": {
       "src": "resize"
+    },
+    "s3/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "s5/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "s6/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "stage1/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "s2/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "s4/parts.png": {
+      "frames": 4,
+      "k": 0.5,
+      "src": "higgsfield",
+      "note": "보스 부위 파괴: A · A 파손 · B · B 파손"
+    },
+    "ui/rank-S.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "ui/rank-A.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "ui/rank-B.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "ui/rank-C.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "ui/rank-D.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "ui/daily.png": {
+      "src": "higgsfield",
+      "note": "랭크·일일 도전 배지"
+    },
+    "opening2/gona-hero.png": {
+      "src": "higgsfield",
+      "note": "오프닝 각성 컷 (출격 고나)"
+    },
+    "ui/crest.png": {
+      "src": "higgsfield",
+      "note": "결과 화면 머리 장식"
     }
   }
 }
