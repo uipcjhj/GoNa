@@ -579,6 +579,18 @@
     "album/special.jpg": {
       "src": "higgsfield",
       "note": "18장 완성 특별 기념사진"
+    },
+    "ui/cer-easy.jpg": {
+      "src": "higgsfield",
+      "note": "승리 세리머니 배경 easy"
+    },
+    "ui/cer-normal.jpg": {
+      "src": "higgsfield",
+      "note": "승리 세리머니 배경 normal"
+    },
+    "ui/cer-hard.jpg": {
+      "src": "higgsfield",
+      "note": "승리 세리머니 배경 hard"
     }
   }
 }
