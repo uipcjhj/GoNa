@@ -248,7 +248,7 @@
     },
     "title/logo.png": {
       "src": "higgsfield",
-      "note": "리마스터 2026-11-23"
+      "note": "타이틀 로고 v5 (시안 4장 중 1번: 금빛 날개 · 크림 왕관 문장)"
     },
     "title/keyart-tall.jpg": {
       "src": "higgsfield",
@@ -455,6 +455,26 @@
     "ui/crest.png": {
       "src": "higgsfield",
       "note": "결과 화면 머리 장식"
+    },
+    "opening3/strain-full.jpg": {
+      "src": "higgsfield",
+      "note": "오프닝: 저녁 아기방 · 힘주는 고나 (장면 일러스트)"
+    },
+    "opening3/cry-full.jpg": {
+      "src": "higgsfield",
+      "note": "오프닝: 달밤 아기방 · 울먹이는 고나"
+    },
+    "ending/relief.jpg": {
+      "src": "higgsfield",
+      "note": "엔딩: 해냈다! 아침 햇살 속 만세 고나"
+    },
+    "ending/epilogue.jpg": {
+      "src": "higgsfield",
+      "note": "엔딩 에필로그: 노을 · 편히 잠든 고나"
+    },
+    "opening3/sortie.jpg": {
+      "src": "higgsfield",
+      "note": "오프닝 출격 클라이맥스: 고나 + 가족 편대"
     }
   }
 }
