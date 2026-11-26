@@ -1467,6 +1467,14 @@
     "album/t/halmeoni-normal-3.jpg": {
       "src": "higgsfield",
       "note": "보스 격파 기념사진 썸네일"
+    },
+    "title/logo-v10.png": {
+      "src": "higgsfield",
+      "note": "타이틀 영문 로고 v10 (시안 F · 2026-11-26 승인)"
+    },
+    "title/sub-v10.png": {
+      "src": "svg-lettering",
+      "note": "타이틀 한글 부제 '응가 대탈출 대작전' v10 (시안 C1 · 동해독도체 OFL + SVG · 2026-11-26 승인)"
     }
   }
 }
