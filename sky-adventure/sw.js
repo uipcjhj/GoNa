@@ -1,6 +1,6 @@
-/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 01709c6580 */
-const VER = '01709c6580';
-const SHELL = ["./", "index.html", "manifest.webmanifest", "assets/Galmuri11-Bold-QdFGsJ3v.woff2", "assets/Galmuri11-DfQIlyDK.woff2", "assets/gowun-batang-400-B4OGNs8r.woff2", "assets/gowun-batang-700-D4L7QKSj.woff2", "assets/index-CVFUrdT7.css", "assets/index-DPp5EfkQ.js", "assets/sky/v3-poop/title/keyart-tall.jpg", "assets/sky/v3-poop/title/keyart.jpg", "assets/sky/v3-poop/title/logo-v9.png", "assets/sky/v3-poop/title/logo.png", "assets/sky/v3-poop/manifest.json", "pwa/icon-192.png"];
+/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 c1214da36e */
+const VER = 'c1214da36e';
+const SHELL = ["./", "index.html", "manifest.webmanifest", "assets/Galmuri11-Bold-QdFGsJ3v.woff2", "assets/Galmuri11-DfQIlyDK.woff2", "assets/gowun-batang-400-B4OGNs8r.woff2", "assets/gowun-batang-700-D4L7QKSj.woff2", "assets/index-Cv4fFa4L.js", "assets/index-DQgpOryl.css", "assets/sky/v3-poop/title/keyart-tall.jpg", "assets/sky/v3-poop/title/keyart.jpg", "assets/sky/v3-poop/title/logo-v9.png", "assets/sky/v3-poop/title/logo.png", "assets/sky/v3-poop/title/sub/K1.png", "assets/sky/v3-poop/title/sub/K2.png", "assets/sky/v3-poop/title/sub/K3.png", "assets/sky/v3-poop/title/sub/K4.png", "assets/sky/v3-poop/manifest.json", "pwa/icon-192.png"];
 const CACHE = 'gona-sky-' + VER;
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));   // 새 버전: 기다렸다가 화면의 '업데이트' 버튼으로 교체
@@ -25,6 +25,10 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;            // 온라인 서버(Supabase) 요청은 건드리지 않음
+  if (u.pathname.endsWith('/online-config.js')) {                                          // 온라인 설정: 항상 최신(인터넷 먼저)
+    e.respondWith(fetch(e.request).then((res) => { const cp = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, cp)); return res; }).catch(() => caches.match(e.request)));
+    return;
+  }
   if (e.request.mode === 'navigate') {                                                  // 페이지: 인터넷 먼저 · 안 되면 캐시
     e.respondWith(fetch(e.request).catch(() => caches.match('index.html')));
     return;
