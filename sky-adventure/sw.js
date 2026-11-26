@@ -1,6 +1,6 @@
-/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 010762483b */
-const VER = '010762483b';
-const SHELL = ["./", "index.html", "manifest.webmanifest", "assets/Galmuri11-Bold-QdFGsJ3v.woff2", "assets/Galmuri11-DfQIlyDK.woff2", "assets/gowun-batang-400-B4OGNs8r.woff2", "assets/gowun-batang-700-D4L7QKSj.woff2", "assets/index-BlEti5Wp.js", "assets/index-wIQKulYA.css", "assets/sky/v3-poop/title/keyart-tall.jpg", "assets/sky/v3-poop/title/keyart.jpg", "assets/sky/v3-poop/title/logo-v9.png", "assets/sky/v3-poop/title/logo.png", "assets/sky/v3-poop/manifest.json", "pwa/icon-192.png"];
+/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 01709c6580 */
+const VER = '01709c6580';
+const SHELL = ["./", "index.html", "manifest.webmanifest", "assets/Galmuri11-Bold-QdFGsJ3v.woff2", "assets/Galmuri11-DfQIlyDK.woff2", "assets/gowun-batang-400-B4OGNs8r.woff2", "assets/gowun-batang-700-D4L7QKSj.woff2", "assets/index-CVFUrdT7.css", "assets/index-DPp5EfkQ.js", "assets/sky/v3-poop/title/keyart-tall.jpg", "assets/sky/v3-poop/title/keyart.jpg", "assets/sky/v3-poop/title/logo-v9.png", "assets/sky/v3-poop/title/logo.png", "assets/sky/v3-poop/manifest.json", "pwa/icon-192.png"];
 const CACHE = 'gona-sky-' + VER;
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));   // 새 버전: 기다렸다가 화면의 '업데이트' 버튼으로 교체
