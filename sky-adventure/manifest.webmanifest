@@ -1,6 +1,6 @@
 {
- "name": "GONA's SKY ADVENTURE · 응가 대탈출 대작전",
- "short_name": "고나 스카이",
+ "name": "GONA's Sky Adventure",
+ "short_name": "GONA's Sky",
  "description": "아기 공룡 고나와 가족의 하늘 슈팅 대모험",
  "start_url": "./?pwa=1",
  "scope": "./",
@@ -12,17 +12,19 @@
  "lang": "ko",
  "icons": [
   {
-   "src": "pwa/icon-192.png",
+   "src": "pwa/icon-192-v2.png",
    "sizes": "192x192",
-   "type": "image/png"
+   "type": "image/png",
+   "purpose": "any"
   },
   {
-   "src": "pwa/icon-512.png",
+   "src": "pwa/icon-512-v2.png",
    "sizes": "512x512",
-   "type": "image/png"
+   "type": "image/png",
+   "purpose": "any"
   },
   {
-   "src": "pwa/icon-maskable-512.png",
+   "src": "pwa/icon-maskable-512-v2.png",
    "sizes": "512x512",
    "type": "image/png",
    "purpose": "maskable"
