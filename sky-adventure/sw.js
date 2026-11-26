@@ -1,5 +1,5 @@
-/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 c1214da36e */
-const VER = 'c1214da36e';
+/* GONA's Sky Adventure Service Worker — 자동 생성 (tools/sky-pwa.py) · 버전 e85647089a */
+const VER = 'e85647089a';
 const SHELL = ["./", "index.html", "manifest.webmanifest", "assets/Galmuri11-Bold-QdFGsJ3v.woff2", "assets/Galmuri11-DfQIlyDK.woff2", "assets/gowun-batang-400-B4OGNs8r.woff2", "assets/gowun-batang-700-D4L7QKSj.woff2", "assets/index-Cv4fFa4L.js", "assets/index-DQgpOryl.css", "assets/sky/v3-poop/title/keyart-tall.jpg", "assets/sky/v3-poop/title/keyart.jpg", "assets/sky/v3-poop/title/logo-v9.png", "assets/sky/v3-poop/title/logo.png", "assets/sky/v3-poop/title/sub/K1.png", "assets/sky/v3-poop/title/sub/K2.png", "assets/sky/v3-poop/title/sub/K3.png", "assets/sky/v3-poop/title/sub/K4.png", "assets/sky/v3-poop/manifest.json", "pwa/icon-192.png"];
 const CACHE = 'gona-sky-' + VER;
 self.addEventListener('install', (e) => {
